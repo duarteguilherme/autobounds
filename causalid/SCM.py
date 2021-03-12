@@ -1,5 +1,4 @@
 from numpy import random
-from funcs import *
 
 
 class SCM:
@@ -9,21 +8,21 @@ class SCM:
     self.v -> set size(Nv) -> contains observed variables
     self.f -> dict size(Nv) -> contains functions for each v variable
     self.p -> dict size(Nu) -> contains functions representing probability distributions over u
-
+    
     Examples:
         scm = SCM()
         scm.set_u('U_X', lambda N: random.binomial(1, 0.75, N) )
         scm.set_u('U_XY', lambda N: random.binomial(1, 0.45, N) )
         scm.set_v('X', (lambda a: a, 'U_X')) 
         scm.set_v('Y', (lambda a,b: a, 'U_XY', 'X')) 
-
+    
     """
     def __init__(self):
         self.u = set()
         self.v = set()
         self.f = {}
         self.p = {}
-    
+        
     def from_dag(self, dag = '', unob = ''):
         """ This function gets a DAG and returns 
         a SCM, with whom that DAG is compatible. 
@@ -76,25 +75,3 @@ class SCM:
 
 
 
-scm.u
-scm.v
-    def set_p(self):
-
-        pfunc = lambda n: np.random.uniform(0.15, 0.85, n)
-        self.p_m, self.p_mb, self.p_b, self.p_y = pfunc(4)
-    
-    def sample_u(self, N):
-        ufunc = lambda p: np.random.binomial(1, p, N)
-        self.u_m = ufunc(self.p_m)
-        self.u_b = ufunc(self.p_b)
-        self.u_mb = ufunc(self.p_mb)
-        self.u_y = ufunc(self.p_y)
-      
-    def set_f(self):
-        f_m, self.i_f_m = define_func()
-        f_b, self.i_f_b = define_func()
-        f_y1, self.i_f_y1 = define_func()
-        f_y2, self.i_f_y2 = define_func()
-        self.f_m = lambda u_m, u_mb: f_m(u_m, u_mb)
-        self.f_b = lambda u_b, u_mb: f_b(u_b, u_mb)
-        self.f_y = lambda m,b, u_y: f_y1(m, f_y2(b, u_y))

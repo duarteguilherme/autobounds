@@ -26,8 +26,8 @@ def create_function(parents):
         if len(tupl) != len(funs):
             raise Exception("Length of tuple does not match the number of functions")
         res = funs[0][1](tupl[0])
-        print(res)
         for i in range(1,len(funs)):
             res = funs[i][1](res, tupl[i]) 
+        return res
     return (anon, [x[0] for x in funs])
 
