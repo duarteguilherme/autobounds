@@ -21,6 +21,8 @@ class DAG:
         G = DAG()
         G.from_structure('U -> X, X -> Y, U -> Y', unob = 'U')
         """
+        edges = edges.replace('\r','').replace('\n','')
+        unob = unob.replace('\r','').replace('\n','')
         edges = edges.split(',')
         for i in edges:
             edge = i.split('->')
@@ -33,6 +35,7 @@ class DAG:
             unob = unob.split(',')
             for i in unob:
                 self.set_u(i.strip())
+        self.get_topological_order()
     
     def find_parents(self, v):
         """ 
@@ -61,6 +64,24 @@ class DAG:
         v = self.V.copy()
         ch = set([ i[1] for i in self.E if i[0] not in self.U ])
         return v.difference(ch) # First nodes cannot be parents
+    
+    def get_topological_order(self):
+        self.order = []
+        first_nodes = self.find_first_nodes()
+        v = self.V.copy()
+        self.order.append(self.U) # Us are order 0
+        if len(v) == 0:
+            return None
+        level = first_nodes.union(
+                [ k for j in self.U for k in self.find_children(j) ])
+        v = v.difference(level)
+        # Set  level 1 (without U)
+        self.order.append(level)
+        while len(v) > 0:
+            level = set([ k for j in level for k in self.find_children(j) 
+                    if k in v])
+            v = v.difference(level)
+            self.order.append(level)
     
     def add_v(self, v = ''):
         if v == '' or ' ' in v:

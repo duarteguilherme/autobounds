@@ -18,3 +18,10 @@ def test_dag_find_algorithms():
     assert x.find_children('X') == set(('Y'))
     assert x.find_roots() == set(('Y'))
     assert x.find_first_nodes() == set(('X'))
+
+def test_dag_top_order():
+    x = DAG()
+    x.from_structure("""U -> X, X -> Y, U -> Y, Uy -> Y,
+            X -> Z, Y -> Z, M -> Z, M -> A, Z -> A, Uma -> A,
+            Uma -> M""", unob = "U , Uy, Uma")
+    assert x.order[2] == set(('Z'))
