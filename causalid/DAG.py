@@ -34,6 +34,34 @@ class DAG:
             for i in unob:
                 self.set_u(i.strip())
     
+    def find_parents(self, v):
+        """ 
+        Given a variable, find its parents
+        """
+        return set([ x[0] for x in self.E if x[1] == v.strip() ])
+    
+    def find_children(self, v):
+        """ 
+        Given a variable, find its children
+        """
+        return set([ x[1] for x in self.E if x[0] == v.strip() ])
+    
+    def find_roots(self):
+        """ 
+        Given a DAG, find all roots
+        """
+        v = self.V.copy()
+        pa = set([ i[0] for i in self.E ])
+        return v.difference(pa) # Roots cannot be parents
+    
+    def find_first_nodes(self):
+        """ 
+        Given a DAG, find all roots
+        """
+        v = self.V.copy()
+        ch = set([ i[1] for i in self.E if i[0] not in self.U ])
+        return v.difference(ch) # First nodes cannot be parents
+    
     def add_v(self, v = ''):
         if v == '' or ' ' in v:
             raise Exception("Method does not accept variable names with empty or space chars")
