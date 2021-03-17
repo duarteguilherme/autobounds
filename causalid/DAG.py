@@ -57,6 +57,19 @@ class DAG:
         pa = set([ i[0] for i in self.E ])
         return v.difference(pa) # Roots cannot be parents
     
+    def truncate(self, T):
+        T = set([ x.strip() for x in T.split(',') ])
+        self.V = self.V.difference(T)
+        e_to_remove = set([ x for x in self.E if x[1] in T ] )
+        self.E = self.E.difference(e_to_remove)
+    
+    def find_c_components(self):
+        s_comp = [ set([ i[1] for i in self.E if u in i[0]])
+             for u in self.U ]
+        rest = self.V.difference(set([ j for i in s_comp for j in i]))
+        rest = [ set(j) for j in rest ]
+        return s_comp.union(rest)
+    
     def find_first_nodes(self):
         """ 
         Given a DAG, find all roots

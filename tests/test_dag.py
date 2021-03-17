@@ -25,3 +25,12 @@ def test_dag_top_order():
             X -> Z, Y -> Z, M -> Z, M -> A, Z -> A, Uma -> A,
             Uma -> M""", unob = "U , Uy, Uma")
     assert x.order[2] == set(('Z'))
+
+def test_truncate():
+    x = DAG()
+    x.from_structure("""U -> X, X -> Y, U -> Y, Uy -> Y,
+            X -> Z, Y -> Z, M -> Z, M -> A, Z -> A, Uma -> A,
+            Uma -> M""", unob = "U , Uy, Uma")
+    x.truncate('Z')
+    assert 'Z' not in x.V
+    assert ('M','Z') not in x.E
