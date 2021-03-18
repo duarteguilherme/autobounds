@@ -1,3 +1,4 @@
+
 class DAG:
     """ It defines a semi-Markovian DAG
     A semi-Markovian DAG is a structure with 
@@ -49,6 +50,15 @@ class DAG:
         """
         return set([ x[1] for x in self.E if x[0] == v.strip() ])
     
+    def find_u_linked(self,v):
+        """ 
+        find all the Vs linked to a specific v through 
+        U variables
+        """
+        pa = self.find_parents(v)
+        u_pa = pa.intersection(self.U)
+        return set().union(*[self.find_children(i)  for i in u_pa ]) 
+    
     def find_roots(self):
         """ 
         Given a DAG, find all roots
@@ -64,11 +74,16 @@ class DAG:
         self.E = self.E.difference(e_to_remove)
     
     def find_c_components(self):
-        s_comp = [ set([ i[1] for i in self.E if u in i[0]])
-             for u in self.U ]
-        rest = self.V.difference(set([ j for i in s_comp for j in i]))
-        rest = [ set(j) for j in rest ]
-        return s_comp.union(rest)
+        c_comp = set()
+        for v in self.V:
+            cset = [ c for c in c_comp if v in c ]
+            if len(cset) > 1:
+                raise Exception("some problem here")
+            if len(cset) == 0:
+                cset = [ frozenset([v]) ]
+            c_comp.discard(cset[0])
+            c_comp.add(cset[0].union(self.find_u_linked(v)))
+        return c_comp
     
     def find_first_nodes(self):
         """ 

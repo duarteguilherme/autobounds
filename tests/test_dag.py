@@ -34,3 +34,11 @@ def test_truncate():
     x.truncate('Z')
     assert 'Z' not in x.V
     assert ('M','Z') not in x.E
+
+def test_c_comp():
+    x = DAG()
+    x.from_structure("""U -> X, X -> Y, U -> Y, Uy -> Y,
+            X -> Z, Y -> Z, M -> Z, M -> A, Z -> A, Uma -> A,
+            Uma -> M, U -> B, C -> D""", unob = "U , Uy, Uma")
+    assert x.find_u_linked('X') == set({'X','Y', 'B'})
+    assert frozenset({'X','B', 'Y'}) in x.find_c_components()
