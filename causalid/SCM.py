@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
 import pandas as pd 
-
+from causalid.causalid.DAG import DAG
 func_pool = [
         lambda a,b: a & b,
         lambda a,b: a | b,
@@ -57,18 +57,17 @@ class SCM:
         'AND', 'OR', 'XOR' functions. 
     
         Examples: 
-             scm = SCM()
+            scm = SCM()
              dag = DAG()
              dag.from_structure(('X -> Y, U_xy -> X, U_xy -> Y', unob = 'U_xy')
              scm.from_dag(dag)
         """
-        us = set(
-                [ 'U_' + x for x in dag.U  ] + 
-                [ 'U_' + x for x in dag.V  ] )
+        self.dag = dag
+        us = [ 'U_' + x for x in dag.U  ] + [ 'U_' + x for x in dag.V  ] 
         ps = np.random.uniform(0.2, 0.8, len(us))
         for i in range(len(ps)):
             self.set_u(us[i], ps[i])
-        vs = self.V
+        vs = dag.V
         for v in vs:
             self.set_v(v, find_possible_functions(dag, v))
     
@@ -95,7 +94,7 @@ class SCM:
     def sample_u(self, N):
         self.u_data = {}
         for u in self.U:
-            self.u_data[u] = np.random.binomial(1, p[u], N)
+            self.u_data[u] = np.random.binomial(1, self.P[u], N)
     
     def draw_sample(self, intervention = {}):
         """ 

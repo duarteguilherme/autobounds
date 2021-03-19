@@ -1,0 +1,32 @@
+from causalid.causalid.DAG import DAG
+from causalid.causalid.SCM import SCM
+import numpy as np
+import pytest
+import os
+
+
+
+def test_scm_from_dag():
+    dag = DAG()
+    dag.from_structure("""U -> X, X -> Y, U -> Y, Uy -> Y,
+            X -> Z, Y -> Z, M -> Z, M -> A, Z -> A, Uma -> A,
+            Uma -> M""", unob = "U , Uy, Uma")
+    scm = SCM()
+    scm.from_dag(dag)
+    assert 'U_X' in scm.U
+    assert 'A' in scm.V
+    assert len(scm.P) == 8
+    assert 'U_M' in scm.F['M'][0]
+
+def test_scm_sample():
+    dag = DAG()
+    dag.from_structure("""U -> X, X -> Y, U -> Y, Uy -> Y,
+            X -> Z, Y -> Z, M -> Z, M -> A, Z -> A, Uma -> A,
+            Uma -> M""", unob = "U , Uy, Uma")
+    scm = SCM()
+    scm.from_dag(dag)
+    np.random.seed(100)
+    scm.sample_u(10)
+    scm.u_data['U_X']
+    # assert all(scm.u_data['U_X'] == np.array([0,0,0,1,0,0,1,1,0,1]))
+    # scm.draw_sample(intervention = {'X': 1})
