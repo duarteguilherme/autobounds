@@ -50,6 +50,17 @@ class DAG:
         """
         return set([ x[1] for x in self.E if x[0] == v.strip() ])
     
+    def visit(self, v):
+        if v in self.order:
+            return None
+        if v in self.temp:
+            raise Exception("Not a DAG!")
+        self.temp.add(v)
+        for j in self.find_children(v):
+            self.visit(j)
+        self.temp.remove(v)
+        self.order.append(v)
+        
     def find_u_linked(self,v):
         """ 
         find all the Vs linked to a specific v through 
@@ -112,20 +123,16 @@ class DAG:
             self.order.append(level)
     
     def get_top_order(self):
+        """ DFS algorithm 
+        Not elegant - must fix it later"""
         self.order = []
-        level = self.find_first_nodes()
-        v = self.V.copy()
-        if len(v) == 0:
-            return None
-        v = v.difference(level)
-        order.append(level)
-        while len(v) > 0:
-            level = set([ k for j in level for k in self.find_children(j) 
-                    if k in v])
-            v = v.difference(level)
-            order.append(level)
-        return order
-
+        self.temp = set() 
+        V = self.V.copy()
+        while len(V.difference(set(self.order))) > 0:
+            self.visit(V.difference(set(self.order)).pop())
+        self.order.reverse()
+        return self.order
+    
     def add_v(self, v = ''):
         if v == '' or ' ' in v:
             raise Exception("Method does not accept variable names with empty or space chars")

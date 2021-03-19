@@ -108,14 +108,17 @@ class SCM:
         """
         dag = deepcopy(self.dag)
         data = pd.DataFrame(self.u_data)
-        for key, values in intervention.keys():
+        for key, values in intervention.items():
             dag.truncate(key)
             data[key] = values
-        for i in dag.V:
-            data[i] = data[self.F[0][0]]
-            for j in range(len(self.F[1])):
-                data[i] = self.F[1][j](
-                        data[i], data[self.F[0][j + 1]]
+        order = [ j for i in dag.get_top_order() for j in i]
+        for v in order:
+            data[v] = data[self.F[v][0][0]]
+            for j in range(len(self.F[v][1])):
+                data[v] = func_pool[self.F[v][1][j]](
+                        data[v], data[self.F[v][0][j + 1]]
                         )
         return data
+
+
 

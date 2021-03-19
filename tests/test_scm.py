@@ -25,8 +25,6 @@ def test_scm_sample():
             Uma -> M""", unob = "U , Uy, Uma")
     scm = SCM()
     scm.from_dag(dag)
-    np.random.seed(100)
     scm.sample_u(10)
-    scm.u_data['U_X']
-    # assert all(scm.u_data['U_X'] == np.array([0,0,0,1,0,0,1,1,0,1]))
-    # scm.draw_sample(intervention = {'X': 1})
+    data = scm.draw_sample(intervention = {'X': 1})
+    assert data['X'][0] == 1
