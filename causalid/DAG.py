@@ -36,7 +36,7 @@ class DAG:
             unob = unob.split(',')
             for i in unob:
                 self.set_u(i.strip())
-        self.get_topological_order()
+        self.get_top_order_with_u()
     
     def find_parents(self, v):
         """ 
@@ -87,13 +87,13 @@ class DAG:
     
     def find_first_nodes(self):
         """ 
-        Given a DAG, find all roots
+        Given a DAG, find all first nodes
         """
         v = self.V.copy()
         ch = set([ i[1] for i in self.E if i[0] not in self.U ])
-        return v.difference(ch) # First nodes cannot be parents
+        return v.difference(ch) # First nodes cannot be children
     
-    def get_topological_order(self):
+    def get_top_order_with_u(self):
         self.order = []
         first_nodes = self.find_first_nodes()
         v = self.V.copy()
@@ -111,6 +111,21 @@ class DAG:
             v = v.difference(level)
             self.order.append(level)
     
+    def get_top_order(self):
+        self.order = []
+        level = self.find_first_nodes()
+        v = self.V.copy()
+        if len(v) == 0:
+            return None
+        v = v.difference(level)
+        order.append(level)
+        while len(v) > 0:
+            level = set([ k for j in level for k in self.find_children(j) 
+                    if k in v])
+            v = v.difference(level)
+            order.append(level)
+        return order
+
     def add_v(self, v = ''):
         if v == '' or ' ' in v:
             raise Exception("Method does not accept variable names with empty or space chars")
