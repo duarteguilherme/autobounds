@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
 import pandas as pd 
-from causalid.causalid.DAG import DAG
+from causalid.DAG import DAG
 func_pool = [
         lambda a,b: a & b,
         lambda a,b: a | b,
@@ -99,12 +99,6 @@ class SCM:
     def draw_sample(self, intervention = {}):
         """ 
         Draw simulated sample according to the specified model.
-        The size of the sample is specified through parameter N.
-        The sample is a matrix (N, 3). The first column represents
-        Y. The second and third ones represent M and B.
-        
-        argument intervention allows users to 
-        fix values for some of the variables.
         """
         dag = deepcopy(self.dag)
         data = pd.DataFrame(self.u_data)

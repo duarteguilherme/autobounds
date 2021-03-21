@@ -1,4 +1,3 @@
-
 class DAG:
     """ It defines a semi-Markovian DAG
     A semi-Markovian DAG is a structure with 
@@ -43,6 +42,12 @@ class DAG:
         Given a variable, find its parents
         """
         return set([ x[0] for x in self.E if x[1] == v.strip() ])
+    
+    def find_parents_no_u(self, v):
+        """ 
+        Given a variable, find its parents -- only for V
+        """
+        return set([x for x in self.find_parents(v) if x not in self.U ])
     
     def find_children(self, v):
         """ 
