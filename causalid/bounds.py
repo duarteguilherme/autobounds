@@ -37,11 +37,6 @@ def update_dict(a1, a2):
 
 
 
-dag = DAG()
-dag.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
-program = causalProgram()
-program.from_dag(dag)
-
 
 class causalProgram(object):
     def __init__(self):
@@ -95,8 +90,6 @@ class causalProgram(object):
         expanded_var = expand_dict(self.get_q_index(var_list[0]))
         factorized = [ self.get_factorized_q(j) for i in var_list 
                 for j in expand_dict(self.get_q_index(i, do)) ]
-#        factorized = [ self.get_factorized_q(update_dict(j,do)) for i in var_list 
-#                for j in expand_dict(self.get_q_index(i)) ]
         factorized = [ mult([  self.parameters[j] for j in x ]) for x in factorized ]
         return factorized
      
@@ -127,5 +120,11 @@ class causalProgram(object):
             self.cn_index[v] = len(
                     [i for i in self.dag.find_parents(v) 
             if i not in self.dag.U ])
+    
+    def set_objective(self, expr):
+        pass
+
+    def set_constraint(self, expr, result):
+        pass
 
         
