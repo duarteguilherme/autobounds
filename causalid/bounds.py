@@ -1,7 +1,7 @@
 from pyscipopt import Model
 import numpy as np
 from itertools import product
-from causalid import SCM
+from causalid.DAG import DAG
 from functools import reduce
 
 ##### IMPORTANT ***************************
@@ -11,6 +11,8 @@ func_r = lambda n: (np
         .array(list(product([0,1], repeat = 2**n)))
         .reshape(-1,*list(product([2], repeat = n))[0]))
 
+
+get_r_values('Y', {'X':1, 'Y':1}, dag)
 def get_r_values(v, var, dag):
     pa = dag.find_parents_no_u(v)
     tot_pa = 2**len(pa)
@@ -32,6 +34,13 @@ def update_dict(a1, a2):
         if i in a1.keys():
             del a1[i]
     return dict(**a1,**a2)
+
+
+
+dag = DAG()
+dag.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
+program = causalProgram()
+program.from_dag(dag)
 
 
 class causalProgram(object):
@@ -78,27 +87,33 @@ class causalProgram(object):
         if ( do != ""):
             do = dict([ (v[0].strip(), int(v[1])) 
                 for v in [ v.split('=') for v in do.split(',') ] ])
+        else:
+            do = {}
         rest_var = self.dag.V.difference(set(var.keys()))
         var_list = [ dict(**var, **dict(zip(rest_var, k)))
                 for k in product([0,1], repeat = len(rest_var)) ]  
         expanded_var = expand_dict(self.get_q_index(var_list[0]))
-        factorized = [ self.get_factorized_q(update_dict(j,do)) for i in var_list 
-                for j in expand_dict(self.get_q_index(i)) ]
+        factorized = [ self.get_factorized_q(j) for i in var_list 
+                for j in expand_dict(self.get_q_index(i, do)) ]
+#        factorized = [ self.get_factorized_q(update_dict(j,do)) for i in var_list 
+#                for j in expand_dict(self.get_q_index(i)) ]
         factorized = [ mult([  self.parameters[j] for j in x ]) for x in factorized ]
         return factorized
      
-    def get_q_index(self,var):
+    def get_q_index(self,var, do = {}):
         """ Var here is a dictionary 
         For the model, all the variables must 
         be represented.
         For example, program.get({'X': 1, 'Y': 0})
         """
         q_index = {}
-        self.var = var
         if  set(var.keys()) != self.dag.V:
             raise Exception("Error: provide values for all the variables")
         for v in var.keys():
-            q_index[v] = list(get_q_values(v, var, dag))
+            if v not in do.keys():
+                q_index[v] = list(get_r_values(v, update_dict(var.copy(),do), dag))
+            else:
+                q_index[v] = list(get_r_values(v, var, dag))
         return q_index
     
     def get_parameters(self, c):
