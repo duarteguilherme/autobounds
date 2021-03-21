@@ -1,4 +1,4 @@
-from pyscipopt import Model
+from pyscipopt import Model,quicksum
 import numpy as np
 from itertools import product
 from causalid.DAG import DAG
@@ -12,7 +12,6 @@ func_r = lambda n: (np
         .reshape(-1,*list(product([2], repeat = n))[0]))
 
 
-get_r_values('Y', {'X':1, 'Y':1}, dag)
 def get_r_values(v, var, dag):
     pa = dag.find_parents_no_u(v)
     tot_pa = 2**len(pa)
@@ -39,11 +38,12 @@ def update_dict(a1, a2):
 
 
 class causalProgram(object):
-    def __init__(self):
+    def __init__(self, sense = "minimize"):
         self.parameters = dict()
         self.program = Model()
         self.obj_func = []
         self.constraints = []
+        self.sense = sense
     
     def from_dag(self, dag):
         self.dag = dag
@@ -51,8 +51,23 @@ class causalProgram(object):
         self.get_canonical_index(dag)
         for c in self.c_comp:
             for x in self.get_parameters(c):
-                self.parameters[x] = self.program.addVar(x, vtype = "C") 
+                self.parameters[x] = self.program.addVar(x, vtype = "C",
+                        lb = 0, ub = 1) 
    
+    def set_obj(self, expre):
+        self.objvar = self.program.addVar(name = "objvar",
+                vtype = "C", lb = None, ub = None)
+        self.program.setObjective(self.objvar, self.sense)
+        self.program.addCons(self.objvar == expre)
+    
+    def add_prob_constraints(self):
+        c_components = [ '_'.join(x.split('_')[0:-1]) for x in self.parameters.keys() ]
+        c_components = set(c_components)
+        for c in c_components:
+            self.program.addCons(
+                    quicksum([ self.parameters[p]
+                        for p in self.parameters if p.startswith(c) ]) == 1)
+    
     def get_factorized_q(self, var):
         """ Receive values for variables 
         and return factorized version 
@@ -60,8 +75,8 @@ class causalProgram(object):
         """
         factorization = []
         for c in self.c_comp:
-            factorization.append('q-' + '.'.join(c) + '-' + 
-                    '.'.join([ str(var[i]) for i in c])  )
+            factorization.append('q_' + ''.join(c) + '_' + 
+                    ''.join([ str(var[i]) for i in c])  )
         return factorization
     
     def get_expr(self, var = "", do = ""):
@@ -104,14 +119,14 @@ class causalProgram(object):
             raise Exception("Error: provide values for all the variables")
         for v in var.keys():
             if v not in do.keys():
-                q_index[v] = list(get_r_values(v, update_dict(var.copy(),do), dag))
+                q_index[v] = list(get_r_values(v, update_dict(var.copy(),do), self.dag))
             else:
-                q_index[v] = list(get_r_values(v, var, dag))
+                q_index[v] = list(get_r_values(v, var, self.dag))
         return q_index
     
     def get_parameters(self, c):
         q_values = product(*[ [ str(x) for x in range(2**(1+self.cn_index[v]))] for v in c ])
-        params = tuple(['q-' + '.'.join(c) + '-' + '.'.join(q) for q in q_values])
+        params = tuple(['q_' + ''.join(c) + '_' + ''.join(q) for q in q_values])
         return params
     
     def get_canonical_index(self, dag):
@@ -123,7 +138,7 @@ class causalProgram(object):
     
     def set_objective(self, expr):
         pass
-
+    
     def set_constraint(self, expr, result):
         pass
 

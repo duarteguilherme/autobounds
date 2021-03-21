@@ -1,0 +1,149 @@
+import pandas as pd 
+from causalid.DAG import DAG
+from causalid.SCM import SCM
+from causalid.bounds import causalProgram
+from pyscipopt import quicksum
+
+N = 10000 # Size of simulations 
+
+def unconfounded_simple_model():
+    """ it must return a dag and an estimand -- 
+    for instance the ate
+    Estimand exprs like 
+    { 'sign': -1,
+    'var': ('Y', 1),
+    'do': ('X', 0) }
+    (a,b,c) -> a is the sign of the expr, b is the variable,
+    and c is the value of this variable
+    """
+    dag = DAG()
+    #dag.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
+    dag.from_structure("X -> Y")
+    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
+    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
+    return (dag, (expr1, expr2))
+
+def confounded_simple_model():
+    dag = DAG()
+    dag.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
+    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
+    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
+    return (dag, (expr1, expr2))
+
+def balke_pearl():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
+    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
+    return (dag, (expr1, expr2))
+
+def front_door():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> Z, U -> Y", unob = "U")
+    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('Z', 1) }
+    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('Z', 0) }
+    return (dag, (expr1, expr2))
+
+
+def get_probability_from_model(m, intervention = {}):
+    data = m.draw_sample(intervention = intervention)
+    columns_to_group = [x for x in data.columns  if x not in m.u_data.keys() ]
+    return (data
+            .drop(m.u_data.keys(), axis = 1)
+            .assign(P = 1)
+            .groupby(columns_to_group)
+            .agg('count')
+            .assign(P = lambda v: v['P'] / N)
+            .reset_index()
+            )
+
+
+
+def get_estimand_value(m, e):
+    prob_table = get_probability_from_model(m, 
+            intervention = dict([e['do']]))
+    filter_v = dict([e['var']])
+    filtered = (prob_table
+            .loc[(prob_table[list(filter_v)] == pd.Series(filter_v)).all(axis=1)])
+    if len(filtered) == 0:
+        if len(filter_v) == 1:
+            head = list(filter_v.keys())[0]
+            filter_v[head] = int(not filter_v[head])
+            filtered = (prob_table
+            .loc[(prob_table[list(filter_v)] == pd.Series(filter_v)).all(axis=1)])
+    if len(filtered) == 0:
+        raise Exception("Error: no value found")
+    return e['sign']*filtered.P.iloc[0]
+
+def get_c_estimand_value(m, estimand):
+    value = 0
+    for e in estimand:
+        value += get_estimand_value(m, e)
+    return value
+
+def simulate_model(dag):
+    model = SCM()
+    model.from_dag(dag)
+    model.sample_u(N)
+    return model
+
+
+def parse_estimand(program, estimand):
+    return quicksum(
+            [ e['sign'] * quicksum(
+                program.get_expr(**{ key: '='.join([ str(part) for part in e[key] ])
+                            for key in ['var','do'] }) )
+                                for e in estimand ])
+
+
+def introduce_prob_into_progr(program, prob_table):
+    prob_data = prob_table.T.to_dict().values()
+    for p in prob_data:
+        program.program.addCons(
+            quicksum(program.get_expr(var = 
+                    ','.join(
+                        [ tupl[0] + '=' + str(int(tupl[1])) for tupl in list(p.items())[:-1] ]))
+                ) ==
+            list(p.items())[-1][1]
+        )
+
+
+def get_bound(dag, m, typeb = 'minimize', estimand):
+    """ typeb must indicate the type of the bound.
+    There are two types: 'minimize' for lower bound
+    and 'maximize' for upper bound
+    """
+    program = causalProgram(typeb)
+    program.from_dag(dag)
+    program.add_prob_constraints()
+    introduce_prob_into_progr(program,
+    get_probability_from_model(m))
+    program.set_obj(parse_estimand(program, estimand))
+    program.program.optimize()
+    sol = program.program.getBestSol()
+    sol = program.program.getSolObjVal(sol)
+    return sol
+#    program.program.writeProblem('/home/beta/check.cip')
+
+
+
+get_c_estimand_value(m, estimando)
+get_bound(dag,m,'minimize')
+def test_model(func):
+    dag, estimand = func()
+    m = simulate_model(dag)
+    estimand_value  = get_c_estimand_value(m, estimand)
+    lb = get_bound(dag, m, 'minimize')
+    ub = get_bound(dag, m, 'maximize')
+    return {'lb':lb,  'estimand': estimand_value, 'ub': ub}
+
+
+
+test_model(confounded_simple_model)
+test_model(unconfounded_simple_model)
+test_model(balke_pearl)
+test_model(front_door)
+#program.get_expr("Y = 1", "X = 1")
+#program.get_expr("Y = 1, X = 1")
+#program.get_expr("Y = 1")
+
