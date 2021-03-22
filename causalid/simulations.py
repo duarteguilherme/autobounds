@@ -44,6 +44,21 @@ def front_door():
     expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('Z', 0) }
     return (dag, (expr1, expr2))
 
+def napkin():
+    dag = DAG()
+    dag.from_structure("W -> Z, Z -> X, X -> Y, U -> X, U -> W, U -> Y", 
+            unob = "U")
+    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
+    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
+    return (dag, (expr1, expr2))
+
+def selection_graph():
+    dag = DAG()
+    dag.from_structure("X -> Y, U -> X, U -> Y, Y -> S",
+            unob = "U")
+    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
+    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
+    return (dag, (expr1, expr2))
 
 def get_probability_from_model(m, intervention = {}):
     data = m.draw_sample(intervention = intervention)
@@ -108,7 +123,7 @@ def introduce_prob_into_progr(program, prob_table):
         )
 
 
-def get_bound(dag, m, typeb = 'minimize', estimand):
+def get_bound(dag, m, estimand, typeb = 'minimize'):
     """ typeb must indicate the type of the bound.
     There are two types: 'minimize' for lower bound
     and 'maximize' for upper bound
@@ -122,19 +137,17 @@ def get_bound(dag, m, typeb = 'minimize', estimand):
     program.program.optimize()
     sol = program.program.getBestSol()
     sol = program.program.getSolObjVal(sol)
+    program.program.writeProblem('/home/beta/check.cip')
     return sol
-#    program.program.writeProblem('/home/beta/check.cip')
 
 
 
-get_c_estimand_value(m, estimando)
-get_bound(dag,m,'minimize')
 def test_model(func):
     dag, estimand = func()
     m = simulate_model(dag)
     estimand_value  = get_c_estimand_value(m, estimand)
-    lb = get_bound(dag, m, 'minimize')
-    ub = get_bound(dag, m, 'maximize')
+    lb = get_bound(dag, m, estimand, 'minimize')
+    ub = get_bound(dag, m, estimand, 'maximize')
     return {'lb':lb,  'estimand': estimand_value, 'ub': ub}
 
 
@@ -143,7 +156,55 @@ test_model(confounded_simple_model)
 test_model(unconfounded_simple_model)
 test_model(balke_pearl)
 test_model(front_door)
+test_model(napkin)
 #program.get_expr("Y = 1", "X = 1")
 #program.get_expr("Y = 1, X = 1")
 #program.get_expr("Y = 1")
 
+def get_bound(dag, m, estimand, typeb = 'minimize'):
+    """ typeb must indicate the type of the bound.
+    There are two types: 'minimize' for lower bound
+    and 'maximize' for upper bound
+    """
+    program = causalProgram(typeb)
+    program.from_dag(dag)
+    program.add_prob_constraints()
+    introduce_prob_into_progr(program,
+    get_probability_from_model(m))
+    program.set_obj(parse_estimand(program, estimand))
+    program.program.optimize()
+    sol = program.program.getBestSol()
+    sol = program.program.getSolObjVal(sol)
+    program.program.writeProblem('/home/beta/check.cip')
+    return sol
+
+
+
+def get_bound_from_csv(dag, filename, estimand, typeb = 'minimize'):
+    """ typeb must indicate the type of the bound.
+    There are two types: 'minimize' for lower bound
+    and 'maximize' for upper bound
+    """
+    program = causalProgram(typeb)
+    program.from_dag(dag)
+    program.add_prob_constraints()
+    p_table = pd.read_csv(filename)
+    introduce_prob_into_progr(program,p_table)
+    program.set_obj(parse_estimand(program, estimand))
+    program.program.optimize()
+    sol = program.program.getBestSol()
+    sol = program.program.getSolObjVal(sol)
+    program.program.writeProblem('/home/beta/check.cip')
+    return sol
+
+
+
+def test_from_file(func, filename):
+    dag, estimand = func()
+    lb = get_bound_from_csv(dag, filename, estimand, 'minimize')
+    ub = get_bound_from_csv(dag, filename, estimand, 'maximize')
+    return {'lb':lb,  'ub': ub}
+
+
+filename = "selection_obsqty.csv"
+test_from_file(selection_graph, filename)
