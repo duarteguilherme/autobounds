@@ -1,4 +1,4 @@
-from causalid.causalid.DAG import DAG
+from autobound.autobound.DAG import DAG
 import numpy.random as rd
 import pytest
 import os

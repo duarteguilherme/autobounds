@@ -1,5 +1,5 @@
-from causalid.causalid.DAG import DAG
-from causalid.causalid.SCM import SCM
+from autobound.autobound.DAG import DAG
+from autobound.autobound.SCM import SCM
 import numpy as np
 import pytest
 import os

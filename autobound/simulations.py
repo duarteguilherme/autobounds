@@ -39,14 +39,15 @@ def balke_pearl():
 
 def front_door():
     dag = DAG()
-    dag.from_structure("Z -> X, X -> Y, U -> Z, U -> Y", unob = "U")
+    dag.from_structure("Z -> X, X -> Y, U1 -> Z, U1 -> Y, U2 -> Z, U2 -> Y", unob = "U1,U2")
     expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('Z', 1) }
     expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('Z', 0) }
     return (dag, (expr1, expr2))
 
 def napkin():
     dag = DAG()
-    dag.from_structure("W -> Z, Z -> X, X -> Y, U -> X, U -> W, U -> Y", 
+    dag.from_structure("""W -> Z, Z -> X, X -> Y, U -> X, U -> W, 
+            U -> Y""", 
             unob = "U")
     expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
     expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
@@ -131,13 +132,14 @@ def get_bound(dag, m, estimand, typeb = 'minimize'):
     program = causalProgram(typeb)
     program.from_dag(dag)
     program.add_prob_constraints()
+    program.program.setRealParam('limits/gap', 0.5)
     introduce_prob_into_progr(program,
     get_probability_from_model(m))
     program.set_obj(parse_estimand(program, estimand))
+    program.program.writeProblem('/home/beta/check.cip')
     program.program.optimize()
     sol = program.program.getBestSol()
     sol = program.program.getSolObjVal(sol)
-    program.program.writeProblem('/home/beta/check.cip')
     return sol
 
 

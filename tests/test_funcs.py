@@ -1,4 +1,4 @@
-from causalid.causalid.funcs import *
+from autobound.autobound.funcs import *
 import numpy.random as rd
 import pytest
 import os
