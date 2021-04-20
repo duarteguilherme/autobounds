@@ -1,10 +1,17 @@
 import pandas as pd 
-from causalid.DAG import DAG
-from causalid.SCM import SCM
-from causalid.bounds import causalProgram
+from autobound.DAG import DAG
+from autobound.SCM import SCM
+from autobound.bounds import causalProgram
 from pyscipopt import quicksum
 
 N = 10000 # Size of simulations 
+
+def prepare_ate(var, do):
+    """ Prepare ATE expr for simulations
+    """
+    expr1  = { 'sign': 1,'var': (var, 1),'do': (do, 1) }
+    expr2  = { 'sign': -1,'var': (var, 1),'do': (do, 0) }
+    return (expr1, expr2)
 
 def unconfounded_simple_model():
     """ it must return a dag and an estimand -- 
@@ -17,54 +24,41 @@ def unconfounded_simple_model():
     and c is the value of this variable
     """
     dag = DAG()
-    #dag.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
     dag.from_structure("X -> Y")
-    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
-    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
-    return (dag, (expr1, expr2))
+    return (dag, prepare_ate('Y', 'X'))
 
 def confounded_simple_model():
     dag = DAG()
     dag.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
-    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
-    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
-    return (dag, (expr1, expr2))
+    return (dag, prepare_ate('Y', 'X'))
 
 def balke_pearl():
     dag = DAG()
     dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
-    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
-    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
-    return (dag, (expr1, expr2))
+    return (dag, prepare_ate('Y', 'X'))
 
 def front_door():
     dag = DAG()
-    dag.from_structure("Z -> X, X -> Y, U1 -> Z, U1 -> Y, U2 -> Z, U2 -> Y", unob = "U1,U2")
-    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('Z', 1) }
-    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('Z', 0) }
-    return (dag, (expr1, expr2))
+    dag.from_structure("Z -> X, X -> Y, U1 -> Z, U1 -> Y", unob = "U1")
+    return (dag, prepare_ate('Y', 'Z'))
 
 def napkin():
     dag = DAG()
     dag.from_structure("""W -> Z, Z -> X, X -> Y, U -> X, U -> W, 
             U -> Y""", 
             unob = "U")
-    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
-    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
-    return (dag, (expr1, expr2))
+    return (dag, prepare_ate('Y', 'X'))
 
 def selection_graph():
     dag = DAG()
     dag.from_structure("X -> Y, U -> X, U -> Y, Y -> S",
             unob = "U")
-    expr1  = { 'sign': 1,'var': ('Y', 1),'do': ('X', 1) }
-    expr2  = { 'sign': -1,'var': ('Y', 1),'do': ('X', 0) }
-    return (dag, (expr1, expr2))
+    return (dag, prepare_ate('Y', 'X'))
 
-def get_probability_from_model(m, intervention = {}):
+def get_probability_from_model(m, intervention = {}, overlap = False):
     data = m.draw_sample(intervention = intervention)
     columns_to_group = [x for x in data.columns  if x not in m.u_data.keys() ]
-    return (data
+    data = (data
             .drop(m.u_data.keys(), axis = 1)
             .assign(P = 1)
             .groupby(columns_to_group)
@@ -72,23 +66,24 @@ def get_probability_from_model(m, intervention = {}):
             .assign(P = lambda v: v['P'] / N)
             .reset_index()
             )
-
-
+    if overlap == True and len(data) < (2**len(m.V)):
+        print("*" * 30)
+        print("Be Careful! It violates overlap")
+        print("*" * 30)
+        print(data)
+    return data
 
 def get_estimand_value(m, e):
     prob_table = get_probability_from_model(m, 
-            intervention = dict([e['do']]))
+                intervention = dict([e['do']]))
     filter_v = dict([e['var']])
     filtered = (prob_table
             .loc[(prob_table[list(filter_v)] == pd.Series(filter_v)).all(axis=1)])
+    if len(filtered) > 1:
+        vars = [e['var'][0]] + [e['do'][0]]
+        filtered = filtered.groupby(vars).sum()
     if len(filtered) == 0:
-        if len(filter_v) == 1:
-            head = list(filter_v.keys())[0]
-            filter_v[head] = int(not filter_v[head])
-            filtered = (prob_table
-            .loc[(prob_table[list(filter_v)] == pd.Series(filter_v)).all(axis=1)])
-    if len(filtered) == 0:
-        raise Exception("Error: no value found")
+        return 0
     return e['sign']*filtered.P.iloc[0]
 
 def get_c_estimand_value(m, estimand):
@@ -147,11 +142,11 @@ def get_bound(dag, m, estimand, typeb = 'minimize'):
 def test_model(func):
     dag, estimand = func()
     m = simulate_model(dag)
-    estimand_value  = get_c_estimand_value(m, estimand)
     lb = get_bound(dag, m, estimand, 'minimize')
     ub = get_bound(dag, m, estimand, 'maximize')
+    estimand_value  = get_c_estimand_value(m, estimand)
+    get_probability_from_model(m, overlap = True)
     return {'lb':lb,  'estimand': estimand_value, 'ub': ub}
-
 
 
 test_model(confounded_simple_model)

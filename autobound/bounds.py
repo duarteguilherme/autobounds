@@ -1,7 +1,6 @@
 from pyscipopt import Model,quicksum
 import numpy as np
 from itertools import product
-from causalid.DAG import DAG
 from functools import reduce
 
 ##### IMPORTANT ***************************

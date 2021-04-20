@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
 import pandas as pd 
-#from causalid.DAG import DAG
+
 func_pool = [
         lambda a,b: a & b,
         lambda a,b: a | b,
