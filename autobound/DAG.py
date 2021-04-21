@@ -43,6 +43,12 @@ class DAG:
         """
         return set([ x[0] for x in self.E if x[1] == v.strip() ])
     
+    def find_parents_u(self, v):
+        """ 
+        Given a variable, find its parents -- only for V
+        """
+        return set([x for x in self.find_parents(v) if x in self.U ])
+    
     def find_parents_no_u(self, v):
         """ 
         Given a variable, find its parents -- only for V
@@ -94,7 +100,10 @@ class DAG:
         for v in self.V:
             cset = [ c for c in c_comp if v in c ]
             if len(cset) > 1:
-                raise Exception("some problem here")
+                cset2 = [frozenset([ j for i in cset for j in i ]) ]
+                for c in cset:
+                    c_comp.discard(c)
+                cset = cset2
             if len(cset) == 0:
                 cset = [ frozenset([v]) ]
             c_comp.discard(cset[0])
