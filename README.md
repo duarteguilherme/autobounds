@@ -1,4 +1,10 @@
-# Causal ID
+# AUTOBOUND
 
-This package implements algorithms for causal identification, 
-including the one described in Duarte, Knox, Mummolo. "$\varepsilon$-sharp causal bounds" (2021).
+This python package implement the AUTOBOUND algorithm for causal bounds, 
+described in Duarte, Filkenstein, Knox, Mummolo, Shpitser.
+
+To install:
+
+    pip install .
+
+To run simulations, check out autobound/simulations.py
