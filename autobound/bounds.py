@@ -205,10 +205,10 @@ class causalProgram(object):
             cons1.append(quicksum([ self.parameters[k]
                     for k in 
                     self.get_response_expr({keys[i]: var[keys[i]]}) ] ))
-        cons2 = quicksum([ (-1)*self.parameters[k]
+        cons2 = quicksum([ self.parameters[k]
                 for k in 
                 self.get_response_expr(var) ])
-        self.addCons(cons1[0]*cons1[1] - cons2 == 0)
+        self.program.addCons(cons1[0]*cons1[1] - cons2 == 0)
     
     def add_rest_indep(self, indep):
         indep = list(indep)
