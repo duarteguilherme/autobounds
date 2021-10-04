@@ -1,4 +1,4 @@
-
+from pyscipopt import quicksum
 
 def prepare_ate(var, do):
     """ Prepare ATE expr for simulations

@@ -80,8 +80,8 @@ class causalProgram(object):
         """
         factorization = []
         for c in self.c_comp:
-            factorization.append('q_' + ''.join(c) + '_' + 
-                    ''.join([ str(var[i]) for i in c])  )
+            factorization.append('q_' + '.'.join(c) + '_' + 
+                    '.'.join([ str(var[i]) for i in c])  )
         return factorization
     
     def get_response_expr(self, var={}):
@@ -104,7 +104,7 @@ class causalProgram(object):
             else:
                 parameters.append(list(range(2**(1+self.cn_index[v]))))
         parameters = [ [ str(j) for j in i] for i in product(*parameters) ]
-        parameters = [ 'q_' + ''.join(relevant_c) + '_' + ''.join(i) 
+        parameters = [ 'q_' + '.'.join(relevant_c) + '_' + '.'.join(i) 
                 for i in  parameters] 
         return parameters
     
@@ -130,7 +130,6 @@ class causalProgram(object):
         expanded_var = expand_dict(self.get_q_index(var_list[0]))
         factorized = [ self.get_factorized_q(j) for i in var_list 
                 for j in expand_dict(self.get_q_index(i, do)) ]
-        print(factorized)
         factorized = [ mult([  self.parameters[j] for j in x ]) for x in factorized ]
         return factorized
      
@@ -159,7 +158,7 @@ class causalProgram(object):
         """
         q_values = product(*[ [ str(x) for x in range(2**(2**self.cn_index[v]))] for v in c ])
         # Only for binaries -> 2**(2**n)
-        params = tuple(['q_' + ''.join(c) + '_' + ''.join(q) for q in q_values])
+        params = tuple(['q_' + '.'.join(c) + '_' + '.'.join(q) for q in q_values])
         return params
     
     def get_canonical_index(self):
