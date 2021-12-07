@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="autobound-gjduarte", # Replace with your own username
-    version="0.0.1",
+    version="0.0.2",
     author="Guilherme Duarte, Dean Knox, Jonathan Mummolo",
     author_email="gjardimduarte@gmail.com",
     description="AUTOBOUND -- software for calculating causal bounds",
