@@ -1,4 +1,4 @@
-from pyscipopt import Model,quicksum
+#from pyscipopt import Model,quicksum
 import numpy as np
 from itertools import product
 from functools import reduce
@@ -31,7 +31,6 @@ def update_dict(a1, a2):
             del a1[i]
     return dict(**a1,**a2)
 
-
 class canonicalModel():
     """
     Class that can be related to a DAG, with 
@@ -40,7 +39,7 @@ class canonicalModel():
     """
     def __init__(self):
         pass
-
+    
     def from_dag(self, dag, var_card = {}):
         """
         This method acoplates a DAG to a causalProblem.
@@ -54,7 +53,7 @@ class canonicalModel():
         -- var_card indicates the number of values for each variable. 
         If DAG has three variables, X, Y, Z, such that X and Y
         have 3 different values and Z has four values, then we would have to 
-        add the argument var_card = {'X':3, 'Y':3, 'Z': 4}. If any information 
+        add the argument var_card = {'X':3, 'Y':3, 'Z': 4}. If no information 
         about a variable is provided, then it is considered binary.
         """
         self.dag = dag
@@ -63,7 +62,6 @@ class canonicalModel():
         for v in self.dag.V:
             self.cn_index[v] = len(
                     [i for i in self.dag.find_parents_no_u(v) ])
-        for 
         self.get_canonical_index()
         for c in self.c_comp:
             for x in self.get_parameters(c):

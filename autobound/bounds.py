@@ -1,4 +1,4 @@
-from pyscipopt import Model,quicksum
+#from pyscipopt import Model,quicksum
 import numpy as np
 from itertools import product
 from functools import reduce
@@ -37,7 +37,7 @@ def update_dict(a1, a2):
 class causalProgram(object):
     def __init__(self, sense = "minimize"):
         self.parameters = dict()
-        self.program = Model()
+#        self.program = Model()
         self.obj_func = []
         self.constraints = []
         self.sense = sense
@@ -68,10 +68,10 @@ class causalProgram(object):
         """
         c_components = [ '_'.join(x.split('_')[0:-1]) for x in self.parameters.keys() ]
         c_components = set(c_components)
-        for c in c_components:
-            self.program.addCons(
-                    quicksum([ self.parameters[p]
-                        for p in self.parameters if p.startswith(c) ]) == 1)
+#        for c in c_components:
+#            self.program.addCons(
+#                    quicksum([ self.parameters[p]
+#                        for p in self.parameters if p.startswith(c) ]) == 1)
     
     def get_factorized_q(self, var):
         """ Receive values for variables 
@@ -202,13 +202,13 @@ class causalProgram(object):
         """
         keys = list(var.keys())
         cons1 = []
-        for i in [0,1]:
-            cons1.append(quicksum([ self.parameters[k]
-                    for k in 
-                    self.get_response_expr({keys[i]: var[keys[i]]}) ] ))
-        cons2 = quicksum([ self.parameters[k]
-                for k in 
-                self.get_response_expr(var) ])
+#        for i in [0,1]:
+#            cons1.append(quicksum([ self.parameters[k]
+#                    for k in 
+#                    self.get_response_expr({keys[i]: var[keys[i]]}) ] ))
+#        cons2 = quicksum([ self.parameters[k]
+#                for k in 
+#                self.get_response_expr(var) ])
         self.program.addCons(cons1[0]*cons1[1] - cons2 == 0)
     
     def add_rest_indep(self, indep):
