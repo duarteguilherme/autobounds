@@ -1,4 +1,4 @@
-from autobound.DAG import DAG
+#from autobound.DAG import DAG
 import numpy as np
 from itertools import product
 import math
@@ -87,7 +87,11 @@ class canonicalModel():
     
     def set_parameters(self):
         self.number_canonical_variables = {}
-        # Needs order for v --- alphanumeric
+        # Needs order for c_comp --- alphanumeric
+        c_comp = list(self.c_comp)
+        c_comp = [ list(c) for c in c_comp ]
+        map(lambda a: a.sort(), c_comp)
+        c_comp.sort()
         for v in self.dag.V:
             # To find the number of possible functions
             # Find first the number of ordered pairs for the independent variables,
@@ -107,7 +111,7 @@ class canonicalModel():
                         )
                     )
                 )
-        for c in self.c_comp:
+        for c in c_comp:
             self.parameters += list(
                     product(*[ [ x + a for a in get_range_number_system(
                             self.number_canonical_variables[x],
@@ -115,7 +119,6 @@ class canonicalModel():
                         )
                     )
         self.parameters = [ '.'.join(x) for x in self.parameters ]
-#        self.parameters = list(set(self.parameters)) # Removing duplicated els
-#        self.parameters.sort() # Sorting parameters
+        self.parameters = list(set(self.parameters)) # Removing duplicated els
+        self.parameters.sort() # Sorting parameters
 
-list(product(*[[0,1], [2,3,4], [1,5,7]]))

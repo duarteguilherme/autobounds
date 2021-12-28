@@ -1,0 +1,22 @@
+from autobound.autobound.DAG import DAG
+from autobound.autobound.canonicalModel import canonicalModel
+import numpy as np
+from itertools import product
+import math
+
+def test_fromdag():
+    x = canonicalModel()
+    y = DAG()
+    y.from_structure("Z -> Y, Z -> X, U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")
+    x.from_dag(y, {'X': 3})
+    x.number_canonical_variables
+    assert x.c_comp == set({frozenset({'Z'}), frozenset({'X', 'Y'})})
+    assert x.number_parents == {'Z': 0, 'X': 1, 'Y': 2 }
+    assert x.number_values == {'X': 3, 'Z': 2, 'Y': 2}
+    assert x.number_canonical_variables == {'Z': 2, 'X': 9, 'Y': 64}
+    assert x.parameters[0] == 'X00.Y000000'
+    assert x.parameters[-1] == 'Z1'
+    assert x.parameters[50] == 'X00.Y110010'
+
+
+
