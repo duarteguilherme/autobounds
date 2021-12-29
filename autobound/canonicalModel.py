@@ -90,7 +90,7 @@ class canonicalModel():
         # Needs order for c_comp --- alphanumeric
         c_comp = list(self.c_comp)
         c_comp = [ list(c) for c in c_comp ]
-        map(lambda a: a.sort(), c_comp)
+        list(map(lambda a: a.sort(), c_comp))
         c_comp.sort()
         for v in self.dag.V:
             # To find the number of possible functions
