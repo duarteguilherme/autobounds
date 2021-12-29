@@ -1,3 +1,6 @@
+from functools import reduce
+
+
 class DAG:
     """ It defines a semi-Markovian DAG
     A semi-Markovian DAG is a structure with 
@@ -61,6 +64,41 @@ class DAG:
         """
         return set([ x[1] for x in self.E if x[0] == v.strip() ])
     
+    def find_paths(self, v1, v2):
+        """ 
+        Find all paths from v1 to v2
+        Algorithm find_path: 
+            Input: (v1, v2) 
+            if v1 == v2:
+                return v2
+            Find all children ch of v1.
+            If ch is empty:
+                return False
+            Else:
+                return 
+                [ ]
+        """
+        if v1 == v2:
+            return [ True ]
+        children = self.find_children(v1)
+        if len(children) == 0:
+            return [ False  ]
+        else:
+            return [ [ ch ] +  v  
+                    if type(v) is list else [ ch ] + [ v ]   for ch in children 
+                    for v in self.find_paths(ch,v2) if v != False ]
+    
+    def find_inbetween(self, v1, v2):
+        """
+            Find all variables in paths from v1 to v2
+            Algorithm:
+                self.find_paths from v1 to v2.
+                get the union of all those variables and 
+                remove v1 and v2
+        """
+        return set(filter(lambda x: x != True, 
+            [v1] + reduce(lambda a, b: a + b, self.find_paths(v1,v2))))
+        
     def visit(self, v):
         if v in self.order:
             return None
@@ -84,6 +122,9 @@ class DAG:
     def find_roots(self):
         """ 
         Given a DAG, find all roots
+        For example, for a DAG X -> Y -> Z -> A, B -> Z -> A,
+        A is a root. 
+        The algoritm is: list all edges, and filter those that are not parents.
         """
         v = self.V.copy()
         pa = set([ i[0] for i in self.E ])
@@ -113,6 +154,9 @@ class DAG:
     def find_first_nodes(self):
         """ 
         Given a DAG, find all first nodes
+        This is the opposite of find_roots...
+        The algorithm is similar, but first nodes 
+        cannot be children
         """
         v = self.V.copy()
         ch = set([ i[1] for i in self.E if i[0] not in self.U ])

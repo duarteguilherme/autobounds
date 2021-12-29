@@ -3,6 +3,13 @@ import numpy.random as rd
 import pytest
 import os
 
+def test_dag_find_path():
+    x = DAG()
+    x.from_structure("B -> D,X -> Z, X -> Y, A -> X, A -> Z, Z -> Y, B -> A, B -> Y")
+    paths = x.find_paths('B','Y')
+    paths.sort()
+    assert paths[0] == ['A', 'X', 'Y', True]
+    assert x.find_inbetween('B','Y') == {'X', 'Z', 'A', 'Y', 'B'}
 
 def test_dag_str():
     x = DAG()
