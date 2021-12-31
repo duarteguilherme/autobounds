@@ -3,6 +3,29 @@ from autobound.DAG import DAG
 import numpy as np
 from itertools import product
 from functools import reduce
+from copy import deepcopy
+
+def search_value(can_var, query, info):
+    """
+    Input:
+        a) can_var: a particular canonical variable
+        For instance, '110001'
+        b) query: for a particular variable, determines 
+        which value is being looked for. For instance,
+        query = '1'
+        c) info --- info is a list of parent values.
+        For instance, if there are two parents X and Z 
+        in alphanumeric order, such that, X has 3 values
+        and Z, 2, then info = (3,2).
+    Output: it returns a list with all the possibilities 
+    the order of parents are alphanumeric
+    [ (0,0), (0,1), ... ]
+    ----------
+    Algorithm: transforms values to a matrix, reshape according 
+    to info, and then, with argwhere, returns all the important indexes.
+    """
+    array = np.array(list(can_var)).reshape(info)
+    return np.argwhere(array == query)
 
 
 def clean_irreducible_expr(expr):
@@ -65,19 +88,40 @@ def find_possibilities(involved_c, canModel, main_expr, do_expr):
     names = involved_var +  [main_expr[0]] + [ k[0] for k in do_expr ]
     return (names, possibilities)
 
+def test_searchvalue():
+    assert (search_value('11010010', '1', (2,2,2)) == np.array([[0,0,0],
+                                                               [0,0,1],
+                                                               [0,1,1],
+                                                               [1,1,0]])).all()
+                    
 
 def test_parser():
 y = DAG()
 y.from_structure("Z -> Y, Z -> X, U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")
+y.copy()
 x = Parser(y)
 x.set_dag(y, {'X': 2})
 
-def test_parse_irreducible():
-y = DAG()
-y.from_structure("Z -> X, X -> Y, U -> Z, U -> Y", unob = "U")
-x = Parser(y, {'X':3})
-x.parse_irreducible_expr('Y(Z=0)=1')
-x.parse_irreducible_expr('Y=1')
+def test_filterfunctions():
+    y = DAG()
+    y.from_structure("X -> Y, Z -> X, U -> X, U -> Y", unob = "U")
+    x = Parser(y, {'X':3})
+    assert x.filter_functions('Y', {}) == [ ]
+    assert x.filter_functions('Z', {'X': 1}) == [ ]
+    assert x.filter_functions('Z', {'Z': 1}) == [('1', {'Z': 1})]
+    assert x.filter_functions('Y', {'Y': 1}) == x.filter_functions('Y', {'Y': 1, 'X': 0})
+    assert len(x.filter_functions('Y', {'Y': 1})) == 12
+    assert len(x.filter_functions('Y', {'Y': 1})) == 4
+    y = DAG()
+    y.from_structure("A -> Y, B -> Y, U -> B, U -> Y", unob = "U")
+    x = Parser(y, {})
+    # len(x.filter_functions('Y', {'Y': 1}))
+    # len(x.filter_functions('Y', {'Y': 1, 'A': 1}))
+    # assert len([ k for k in x.filter_functions('Y', {'A': 1}) if k[0] == '0000' ]) == 0
+    # assert len([ k for k in x.filter_functions('Y', {'A': 1}) if k[0] == '0000' ]) == 0
+    #x.parse_irreducible_expr('Y(Z=0)=1')
+    #x.parse_irreducible_expr('Y=1')
+
 
 class Parser():
     """ Parser 
@@ -111,7 +155,45 @@ class Parser():
                 for j in expand_dict(self.get_q_index(i, do)) ]
         factorized = [ mult([  self.parameters[j] for j in x ]) for x in factorized ]
         return factorized
-    
+                
+    def filter_functions(self, v, query):
+        """
+        Input: a variable v of a particular model 
+        and a query with values to be filtered such as {'v': v, 'a': a, ...} 
+        Output: a list with correct functions and 
+        possible parent values.
+        For instance, [('Y111111', {X:'0', Z:'0'} ), 
+                       ('Y111111', {X:'0', Z:'1'} )]
+        ----------------------------------------
+        Algorithm:
+        Step 0: If v is not refered in the query, return empty
+        Step 1: List all parents of v
+        Step 2: Get all canonical variables with respect to v. Call this list functions
+        """
+        if v not in query.keys():
+            return []
+        parents = list(self.dag.find_parents_no_u(v))
+        parents.sort()
+        # Select relevant canonical variables
+        functions = list(set([ k for x in self.canModel.parameters for k in x.split('.') ]))
+        functions = [ x for x in functions if x.startswith(v) ] 
+        functions = [ x.replace(v, '',1) for x in functions if str(query[v]) in x ]
+        pa_dimensions = tuple(self.canModel.number_values[k] for k in parents)
+        # res_functions is named differently from functions to 
+        # emphasize that we are returning not only functions, but also 
+        # new queries with respect to parents
+        res_functions = [ (x, y)
+            for x in functions 
+            for y in search_value(x, str(query[v]), pa_dimensions).tolist() ] 
+        res_functions = [ ( x[0], dict(zip(parents + [ v ] ,x[1] + [ query[v] ] )) )  # Transforming queries to dict
+                for x in res_functions ]  # Has to add  v to parents, and query[v] to x[1]
+        # n_relevant refers to the number of variables in the query which is a parent or main
+        n_relevant = len([ x for x in parents + [ v ] if x in query.keys() ])
+        res_functions = [ ( x[0], x[1] ) 
+                for x in res_functions  
+                if len(x[1].items() & query.items()) >= n_relevant ] # It has to have more intersections than v: value
+        return res_functions
+            
     def parse_irreducible_expr(self, expr):
         """
         It gets an expr such as "Y(X=1, B=0)=1"
@@ -120,6 +202,12 @@ class Parser():
         Then, one has to parse all the intervention variables "X=1, B=0".
         It's possible to have empty interventions, for instance, "Y=1"
         Algorithm:
+            INPUT: irreducible expression, DAG, and a canModel
+1) Put all variables in descendent topological order and find the first referred in the expression.
+EXAMPLE: A -> B -> Y -> Z, A -> Y, X -> B -> Z, and  (Y=1, B=1).
+Reverse topological order is: Z, Y, B, X, A. It will start with Z. But Z is not contained in expr, so the first will be Y.
+2) For v in V (starting in the first for the reverse topological order),
+Returns all the functions with v = x, for example (Y = 1).
             1) Find all involved c_components: 
                 a) contains the main variable;
                 b) contains do variables, if not empty;
@@ -158,4 +246,5 @@ class Parser():
         names, possibilities = find_possibilities(involved_c, self.canModel, main_expr, do_expr)
         # STEP 3
         top_order = self.dag.get_top_order()
+    
 
