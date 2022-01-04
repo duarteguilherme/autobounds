@@ -5,6 +5,19 @@ from itertools import product
 from functools import reduce
 from copy import deepcopy
 
+
+
+def add2dict(dict2):
+    def func_dict(dict1):
+        res = {a: b for a,b in dict1.items() }
+        for c,d in dict2.items():
+            res[c] = d
+        return res
+    return func_dict
+
+
+
+
 def search_value(can_var, query, info):
     """
     Input:
@@ -47,7 +60,7 @@ def clean_irreducible_expr(expr):
         main_expr = [ expr.split('(')[0].strip(),
                 int(expr.split(')')[1].split('=')[1].strip()) ]
     else:
-        main_expr = expr.split('=')
+        main_expr = [ x.strip() for x in expr.split('=') ]
         main_expr = [ main_expr[0], int(main_expr[1]) ]
         do_expr = [ ]
     return (main_expr, do_expr)
@@ -94,13 +107,6 @@ def test_searchvalue():
                                                                [0,1,1],
                                                                [1,1,0]])).all()
                     
-
-def test_parser():
-y = DAG()
-y.from_structure("Z -> Y, Z -> X, U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")
-y.copy()
-x = Parser(y)
-x.set_dag(y, {'X': 2})
 
 def test_filterfunctions():
     y = DAG()
@@ -156,10 +162,13 @@ class Parser():
         factorized = [ mult([  self.parameters[j] for j in x ]) for x in factorized ]
         return factorized
                 
-    def filter_functions(self, v, query):
+    def filter_functions(self, v, query, dag = None):
         """
-        Input: a variable v of a particular model 
-        and a query with values to be filtered such as {'v': v, 'a': a, ...} 
+        Input: 
+            a)a variable v of a particular model ,
+            b) a query with values to be filtered such as {'v': v, 'a': a, ...} 
+            c) An optional dag is necessary rather than self.dag.  This is due 
+            to the use of filter_functions with truncated models.
         Output: a list with correct functions and 
         possible parent values.
         For instance, [('Y111111', {X:'0', Z:'0'} ), 
@@ -170,9 +179,11 @@ class Parser():
         Step 1: List all parents of v
         Step 2: Get all canonical variables with respect to v. Call this list functions
         """
+        if dag is None:
+            dag = self.dag
         if v not in query.keys():
             return []
-        parents = list(self.dag.find_parents_no_u(v))
+        parents = list(dag.find_parents_no_u(v))
         parents.sort()
         # Select relevant canonical variables
         functions = list(set([ k for x in self.canModel.parameters for k in x.split('.') ]))
@@ -203,11 +214,13 @@ class Parser():
         It's possible to have empty interventions, for instance, "Y=1"
         Algorithm:
             INPUT: irreducible expression, DAG, and a canModel
-1) Put all variables in descendent topological order and find the first referred in the expression.
-EXAMPLE: A -> B -> Y -> Z, A -> Y, X -> B -> Z, and  (Y=1, B=1).
-Reverse topological order is: Z, Y, B, X, A. It will start with Z. But Z is not contained in expr, so the first will be Y.
-2) For v in V (starting in the first for the reverse topological order),
-Returns all the functions with v = x, for example (Y = 1).
+        1) Put all variables in descendent topological order and 
+        find the first referred in the expression.
+         EXAMPLE: A -> B -> Y -> Z, A -> Y, X -> B -> Z, and  (Y=1, B=1).
+        Reverse topological order is: Z, Y, B, X, A. It will start with Z. 
+        But Z is not contained in expr, so the first will be Y.
+        2) For v in V (starting in the first for the reverse topological order),
+        Run filter functions with 
             1) Find all involved c_components: 
                 a) contains the main variable;
                 b) contains do variables, if not empty;
@@ -239,12 +252,47 @@ Returns all the functions with v = x, for example (Y = 1).
       parse_expr will accept condiitonal and joint probability expressions, such 
         as P(Y(X=1)=1, A(B=0)=1 | K(B=1) = 0, A(Y=0) = 1)
         """
-        main_expr, do_expr = clean_irreducible_expr(expr)
-        # STEP 1
-        involved_c = find_involved_c(self.dag, self.canModel, main_expr, do_expr)
-        # STEP 2
-        names, possibilities = find_possibilities(involved_c, self.canModel, main_expr, do_expr)
-        # STEP 3
+        main_expr, do_expr = clean_irreducible_expr(expr) # extract_expr_info is a better name
+        dag = deepcopy(self.dag)
+        # do_expr requires two changes
+        # 1) dag truncation
+        # 2) dict substitutiom
+        # For example, if Z(X=1),
+        # then dag.truncate('X')
+        # and add2dict
+        dag.truncate(','.join([ x[0] for x in do_expr ]))
+        do_to_dict = add2dict({x[0]: x[1] for x in do_expr })
+        # STEP 1 --- Truncate Model if necessary 
+        # STEP 2 --- Check topological order of truncated DAG
         top_order = self.dag.get_top_order()
-    
+        top_order.reverse()
+        # STEP 3 --- Run find_functions in order
+        prepared_query = [ dict([main_expr]) ]
+        params_list = ['' ]
+        for v in top_order:
+            funcs = [ self.filter_functions(v, do_to_dict(q)) 
+                    for q in prepared_query ]
+            funcs = [ a for x in funcs for a in x ]
+            params_list = [ [v + a[0], b ] for a in funcs for b in params_list ]
+            prepared_query = [ a[1] for a in funcs ]
+            print(params_list)
+        # STEP 4 --- Check all c_components containing the used variables
+        # STEP 5 --- Generate variables. C_components must be separated.
+        # For all not utilized variables in c-components, sum over all values.
+#        involved_c = find_involved_c(self.dag, self.canModel, main_expr, do_expr)
+        # STEP 2
+#        names, possibilities = find_possibilities(involved_c, self.canModel, main_expr, do_expr)
+        # STEP 3
+
+
+{x[0]: x[1] for x in []}
+def test_parser():
+y = DAG()
+y.from_structure("Z -> Y, Z -> X, U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")
+#y.truncate('X')
+#y.V
+x = Parser(y, {'X': 2})
+x.parse_irreducible_expr('Y = 1')
+x.parse_irreducible_expr('Y (Z =0)= 1')
+
 
