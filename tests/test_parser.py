@@ -24,8 +24,14 @@ def test_filterfunctions():
     assert len([ k for k in x.filter_functions('Y', {'A': 1}) if k[0] == '0000' ]) == 0
     assert len([ k for k in x.filter_functions('Y', {'A': 1}) if k[0] == '0000' ]) == 0
 
+def test_parse():
+    y = DAG()
+    y.from_structure("Z -> X, U -> X, X -> Y, U -> Y", unob = "U , Uy")
+    x = Parser(y, {'X': 2})
+    assert x.parse('Y = 1& Y = 0') == []
+    assert set(x.parse('Y(X=0)=1&Y(X=1)=1') ) == set([('X01.Y11',), ('X10.Y11',), ('X00.Y11',), ('X11.Y11',)])
 
-def test_parser():
+def test_parse_irreducible():
     y = DAG()
     y.from_structure("Z -> X, U -> X, X -> Y, U -> Y", unob = "U , Uy")
     x = Parser(y, {'X': 2})

@@ -1,4 +1,3 @@
-#from autobound.canonicalModel import canonicalModel
 from .canonicalModel import canonicalModel
 import numpy as np
 from itertools import product
@@ -14,6 +13,23 @@ def add2dict(dict2):
             res[c] = d
         return res
     return func_dict
+
+def intersect_expr(expr1, expr2, c_parameters):
+    """
+    For each element of each expression, 
+    they have to be compared according to the c_components they are
+    Example: [('Z1', 'X00.Y0100'), ('Z1', 'X00.Y1100')] and 
+    [('W01.K1000', 'Z1'), ('W01.K1001', 'Z0').
+    Output must be 
+    """
+    c_expr1 = [ [ list(set(c).intersection(set(k))) for c in c_parameters ] for k in expr1 ]
+    c_expr2 = [ [ list(set(c).intersection(set(k))) for c in c_parameters ] for k in expr2 ]
+    c_expr1 = [ tuple([ x[0] if len(x) != 0 else '' for x in c ])  for c in c_expr1 ] 
+    c_expr2 = [ tuple([ x[0] if len(x) != 0 else '' for x in c ])  for c in c_expr2 ] 
+    res = list(set(c_expr1).intersection(set(c_expr2)))
+    res = [ tuple([ x for x in c if x != '' ]) for c in res ]
+    return res 
+
 
 
 def get_c_component(func, c_parameters):
@@ -95,28 +111,9 @@ class Parser():
         self.dag = dag
         self.canModel = canonicalModel()
         self.canModel.from_dag(self.dag, number_values = number_values)
-    
-    def dagval_to_canval(self, var = "", do = ""):
-        """ Input: a set of values in terms of dags, for instance, 'X=1,Z=0'
-        Output: a set of variables in terms of canonical models
-        """
-        if ( var == "" ):
-            raise Exception("Error: specify v")
-        var = dict([ (v[0].strip(), int(v[1])) 
-            for v in [ v.split('=') for v in var.split(',') ] ])
-        if ( do != ""):
-            do = dict([ (v[0].strip(), int(v[1])) 
-                for v in [ v.split('=') for v in do.split(',') ] ])
-        else:
-            do = {}
-        rest_var = self.dag.V.difference(set(var.keys()))
-        var_list = [ dict(**var, **dict(zip(rest_var, k)))
-                for k in product([0,1], repeat = len(rest_var)) ]  
-        expanded_var = expand_dict(self.get_q_index(var_list[0]))
-        factorized = [ self.get_factorized_q(j) for i in var_list 
-                for j in expand_dict(self.get_q_index(i, do)) ]
-        factorized = [ mult([  self.parameters[j] for j in x ]) for x in factorized ]
-        return factorized
+        self.c_parameters = deepcopy([ [ k 
+            for k in self.canModel.parameters if list(c)[0] in k ] 
+            for c in self.canModel.c_comp ] )
                 
     def filter_functions(self, v, query, dag = None):
         """
@@ -182,14 +179,13 @@ class Parser():
         Reverse topological order is: Z, Y, B, X, A. It will start with Z. 
         But Z is not contained in expr, so the first will be Y.
         2) For v in V (starting in the first for the reverse topological order),
-        OUTPUT: a set of canonical expressions
+        OUTPUT: a list of canonical expressions, representing this irreducible expr
         ----------------------------------------------------------------
         Note: There is a difference between irreducible and parse_expr, in general.
       parse_expr will accept condiitonal and joint probability expressions, such 
         as P(Y(X=1)=1, A(B=0)=1 | K(B=1) = 0, A(Y=0) = 1)
         """
         main_expr, do_expr = clean_irreducible_expr(expr) 
-        canModel = deepcopy(self.canModel)
         dag = deepcopy(self.dag)
         # do_expr requires two changes
         # 1) dag truncation
@@ -201,7 +197,6 @@ class Parser():
         do_to_dict = add2dict({x[0]: x[1] for x in do_expr })
         # STEP 1 --- Truncate Model if necessary 
         # STEP 2 --- Check topological order of truncated DAG
-#        top_order = self.dag.get_top_order()
         top_order = dag.get_top_order()
         top_order.reverse()
         # STEP 3 --- Run find_functions in order
@@ -212,9 +207,23 @@ class Parser():
                     for r in self.filter_functions(v, do_to_dict(f[1]))   ]
         funcs = [ [ k for k in x[0].split(',') if k!= '' ] for x in funcs ]
         # STEP 4 --- Separate parameters by c_components
-        c_parameters = [ [ k 
-            for k in canModel.parameters if list(c)[0] in k ] 
-            for c in canModel.c_comp ] 
-        funcs = [ a for k in funcs for a in get_c_component(k, c_parameters) ]
+        funcs = [ a for k in funcs for a in get_c_component(k, self.c_parameters) ]
         return funcs
+    
+    def parse(self, expr):
+        """
+        Input: complete expression, for example P(Y(x=1, W=0)=1&X(Z = 1)=0)
+        Output: a list of canonical expressions, representing this expr 
+        -----------------------------------------------------
+        Algorithm:
+            STEP 1) Separate expr into irreducible exprs
+            STEP 2) Run self.parse_irreducible_expr for each
+            STEP 3) Collect the interesection of those expressions
+        """
+        expr = expr.strip() 
+        expr = expr.replace('P(', '', 1)[:-1] if expr.startswith('P(') else expr
+        expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
+        exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
+        exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
+        return exprs
 
