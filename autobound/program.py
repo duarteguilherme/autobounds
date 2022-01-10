@@ -1,8 +1,43 @@
-#from pyscipopt import Model,quicksum
+from .canonicalModel import canonicalModel
+from .DAG import DAG
+from .Parser import Parser
+from autobound.DAG import DAG
+from autobound.canonicalModel import canonicalModel
+from autobound.Parser import Parser
 import numpy as np
+from copy import deepcopy
 from itertools import product
 from functools import reduce
 
+
+class Program:
+    """ This class
+    will state a optimization program
+    to be translated later to any 
+    language of choice, pyscipopt (pip, pyscipopt(cip),
+    pyomo, among others
+    A program requires first parameters, 
+    an objective function,
+    and constraints
+    """
+    def __init__(self):
+        self.parameters = [ ]
+        self.estimand = tuple()
+        self.constraints = [ tuple() ]
+
+    def to_pyomo(self):
+        pass
+
+    def to_pip(self):
+        pass
+
+    def to_cip(self):
+        pass
+
+
+
+
+    
 
 func_r = lambda n: (np
         .array(list(product([0,1], repeat = 2**n)))
@@ -30,83 +65,76 @@ def update_dict(a1, a2):
         if i in a1.keys():
             del a1[i]
     return dict(**a1,**a2)
-
-class canonicalModel():
-    """
-    Class that can be related to a DAG, with 
-    all the stratification of this DAG.
-    Independent classes can be constructed, however.
-    """
-    def __init__(self):
-        pass
-    
-    def from_dag(self, dag, var_card = {}):
-        """
-        This method acoplates a DAG to a causalProblem.
-        By doing this, it already defines all the parameters of this problem,
-        by converting the DAG to a Canonical Model. 
-        The algorithm is:
-            for c in c-components:
-                for k in c.variables:
-                    push all values of k
-                list all different parameters for c
-        -- var_card indicates the number of values for each variable. 
-        If DAG has three variables, X, Y, Z, such that X and Y
-        have 3 different values and Z has four values, then we would have to 
-        add the argument var_card = {'X':3, 'Y':3, 'Z': 4}. If no information 
-        about a variable is provided, then it is considered binary.
-        """
-        self.dag = dag
-        self.c_comp = self.dag.find_c_components() 
-        # Set canonical index for each variable
-        for v in self.dag.V:
-            self.cn_index[v] = len(
-                    [i for i in self.dag.find_parents_no_u(v) ])
-        self.get_canonical_index()
-        for c in self.c_comp:
-            for x in self.get_parameters(c):
-                self.parameters[x] = self.program.addVar(x, vtype = "C",
-                        lb = 0, ub = 1) 
-
-    def get_parameters(self, c):
-        """ 
-        Input: c-component (frozenset)
-        Output: tuple of all parameters of this c-component
-        """
-        q_values = product(*[ [ str(x) for x in range(2**(2**self.cn_index[v]))] for v in c ])
-        # Only for binaries -> 2**(2**n)
-        params = tuple(['q_' + '.'.join(c) + '_' + '.'.join(q) for q in q_values])
-        return params
-
-    def get_canonical_index(self):
-        """
-        Create self.cn_index 
-        with canonical index for each variable in the DAG
-        """
-        self.cn_index = {}
-        for v in self.dag.V:
-            self.cn_index[v] = len(
-                    [i for i in self.dag.find_parents_no_u(v) ])
-    
     
 
-class causalProblem(object):
-    def __init__(self, sense = "minimize"):
+
+
+def test_causalproblem():
+y = DAG()
+y.from_structure("Z -> Y, Z -> X, U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")
+x = causalProblem(y, {'X': 2})
+assert (1, 'Z0') in x.parameters
+x.set_p_to_zero(['Z1','Z0'])
+assert (0, 'Z0') in x.parameters
+x.write_program()
+x.program.parameters
+    x.number_canonical_variables
+    assert x.c_comp == set({frozenset({'Z'}), frozenset({'X', 'Y'})})
+    assert x.number_parents == {'Z': 0, 'X': 1, 'Y': 2 }
+    assert x.number_values == {'X': 3, 'Z': 2, 'Y': 2}
+    assert x.number_canonical_variables == {'Z': 2, 'X': 9, 'Y': 64}
+    assert x.parameters[0] == 'X00.Y000000'
+    assert x.parameters[-1] == 'Z1'
+    assert x.parameters[50] == 'X00.Y110010'
+        self.program.parameters = deepcopy([ self.parameters[1][i]
+            for i, x in enumerate(self.parameters[0]) if x == 1 ]) 
+#                        for x in parameter_list ]
+
+class causalProblem:
+    def __init__(self, dag, number_values = {}):
         """
         Causal problem has to have three elements: 
             a) canonicalModel: a canonical model;
             b) estimand to be optimized over;
-            c) data;
-            d) other constraints;
+            c.1) data;
+            c.2) other constraints;
         sense is not mandatory anymore, but a function optimize that users can choose sense and optimizer.
+        A parser needs to be included to translate expressions to canonicalModel language
         """
-        self.canModel = ()
-        self.estimand = []
-        self.data = []
-        self.constraints = []
+        self.canModel = canonicalModel()
+        self.dag = dag
+        self.canModel.from_dag(self.dag, number_values)
+        self.Parser = Parser(dag, number_values)
+        self.parameters = [ (1, x) for x in self.canModel.parameters ]
+        self.estimand = [ ]
+        self.constraints = [ ]
     
-   
-    def set_obj(self, expre):
+    def write_program(self):
+        self.program = Program()
+        self.program.parameters = [ x[1] for x in self.parameters if x[0] == 1 ]
+        
+    def set_p_to_zero(self, parameter_list):
+        """
+        For a particular list  of parameters
+        ['X0111', 'Z0'], set them to 0
+        """
+        self.parameters = [ (x[0], x[1])
+                for x in self.parameters  
+                if x[1] not in parameter_list ] + [ (0, x) 
+                        for x in parameter_list ]
+
+    def set_constraint(self, constraint):
+        """
+        Input: list of tuples with constant and 
+        statemenets. For example [(-1, ['X1111', 'Z1']), (2, ['X1111'])]
+        """
+
+    def query(self, expr, cond = ''):
+        part1 = self.Parser.parse(expr)
+        if cond != '':
+            part2 = self.Parser.parse(part2)
+    
+    def set_estimand(self,):
         """
         Input: an expression written in pyscipopt format
         No output. Add objective into self.program
