@@ -5,6 +5,28 @@ from functools import reduce
 from copy import deepcopy
 
 
+def intersect_tuple_parameters(par1, par2):
+    """
+    Get two parameters, for instance,
+    ('X0.Y0100', '') and ('X0.Y0100', 'Z1')
+    and returns if they interesect.
+    Empty strings are assumed to interesect with 
+    everything.
+    """
+    if len(par1) != len(par2):
+        raise Exception('Parameters have no same size')
+    for i, el in enumerate(par1):
+        if par1[i] != par2[i] and par1[i] != '' and par2[i] != '':
+            return False
+    # If they intersect, it will return the parameter with 
+    # fewer ''
+    len_par1 = len([ x for x in par1 if x == ''])
+    len_par2 = len([ x for x in par2 if x == ''])
+    if len_par1 < len_par2:
+        return par1
+    else:
+        return par2
+
 
 def add2dict(dict2):
     def func_dict(dict1):
@@ -26,8 +48,10 @@ def intersect_expr(expr1, expr2, c_parameters):
     c_expr2 = [ [ list(set(c).intersection(set(k))) for c in c_parameters ] for k in expr2 ]
     c_expr1 = [ tuple([ x[0] if len(x) != 0 else '' for x in c ])  for c in c_expr1 ] 
     c_expr2 = [ tuple([ x[0] if len(x) != 0 else '' for x in c ])  for c in c_expr2 ] 
-    res = list(set(c_expr1).intersection(set(c_expr2)))
-    res = [ tuple([ x for x in c if x != '' ]) for c in res ]
+    #res = list(set(c_expr1).intersection(set(c_expr2)))
+    res = [ intersect_tuple_parameters(i,j) for i in c_expr1 for j in c_expr2 ]
+    res = [ x for x in list(set(res)) if x ] 
+    #res = [ tuple([ x for x in c if x != '' ]) for c in res ]
     return res 
 
 
@@ -225,5 +249,6 @@ class Parser():
         expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
         exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
         exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
-        return exprs
+        exprs = [ tuple([i for i in x if i != '' ])  for x in exprs ] # Remove empty ''
+        return sorted(exprs)
 
