@@ -249,6 +249,6 @@ class Parser():
         expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
         exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
         exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
-        exprs = [ tuple([i for i in x if i != '' ])  for x in exprs ] # Remove empty ''
+        exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
         return sorted(exprs)
 
