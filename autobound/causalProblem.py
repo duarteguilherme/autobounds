@@ -36,34 +36,68 @@ class Program:
 
 
 
-
-    
-
-def test_causalproblem():
+def test_add_constraints():
     y = DAG()
     y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
     x = causalProblem(y, {'X': 2})
     assert (1, 'Z0') in x.parameters
     x.set_p_to_zero(['Z0'])
     assert (0, 'Z0') in x.parameters
-    x.add_constraint([(1, ['%']), (1, ['X1111']), (-1, ['X1111', 'Z1']), (2, ['X1111'])])
+    x.add_constraint([(-0.15, ['1']), (-0.15, ['1']), (1, ['X1111']), (-1, ['X1111', 'Z1']), (2, ['X1111'])])
     x.constraints
-    assert [(-0.1231, ['%']), (3, ['X1111']), (-1, ['X1111', 'Z1'])] in x.constraints
+    assert [(-0.3, ['1']), (3, ['X1111']), (-1, ['X1111', 'Z1'])] in x.constraints
     x.add_constraint([(1, ['X1110']), (-1, ['X1110', 'Z1']), (-1, ['X1110'])])
     assert [(-1, ['X1110', 'Z1'])] in x.constraints
-    x.write_program()
-    x.program.parameters
-    x.number_canonical_variables
-    assert x.c_comp == set({frozenset({'Z'}), frozenset({'X', 'Y'})})
-    assert x.number_parents == {'Z': 0, 'X': 1, 'Y': 2 }
-    assert x.number_values == {'X': 3, 'Z': 2, 'Y': 2}
-    assert x.number_canonical_variables == {'Z': 2, 'X': 9, 'Y': 64}
-    assert x.parameters[0] == 'X00.Y000000'
-    assert x.parameters[-1] == 'Z1'
-    assert x.parameters[50] == 'X00.Y110010'
-#        self.program.parameters = deepcopy([ self.parameters[1][i]
-#            for i, x in enumerate(self.parameters[0]) if x == 1 ]) 
-#                        for x in parameter_list ]
+
+def test_check_constraints():
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    datafile = io.StringIO('''X,Y,Z,prob
+    0,0,0,0.05
+    0,0,1,0.05
+    0,1,0,0.1
+    0,1,1,0.1
+    1,0,0,0.15
+    1,0,1,0.15
+    1,1,0,0.2
+    1,1,1,0.2''')
+    x.load_data(datafile)
+    x.add_prob_constraints()
+    x.check_constraints()
+    assert (0.5, ['X00.Y00', '1']) in x.constraints[0]
+
+
+def test_causalproblem():
+y = DAG()
+y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
+x = causalProblem(y, {'X': 2})
+x.write_program()
+
+x.constraints[1]
+def test_replace_first_nodes():
+    assert replace_first_nodes([('Z0', 0.5), ('Z1', 0.5)], 
+            (1, ['X00.Y10', 'Z0'])) == (0.5, ['X00.Y10', '1'])
+
+
+def replace_first_nodes(first_nodes, constraint):
+    """ 
+    Gets an expr inside a constraint, for instance,
+    (1, ['X00.Y00', 'Z0']) and if Z0 is in first nodes, 
+    it replace Z0 by 1 and it multiplies 1 by the prob
+    """
+    coef, var = constraint[0], constraint[1]
+    for i,v in enumerate(var):
+        for n in first_nodes:
+            if v == n[0]:
+                var[i] = '1'
+                coef *= n[1]
+                break
+    return ( coef, var )
+            
+
+
+
 
 def get_constraint_from_row(row_data, row_prob, parser):
     """ 
@@ -114,7 +148,9 @@ class causalProblem:
         Check all constraints 
         and replace values for unconf_first_nodes
         """
-        pass 
+        self.constraints = [ [ replace_first_nodes(self.unconf_first_nodes, y) 
+            for y in x ]  
+                for x in self.constraints ] 
     
     def add_prob_constraints(self):
         """
@@ -126,7 +162,6 @@ class causalProblem:
                         for x in c
                 if x in not_0_parameters 
                 and x not in unconf_nodes ]
-            print(prob_constraints)
             if len(prob_constraints) > 0:
                 self.add_constraint(prob_constraints)
     
