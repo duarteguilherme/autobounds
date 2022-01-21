@@ -1,14 +1,14 @@
 from .canonicalModel import canonicalModel
 from .DAG import DAG
 from .Parser import Parser
-from autobound.DAG import DAG
-from autobound.canonicalModel import canonicalModel
-from autobound.Parser import Parser
+#from autobound.canonicalModel import canonicalModel
+#from autobound.DAG import DAG
+#from autobound.Parser import Parser
 import numpy as np
+import pandas as pd
 from copy import deepcopy
 from itertools import product
 from functools import reduce
-
 
 class Program:
     """ This class
@@ -24,13 +24,13 @@ class Program:
         self.parameters = [ ]
         self.estimand = tuple()
         self.constraints = [ tuple() ]
-
+    
     def to_pyomo(self):
         pass
-
+    
     def to_pip(self):
         pass
-
+    
     def to_cip(self):
         pass
 
@@ -39,45 +39,20 @@ class Program:
 
     
 
-func_r = lambda n: (np
-        .array(list(product([0,1], repeat = 2**n)))
-        .reshape(-1,*list(product([2], repeat = n))[0]))
-
-
-def get_r_values(v, var, dag):
-    pa = dag.find_parents_no_u(v)
-    tot_pa = 2**len(pa)
-    funcs = func_r(len(pa))
-    return np.where(
-            np.array([i[tuple([var[k] for k in pa])] 
-                for i in funcs]) == var[v]
-            )[0]
-
-def expand_dict(dictio):
-    return [ dict(zip(dictio.keys(), x)) 
-            for x in product(*dictio.values())]
-
-def mult(lista):
-    return reduce(lambda a, b: a* b, lista)
-
-def update_dict(a1, a2):
-    for i in a2:
-        if i in a1.keys():
-            del a1[i]
-    return dict(**a1,**a2)
-    
-
-
-
 def test_causalproblem():
-y = DAG()
-y.from_structure("Z -> Y, Z -> X, U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")
-x = causalProblem(y, {'X': 2})
-assert (1, 'Z0') in x.parameters
-x.set_p_to_zero(['Z1','Z0'])
-assert (0, 'Z0') in x.parameters
-x.write_program()
-x.program.parameters
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    assert (1, 'Z0') in x.parameters
+    x.set_p_to_zero(['Z0'])
+    assert (0, 'Z0') in x.parameters
+    x.add_constraint([(1, ['%']), (1, ['X1111']), (-1, ['X1111', 'Z1']), (2, ['X1111'])])
+    x.constraints
+    assert [(-0.1231, ['%']), (3, ['X1111']), (-1, ['X1111', 'Z1'])] in x.constraints
+    x.add_constraint([(1, ['X1110']), (-1, ['X1110', 'Z1']), (-1, ['X1110'])])
+    assert [(-1, ['X1110', 'Z1'])] in x.constraints
+    x.write_program()
+    x.program.parameters
     x.number_canonical_variables
     assert x.c_comp == set({frozenset({'Z'}), frozenset({'X', 'Y'})})
     assert x.number_parents == {'Z': 0, 'X': 1, 'Y': 2 }
@@ -86,9 +61,21 @@ x.program.parameters
     assert x.parameters[0] == 'X00.Y000000'
     assert x.parameters[-1] == 'Z1'
     assert x.parameters[50] == 'X00.Y110010'
-        self.program.parameters = deepcopy([ self.parameters[1][i]
-            for i, x in enumerate(self.parameters[0]) if x == 1 ]) 
+#        self.program.parameters = deepcopy([ self.parameters[1][i]
+#            for i, x in enumerate(self.parameters[0]) if x == 1 ]) 
 #                        for x in parameter_list ]
+
+def get_constraint_from_row(row_data, row_prob, parser):
+    """ 
+    Function to be employed in load_data method in causalProgram
+    One introduces the row data , row prob , Parser
+    and function returns constraints 
+    """
+    query = [ f'{row_data.index[j]}={int(row_data[j])}'
+                    for j,k in enumerate(list(row_data)) ]
+    return [( -1 * row_prob, [ '1' ])] + [ (1, [ i for i in x ]) 
+            for x in parser.parse('&'.join(query)) ]
+
 
 class causalProblem:
     def __init__(self, dag, number_values = {}):
@@ -100,6 +87,7 @@ class causalProblem:
             c.2) other constraints;
         sense is not mandatory anymore, but a function optimize that users can choose sense and optimizer.
         A parser needs to be included to translate expressions to canonicalModel language
+        unconf_roots corresponds to roots for which we have data 
         """
         self.canModel = canonicalModel()
         self.dag = dag
@@ -108,11 +96,72 @@ class causalProblem:
         self.parameters = [ (1, x) for x in self.canModel.parameters ]
         self.estimand = [ ]
         self.constraints = [ ]
-    
+        self.unconf_first_nodes = [ ]
+        
     def write_program(self):
         self.program = Program()
-        self.program.parameters = [ x[1] for x in self.parameters if x[0] == 1 ]
+        unconf_roots = self.find_unconf_roots()
+        self.program.parameters = [ x[1] 
+                for x in self.parameters 
+                if x[0] == 1 or x[1] not in [ i[0] for i in self.unconf_roots ] ]
+        # Add default constraints
+        # Add probabilistic contraints
+#        for c in self.Parser.c_parameters:
+#            if 
         
+    def check_constraints(self):
+        """ 
+        Check all constraints 
+        and replace values for unconf_first_nodes
+        """
+        pass 
+    
+    def add_prob_constraints(self):
+        """
+        """
+        unconf_nodes = [ x[0] for x in self.unconf_first_nodes ] 
+        not_0_parameters = [ x[1] for x in self.parameters if x[0] != 0 ]
+        for c in self.Parser.c_parameters:
+            prob_constraints = [ (1, [ x ]) 
+                        for x in c
+                if x in not_0_parameters 
+                and x not in unconf_nodes ]
+            print(prob_constraints)
+            if len(prob_constraints) > 0:
+                self.add_constraint(prob_constraints)
+    
+    def load_data(self, filename, cond = False):
+        """ It accepts a file 
+        file must be csv. Columns will be added if they match parameters...
+        Column prob must indicate probability.
+        For example,
+        >    X,Y,prob,
+        >    1,0,0.25,
+        >    0,1,0.25,
+        >    1,1,0.25,
+        >    0,0,0.25
+        Algorithm: 
+        1) If data is not conditioned, method must fill out unconf_first_nodes info
+        2) Data must be added as constraint
+        """
+        datam = pd.read_csv(filename) 
+        columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
+        datam = datam[columns]
+        first_nodes = [ k for k in self.dag.find_first_nodes() 
+                if len(self.dag.find_u_linked(k)) == 0 and k in columns]
+        if not cond:
+            for k in first_nodes:
+                self.unconf_first_nodes += [ (k + str(i), 
+                    datam.groupby(k).sum().loc[i]['prob'] )
+                        for i in datam.groupby(k).sum().index ]
+        self.set_p_to_zero([ x[0] for x in self.unconf_first_nodes ])
+        # Adding data
+        column_rest = [x for x in columns if x not in first_nodes and x!= 'prob']
+        grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
+        for i, row in grouped_data.iterrows():
+            self.add_constraint(get_constraint_from_row(row[column_rest], 
+                    row['prob'], self.Parser))
+    
     def set_p_to_zero(self, parameter_list):
         """
         For a particular list  of parameters
@@ -122,117 +171,30 @@ class causalProblem:
                 for x in self.parameters  
                 if x[1] not in parameter_list ] + [ (0, x) 
                         for x in parameter_list ]
-
-    def set_constraint(self, constraint):
+    
+    def add_constraint(self, constraint):
         """
         Input: list of tuples with constant and 
         statemenets. For example [(-1, ['X1111', 'Z1']), (2, ['X1111'])]
         """
-
-    def query(self, expr, cond = ''):
-        part1 = self.Parser.parse(expr)
-        if cond != '':
-            part2 = self.Parser.parse(part2)
+        # Sorting constraint
+        constraint = [ (x[0], sorted(x[1])) for x in constraint ] 
+        constraint = [ [x[0], sorted(x[1])] for x in constraint ] 
+        expr_list = [ x[1]  # Removing duplicated
+                for n, x in enumerate(constraint) 
+                if x[1] not in [ i[1] for i in constraint[:n] ] ]
+        constraint = [ (sum([ i[0] 
+            for i in constraint if x == i[1] ]), x)
+                for x in expr_list ]
+        constraint = [ (x[0], x[1]) for x in constraint if x[0] != 0 ]
+        self.constraints.append(constraint)
     
-    def set_estimand(self,):
+    def set_estimand(self,estimand, cond = ['%']):
         """
-        Input: an expression written in pyscipopt format
-        No output. Add objective into self.program
+        Input: an expression similar to a constraint
         """
-        self.objvar = self.program.addVar(name = "objvar",
-                vtype = "C", lb = None, ub = None)
-        self.program.setObjective(self.objvar, self.sense)
-        self.program.addCons(self.objvar == expre)
-    
-    def add_prob_constraints(self):
-        """ 
-        No input
-        Add all axioms of probability constraints
-        """
-        c_components = [ '_'.join(x.split('_')[0:-1]) for x in self.parameters.keys() ]
-        c_components = set(c_components)
-        for c in c_components:
-            self.program.addCons(
-                    quicksum([ self.parameters[p]
-                        for p in self.parameters if p.startswith(c) ]) == 1)
-    
-    def get_factorized_q(self, var):
-        """ Receive values for variables 
-        and return factorized version 
-        of q_variables
-        """
-        factorization = []
-        for c in self.c_comp:
-            factorization.append('q_' + '.'.join(c) + '_' + 
-                    '.'.join([ str(var[i]) for i in c])  )
-        return factorization
-    
-    def get_response_expr(self, var={}):
-        """ Differently from get_expr,
-        this gets probabilities over response variables,
-        and return equivalent expression.
-        For example, P(Ry=1) self.get_response_expr({"Y":3}), will 
-        return a sum of q_xy, for a c-component {X,Y}
-        (This expression accepts only one c-component)
-        """
-        relevant_c = [ c for c in self.c_comp 
-                if any([ i in c for i in var.keys()] )  ]
-        if len(relevant_c) > 1:
-            raise Expcetion("More than one c-component assigned.")
-        relevant_c = relevant_c[0]
-        parameters = []
-        for v in relevant_c:
-            if v in var.keys():
-                parameters.append([var[v]])
-            else:
-                parameters.append(list(range(2**(1+self.cn_index[v]))))
-        parameters = [ [ str(j) for j in i] for i in product(*parameters) ]
-        parameters = [ 'q_' + '.'.join(relevant_c) + '_' + '.'.join(i) 
-                for i in  parameters] 
-        return parameters
-    
-    def get_expr(self, var = "", do = ""):
-        """ Input: a probabilistic expression over V expression
-        Output: canonical form expression
-        for example: P(Y=1|do(X=1)) can 
-        become 
-        program.define_expression(var = "Y=1", do = "X=1")
-        """
-        if ( var == "" ):
-            raise Exception("Error: specify v")
-        var = dict([ (v[0].strip(), int(v[1])) 
-            for v in [ v.split('=') for v in var.split(',') ] ])
-        if ( do != ""):
-            do = dict([ (v[0].strip(), int(v[1])) 
-                for v in [ v.split('=') for v in do.split(',') ] ])
-        else:
-            do = {}
-        rest_var = self.dag.V.difference(set(var.keys()))
-        var_list = [ dict(**var, **dict(zip(rest_var, k)))
-                for k in product([0,1], repeat = len(rest_var)) ]  
-        expanded_var = expand_dict(self.get_q_index(var_list[0]))
-        factorized = [ self.get_factorized_q(j) for i in var_list 
-                for j in expand_dict(self.get_q_index(i, do)) ]
-        factorized = [ mult([  self.parameters[j] for j in x ]) for x in factorized ]
-        return factorized
-     
-    def get_q_index(self,var, do = {}):
-        """ 
-       Input: ocurrence of u. program.get_q_index({'Z':1, 'X':0, 'Y':1})
-       Output: index. {'Z':[2,3], 'X':[0,1], 'Y': [2,3]}
-        All the variables must 
-        be represented.
-        For example, program.get({'X': 1, 'Y': 0})
-        """
-        q_index = {}
-        if  set(var.keys()) != self.dag.V:
-            raise Exception("Error: provide values for all the variables")
-        for v in var.keys():
-            if v not in do.keys():
-                q_index[v] = list(get_r_values(v, update_dict(var.copy(),do), self.dag))
-            else:
-                q_index[v] = list(get_r_values(v, var, self.dag))
-        return q_index
+        self.add_constraint(estimand + 
+                [ (-1, ['objvar', x ]) for x in cond ]  )
     
     def check_indep(self, c):
         """
