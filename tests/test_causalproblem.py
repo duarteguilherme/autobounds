@@ -1,7 +1,69 @@
 from autobound.autobound.DAG import DAG
-from autobound.autobound.causalProblem import causalProblem
+from autobound.autobound.causalProblem import *
 import io
 from copy import deepcopy
+
+
+def test_add_constraints():
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    assert (1, 'Z0') in x.parameters
+    x.set_p_to_zero(['Z0'])
+    assert (0, 'Z0') in x.parameters
+    x.add_constraint([(-0.15, ['1']), (-0.15, ['1']), (1, ['X1111']), (-1, ['X1111', 'Z1']), (2, ['X1111'])])
+    x.constraints
+    assert [(-0.3, ['1']), (3, ['X1111']), (-1, ['X1111', 'Z1'])] in x.constraints
+    x.add_constraint([(1, ['X1110']), (-1, ['X1110', 'Z1']), (-1, ['X1110'])])
+    assert [(-1, ['X1110', 'Z1'])] in x.constraints
+
+def test_check_constraints():
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    datafile = io.StringIO('''X,Y,Z,prob
+    0,0,0,0.05
+    0,0,1,0.05
+    0,1,0,0.1
+    0,1,1,0.1
+    1,0,0,0.15
+    1,0,1,0.15
+    1,1,0,0.2
+    1,1,1,0.2''')
+    x.load_data(datafile)
+    x.add_prob_constraints()
+    x.check_constraints()
+    assert (0.5, ['X00.Y00', '1']) in x.constraints[0]
+
+
+def test_causalproblem():
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    z = Parser(y)
+    datafile = io.StringIO('''X,Y,Z,prob
+    0,0,0,0.05
+    0,0,1,0.05
+    0,1,0,0.1
+    0,1,1,0.1
+    1,0,0,0.15
+    1,0,1,0.15
+    1,1,0,0.2
+    1,1,1,0.2''')
+    x.set_estimand(x.query('Y(X=1)=1') + x.query('Y(X=0)=1', -1))
+    x.load_data(datafile)
+    x.add_prob_constraints()
+    z = x.write_program()
+    assert 'objvar' in z.parameters
+    assert 'X00.Y00' in z.parameters
+    assert len(z.constraints) == 6
+    assert z.constraints[0] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'],
+            ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar']]
+
+def test_replace_first_nodes():
+    assert replace_first_nodes([('Z0', 0.5), ('Z1', 0.5)], 
+            (1, ['X00.Y10', 'Z0'])) == (0.5, ['X00.Y10', '1'])
+
 
 def test_load_data():
     datafile = io.StringIO('''X,Y,Z,prob
@@ -35,5 +97,12 @@ def test_load_data():
     x.constraints[1] == [(-1, ['0.125']), (1, ['X0.Y0000.Z1']), 
             (1, ['X0.Y0001.Z1']), (1, ['X0.Y0010.Z1']), (1, ['X0.Y0011.Z1']), 
             (1, ['X0.Y1000.Z1']), (1, ['X0.Y1001.Z1']), (1, ['X0.Y1010.Z1']), (1, ['X0.Y1011.Z1'])] 
+
+def test_transform_constraint():
+    assert transform_constraint([(1, ['X00.Y01']), (1, ['X01.Y01']), (1, ['X10.Y01']),
+        (1, ['X11.Y01']), (-1, ['X00.Y10']), (-1, ['X01.Y10']), 
+        (-1, ['X10.Y10']), (-1, ['X11.Y10']), (-1, ['1', 'objvar'])]) == [['X00.Y01'], 
+                ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'],
+                ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar']]
 
 

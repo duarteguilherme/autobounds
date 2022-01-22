@@ -1,9 +1,6 @@
 from .canonicalModel import canonicalModel
 from .DAG import DAG
 from .Parser import Parser
-#from autobound.canonicalModel import canonicalModel
-#from autobound.DAG import DAG
-#from autobound.Parser import Parser
 import numpy as np
 import pandas as pd
 from copy import deepcopy
@@ -35,51 +32,6 @@ class Program:
         pass
 
 
-
-def test_add_constraints():
-    y = DAG()
-    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
-    x = causalProblem(y, {'X': 2})
-    assert (1, 'Z0') in x.parameters
-    x.set_p_to_zero(['Z0'])
-    assert (0, 'Z0') in x.parameters
-    x.add_constraint([(-0.15, ['1']), (-0.15, ['1']), (1, ['X1111']), (-1, ['X1111', 'Z1']), (2, ['X1111'])])
-    x.constraints
-    assert [(-0.3, ['1']), (3, ['X1111']), (-1, ['X1111', 'Z1'])] in x.constraints
-    x.add_constraint([(1, ['X1110']), (-1, ['X1110', 'Z1']), (-1, ['X1110'])])
-    assert [(-1, ['X1110', 'Z1'])] in x.constraints
-
-def test_check_constraints():
-    y = DAG()
-    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
-    x = causalProblem(y, {'X': 2})
-    datafile = io.StringIO('''X,Y,Z,prob
-    0,0,0,0.05
-    0,0,1,0.05
-    0,1,0,0.1
-    0,1,1,0.1
-    1,0,0,0.15
-    1,0,1,0.15
-    1,1,0,0.2
-    1,1,1,0.2''')
-    x.load_data(datafile)
-    x.add_prob_constraints()
-    x.check_constraints()
-    assert (0.5, ['X00.Y00', '1']) in x.constraints[0]
-
-
-def test_causalproblem():
-y = DAG()
-y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
-x = causalProblem(y, {'X': 2})
-x.write_program()
-
-x.constraints[1]
-def test_replace_first_nodes():
-    assert replace_first_nodes([('Z0', 0.5), ('Z1', 0.5)], 
-            (1, ['X00.Y10', 'Z0'])) == (0.5, ['X00.Y10', '1'])
-
-
 def replace_first_nodes(first_nodes, constraint):
     """ 
     Gets an expr inside a constraint, for instance,
@@ -96,6 +48,19 @@ def replace_first_nodes(first_nodes, constraint):
     return ( coef, var )
             
 
+
+def transform_constraint(constraint):
+    """ 
+    To be used inside write_program method
+    This functions gets a constraint in 
+    causalProblem format and translate it to 
+    program format
+    """
+    res =  [ ['' if k[0] == 1 else str(k[0]) ] + 
+            [ i for i in k[1] if i != '1' ] 
+        for k in constraint ] 
+    res = [ [ j for j in i if j != '' ] for i in res  ]
+    return res
 
 
 
@@ -132,16 +97,30 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
+    def query(self, expr, sign = 1):
+        """ 
+        Important function:
+        This function is exactly like parse in Parser class.
+        However, here it returns a constraint structure.
+        So one can do causalProgram.query('Y(X=1)=1') in order 
+        to get P(Y(X=1)=1) constraint.
+        sign can be 1, if positive, or -1, if negative.
+        """
+        return [ (sign, list(x)) for x in self.Parser.parse(expr) ]
+    
     def write_program(self):
-        self.program = Program()
-        unconf_roots = self.find_unconf_roots()
-        self.program.parameters = [ x[1] 
+        """ It returns an object Program
+        """
+        program = Program()
+        self.check_constraints()
+        program.parameters = [ x[1] 
                 for x in self.parameters 
-                if x[0] == 1 or x[1] not in [ i[0] for i in self.unconf_roots ] ]
-        # Add default constraints
-        # Add probabilistic contraints
-#        for c in self.Parser.c_parameters:
-#            if 
+                if x[0] == 1 ] + [ 'objvar']
+        program.constraints = [
+                transform_constraint(x )
+                for x in self.constraints
+                ]
+        return program
         
     def check_constraints(self):
         """ 
@@ -184,6 +163,8 @@ class causalProblem:
         datam = datam[columns]
         first_nodes = [ k for k in self.dag.find_first_nodes() 
                 if len(self.dag.find_u_linked(k)) == 0 and k in columns]
+        # First nodes ---- parameters have to be set to 0
+        # This part might be refactored in a different method
         if not cond:
             for k in first_nodes:
                 self.unconf_first_nodes += [ (k + str(i), 
@@ -224,9 +205,15 @@ class causalProblem:
         constraint = [ (x[0], x[1]) for x in constraint if x[0] != 0 ]
         self.constraints.append(constraint)
     
-    def set_estimand(self,estimand, cond = ['%']):
+    def set_estimand(self,estimand, cond = ['1']):
         """
         Input: an expression similar to a constraint
+        This algorithm there will 
+        add estimand as a constraint with a new variable 
+        objvar that will be added as a parameter.
+        If the estimand is conditioned, then this condition 
+        is multiplied by objvar, according to the algebraic formula.
+        P(Y|X) = P(Y,X)/P(X) = objvar, then P(Y,X) - P(X) * objvar = 0
         """
         self.add_constraint(estimand + 
                 [ (-1, ['objvar', x ]) for x in cond ]  )
