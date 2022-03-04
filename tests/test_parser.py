@@ -36,6 +36,7 @@ def test_parse():
     y = DAG()
     y.from_structure("Z -> Y, U -> X, X -> Y, U -> Y", unob = "U , Uy")
     x = Parser(y, {'X': 2})
+    x.parse('Y=1 &X=1')
     assert x.parse('Y=1 &X=1') == [('X1.Y0001', 'Z1'), ('X1.Y0010', 'Z0'), ('X1.Y0011', 'Z0'), 
             ('X1.Y0011', 'Z1'), ('X1.Y0101', 'Z1'), ('X1.Y0110', 'Z0'), ('X1.Y0111', 'Z0'), 
             ('X1.Y0111', 'Z1'), ('X1.Y1001', 'Z1'), ('X1.Y1010', 'Z0'), ('X1.Y1011', 'Z0'),

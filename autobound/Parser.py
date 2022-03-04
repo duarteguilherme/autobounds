@@ -184,8 +184,8 @@ class Parser():
         for pa,order in pa_order.items():
             res_functions = [ k for k in res_functions 
                     if k[1][order] == query[pa] ] 
-        res_functions = [ ( x[0], dict(zip(parents ,x[1] )) | query )  # Transforming queries to dict
-                for x in res_functions ]  
+#        res_functions = [ ( x[0], dict(zip(parents ,x[1] )) | query )   for x in res_functions ]  
+        res_functions = [ ( x[0], {**dict(zip(parents ,x[1] )), **query} )   for x in res_functions ]  
         return res_functions
  
     def parse_irreducible_expr(self, expr):
