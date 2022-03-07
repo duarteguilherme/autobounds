@@ -116,8 +116,9 @@ class causalProblem:
             prob_constraints = [ (1, [ x ]) 
                         for x in c
                 if x in not_0_parameters 
-                and x not in unconf_nodes ]
+                and x not in unconf_nodes ] 
             if len(prob_constraints) > 0:
+                prob_constraints += [ (-1.0, ['1'])]
                 self.add_constraint(prob_constraints)
     
     def load_data(self, filename, cond = False):
