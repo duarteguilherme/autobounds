@@ -1,6 +1,7 @@
-#from autobound.causalProblem import causalProblem
-#from autobound.DAG import DAG
-#import io 
+from functools import reduce
+import io 
+from copy import deepcopy
+
 
 def test_pip_join_expr():
     assert pip_join_expr(['0.5', 'X00.Y00'], ['X00.Y00', 'Z1', 'Z0']) == '0.5 X00.Y00'
@@ -8,37 +9,14 @@ def test_pip_join_expr():
     assert pip_join_expr(['X00.Y00'], ['X00.Y00', 'Z1', 'Z0']) == 'X00.Y00'
     assert pip_join_expr(['0.5', 'X00.Y00', 'Z1'], ['X00.Y00', 'Z1', 'Z0']) == '0.5 X00.Y00 * Z1'
 
-def pip_join_expr(expr, params):
-    """ 
-    It gets an expr and if there is a coefficient, it 
-    separates without using * .
-    It is required as a simple list join is insufficient 
-    to put program in pip format
-    """
-    coef = ''.join([x for x in expr if x not in params ])
-    expr_rest = ' * '.join([ x for x in expr if x in params ])
-    coef = coef + ' ' if coef != '' and expr_rest != '' else coef 
-    return coef + expr_rest
 
-def test_program_iv():
-    dag = DAG()
-    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
-    problem = causalProblem(dag)
-    datafile = io.StringIO('''X,Y,Z,prob
-    0,0,0,0.05
-    0,0,1,0.05
-    0,1,0,0.1
-    0,1,1,0.1
-    1,0,0,0.15
-    1,0,1,0.15
-    1,1,0,0.2
-    1,1,1,0.2''')
-    problem.set_estimand(problem.query('Y(X=1)=1') + problem.query('Y(X=0)=1', -1))
-    problem.constraints
-    problem.load_data(datafile)
-    problem.add_prob_constraints()
-    z = problem.write_program()
-    z.to_pip('/home/beta/test_iv.pip')
+def mult_params_pyomo(params, k, M):
+    """ Function to be used in run_pyomo
+    Get parameters and multiply them
+    """
+    return reduce(lambda a, b: a * b, 
+    [ getattr(M, r) if r in params else float(r)  
+        for r in k ])
 
 class Program:
     """ This class
@@ -49,16 +27,53 @@ class Program:
     A program requires first parameters, 
     an objective function,
     and constraints
+    Every method name starting with to_obj_ will solve the program directly in python.
+    Method names starting with to_ will write the program to a file, which can 
+    be read in particular solvers.
     """
     def __init__(self):
         self.parameters = [ ]
         self.constraints = [ tuple() ]
     
-    def to_pyomo(self):
+    def run_pyomo(self, solver_name = 'ipopt'):
+        """ This method runs program directly in python using pyomo
+        """
+        import pyomo.environ as pyo
+        from pyomo.opt import SolverFactory
+        M = pyo.ConcreteModel()
+        solver = pyo.SolverFactory(solver_name)
+        for p in self.parameters:
+            if p != 'objvar':
+                setattr(M, p, pyo.Var(bounds = (0,1)))
+            else:
+                setattr(M, p, pyo.Var())
+        for i, c in enumerate(self.constraints):
+            setattr(M, 'c' + str(i), 
+                pyo.Constraint(expr = 
+                    sum([ mult_params_pyomo(self.parameters, k, M )
+                                    for k in c ]) == 0
+                )
+            )
+        M1 = deepcopy(M)
+        M2 = deepcopy(M)
+        M1.obj = pyo.Objective(expr = M1.objvar, sense = pyo.maximize)
+        M2.obj = pyo.Objective(expr = M2.objvar, sense = pyo.minimize)
+        solver.solve(M1)
+        solver.solve(M2)
+        lower_bound = pyo.value(M2.objvar)
+        upper_bound = pyo.value(M1.objvar)
+        return (lower_bound, upper_bound)
+   
+    def to_obj_pyomo(self):
         pass
     
     def to_pip(self, filename, sense = 'max'):
-        filep = open(filename, 'w')
+        if isinstance(filename, str):
+            filep = open(filename, 'w')
+        elif isinstance(filename, io.StringIO):
+            filep = filename
+        else:
+            raise Exception('Filename type not accepted!')
         sense = 'MAXIMIZE' if sense == 'max' else 'MINIMIZE'
         filep.write(sense + '\n' + '  obj: objvar' + '\n')
         filep.write('\nSUBJECT TO\n')
