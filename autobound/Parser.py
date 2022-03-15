@@ -18,14 +18,18 @@ def intersect_tuple_parameters(par1, par2):
     for i, el in enumerate(par1):
         if par1[i] != par2[i] and par1[i] != '' and par2[i] != '':
             return False
-    # If they intersect, it will return the parameter with 
-    # fewer ''
-    len_par1 = len([ x for x in par1 if x == ''])
-    len_par2 = len([ x for x in par2 if x == ''])
-    if len_par1 < len_par2:
-        return par1
-    else:
-        return par2
+    # Next loop mixes both par1, par2, if they intersect
+    par = [ ]
+    for i in range(len(par1)):
+        if par1[i] == '':
+            if par2[i] == '':
+                par.append('')
+            else:
+                par.append(par2[i])
+        else:
+            par.append(par1[i])
+    return tuple(par)
+
 
 
 def add2dict(dict2):
