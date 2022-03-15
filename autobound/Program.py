@@ -2,6 +2,18 @@ from functools import reduce
 import io 
 from copy import deepcopy
 
+def pip_join_expr(expr, params):
+    """ 
+    It gets an expr and if there is a coefficient, it 
+    separates without using * .
+    It is required as a simple list join is insufficient 
+    to put program in pip format
+    """
+    coef = ''.join([x for x in expr if x not in params ])
+    expr_rest = ' * '.join([ x for x in expr if x in params ])
+    coef = coef + ' ' if coef != '' and expr_rest != '' else coef 
+    return coef + expr_rest
+
 
 def test_pip_join_expr():
     assert pip_join_expr(['0.5', 'X00.Y00'], ['X00.Y00', 'Z1', 'Z0']) == '0.5 X00.Y00'
