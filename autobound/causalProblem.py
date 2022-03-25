@@ -149,7 +149,8 @@ class causalProblem:
                         for i in datam.groupby(k).sum().index ]
         self.set_p_to_zero([ x[0] for x in self.unconf_first_nodes ])
         # Adding data
-        column_rest = [x for x in columns if x not in first_nodes and x!= 'prob']
+#        column_rest = [x for x in columns if x not in first_nodes and x!= 'prob']
+        column_rest = [x for x in columns if x!= 'prob']
         grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
         for i, row in grouped_data.iterrows():
             self.add_constraint(get_constraint_from_row(row[column_rest], 
