@@ -40,7 +40,7 @@ def transform_constraint(constraint):
 
 
 
-def get_constraint_from_row(row_data, row_prob, parser):
+def get_constraint_from_row(row_data, row_prob, parser, row_cond = [ ]):
     """ 
     Function to be employed in load_data method in causalProgram
     One introduces the row data , row prob , Parser
@@ -48,6 +48,12 @@ def get_constraint_from_row(row_data, row_prob, parser):
     """
     query = [ f'{row_data.index[j]}={int(row_data[j])}'
                     for j,k in enumerate(list(row_data)) ]
+    if len(row_cond) > 0:
+        query_cond = [ f'{row_data.index[j]}={int(row_data[j])}'
+                    for j,k in enumerate(list(row_cond)) ]
+        return [( -1 * row_prob, [ i for i in k ]) 
+                for k in parser.parse('&'.join(query_cond)) ] + [ (1, [ i for i in x ]) 
+                for x in parser.parse('&'.join(query)) ]
     return [( -1 * row_prob, [ '1' ])] + [ (1, [ i for i in x ]) 
             for x in parser.parse('&'.join(query)) ]
 
@@ -121,7 +127,7 @@ class causalProblem:
                 prob_constraints += [ (-1.0, ['1'])]
                 self.add_constraint(prob_constraints)
     
-    def load_data(self, filename, cond = False):
+    def load_data(self, filename, cond = [ ]):
         """ It accepts a file 
         file must be csv. Columns will be added if they match parameters...
         Column prob must indicate probability.
@@ -132,29 +138,36 @@ class causalProblem:
         >    1,1,0.25,
         >    0,0,0.25
         Algorithm: 
-        1) If data is not conditioned, method must fill out unconf_first_nodes info
+        Conditioned columns must be added as a list , for instance, cond = ['M','C']
+        1) Method must fill out unconf_first_nodes info
         2) Data must be added as constraint
         """
         datam = pd.read_csv(filename) 
+        if len(cond) > 0:
+            cond_data = datam[cond] 
+            datam = datam.drop(cond, axis=1)
         columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
         datam = datam[columns]
         first_nodes = [ k for k in self.dag.find_first_nodes() 
                 if len(self.dag.find_u_linked(k)) == 0 and k in columns]
         # First nodes ---- parameters have to be set to 0
         # This part might be refactored in a different method
-        if not cond:
-            for k in first_nodes:
-                self.unconf_first_nodes += [ (k + str(i), 
-                    datam.groupby(k).sum().loc[i]['prob'] )
-                        for i in datam.groupby(k).sum().index ]
+        for k in first_nodes:
+            self.unconf_first_nodes += [ (k + str(i), 
+                datam.groupby(k).sum().loc[i]['prob'] )
+                    for i in datam.groupby(k).sum().index ]
         self.set_p_to_zero([ x[0] for x in self.unconf_first_nodes ])
         # Adding data
-#        column_rest = [x for x in columns if x not in first_nodes and x!= 'prob']
         column_rest = [x for x in columns if x!= 'prob']
         grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
-        for i, row in grouped_data.iterrows():
-            self.add_constraint(get_constraint_from_row(row[column_rest], 
-                    row['prob'], self.Parser))
+        if len(cond) > 0:
+            for i, row in grouped_data.iterrows():
+                self.add_constraint(get_constraint_from_row(row[column_rest], 
+                        row['prob'], self.Parser, cond_data.iloc[i] ))
+        else:
+            for i, row in grouped_data.iterrows():
+                self.add_constraint(get_constraint_from_row(row[column_rest], 
+                        row['prob'], self.Parser))
     
     def set_p_to_zero(self, parameter_list):
         """
@@ -253,7 +266,6 @@ class causalProblem:
         for c in self.c_comp:
             indeps = indeps + self.check_indep(c)
         for i in indeps:
-            print(i)
             self.add_rest_indep(i)
     
 

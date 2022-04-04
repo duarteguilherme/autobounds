@@ -56,9 +56,8 @@ def test_causalproblem():
     z = x.write_program()
     assert 'objvar' in z.parameters
     assert 'X00.Y00' in z.parameters
-    assert len(z.constraints) == 6
-    assert z.constraints[0] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'],
-            ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar']]
+    assert len(z.constraints) == 10
+    assert z.constraints[0] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'], ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar']]
 
 def test_replace_first_nodes():
     assert replace_first_nodes([('Z0', 0.5), ('Z1', 0.5)], 
