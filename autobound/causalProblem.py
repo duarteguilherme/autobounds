@@ -8,6 +8,29 @@ from copy import deepcopy
 from itertools import product
 from functools import reduce
 
+
+# Simplifiers 
+### 1) First nodes
+def simplify_first_nodes(problem, dag, datam_no_cond): 
+    """ 
+    Firstly, all first nodes are collected from dag.
+    Secondly, if data is complete for those nodes,
+    they must be set to zero.
+    """
+    datam = datam_no_cond
+    data_count = datam.drop('prob', axis = 1).nunique()
+    complete_data = [ i  for i, j in dict(data_count).items() 
+            if problem.number_values[i] == j ]
+    first_nodes = [ k for k in dag.find_first_nodes() 
+            if len(dag.find_u_linked(k)) == 0 and k in complete_data ]
+    # Need to check if data is complete
+    for k in first_nodes:
+        problem.unconf_first_nodes += [ (k + str(i), 
+            datam.groupby(k).sum().loc[i]['prob'] )
+                for i in datam.groupby(k).sum().index ]
+    problem.set_p_to_zero([ x[0] for x in problem.unconf_first_nodes ])
+
+
 def replace_first_nodes(first_nodes, constraint):
     """ 
     Gets an expr inside a constraint, for instance,
@@ -40,16 +63,17 @@ def transform_constraint(constraint):
 
 
 
-def get_constraint_from_row(row_data, row_prob, parser, row_cond = [ ]):
+def get_constraint_from_row(row_data, row_prob, parser, cond = [ ], n = 0):
     """ 
     Function to be employed in load_data method in causalProgram
     One introduces the row data , row prob , Parser
     and function returns constraints 
     """
+    row_cond = cond.iloc[n] if len(cond) > 0  else []
     query = [ f'{row_data.index[j]}={int(row_data[j])}'
                     for j,k in enumerate(list(row_data)) ]
     if len(row_cond) > 0:
-        query_cond = [ f'{row_data.index[j]}={int(row_data[j])}'
+        query_cond = [ f'{row_cond.index[j]}={int(row_cond[j])}'
                     for j,k in enumerate(list(row_cond)) ]
         return [( -1 * row_prob, [ i for i in k ]) 
                 for k in parser.parse('&'.join(query_cond)) ] + [ (1, [ i for i in x ]) 
@@ -74,6 +98,9 @@ class causalProblem:
         self.dag = dag
         self.canModel.from_dag(self.dag, number_values)
         self.Parser = Parser(dag, number_values)
+        self.number_values = { }
+        for i in dag.V:
+            self.number_values[i] = number_values[i] if i in number_values.keys() else 2
         self.parameters = [ (1, x) for x in self.canModel.parameters ]
         self.estimand = [ ]
         self.constraints = [ ]
@@ -137,37 +164,25 @@ class causalProblem:
         >    0,1,0.25,
         >    1,1,0.25,
         >    0,0,0.25
-        Algorithm: 
         Conditioned columns must be added as a list , for instance, cond = ['M','C']
-        1) Method must fill out unconf_first_nodes info
-        2) Data must be added as constraint
+        -------------------------------------------------------------------
+        Method: 
+        1) For each row of data, data is parsed and added as a constraint to the problem.
+        2) If conditioned data is present, arrangement for that are prepared
+        Extra: 
+        This method also implements one simplifier (first nodes simplifier).
+        If data regarding first nodes is complete, then numeric values are added directly.
         """
         datam = pd.read_csv(filename) 
-        if len(cond) > 0:
-            cond_data = datam[cond] 
-            datam = datam.drop(cond, axis=1)
+        cond_data = datam[cond] if len(cond) > 0 else [ ]
         columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
         datam = datam[columns]
-        first_nodes = [ k for k in self.dag.find_first_nodes() 
-                if len(self.dag.find_u_linked(k)) == 0 and k in columns]
-        # First nodes ---- parameters have to be set to 0
-        # This part might be refactored in a different method
-        for k in first_nodes:
-            self.unconf_first_nodes += [ (k + str(i), 
-                datam.groupby(k).sum().loc[i]['prob'] )
-                    for i in datam.groupby(k).sum().index ]
-        self.set_p_to_zero([ x[0] for x in self.unconf_first_nodes ])
-        # Adding data
         column_rest = [x for x in columns if x!= 'prob']
         grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
-        if len(cond) > 0:
-            for i, row in grouped_data.iterrows():
-                self.add_constraint(get_constraint_from_row(row[column_rest], 
-                        row['prob'], self.Parser, cond_data.iloc[i] ))
-        else:
-            for i, row in grouped_data.iterrows():
-                self.add_constraint(get_constraint_from_row(row[column_rest], 
-                        row['prob'], self.Parser))
+        for i, row in grouped_data.iterrows():
+            self.add_constraint(get_constraint_from_row(row[column_rest], 
+                    row['prob'], self.Parser, cond_data, i))
+        simplify_first_nodes(self, self.dag, datam.drop(cond, axis = 1))
     
     def set_p_to_zero(self, parameter_list):
         """
