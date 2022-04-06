@@ -2,6 +2,17 @@ from functools import reduce
 import io 
 from copy import deepcopy
 
+
+pyomo_symb = {
+        '==': lambda a,b: a== b,
+        '<=': lambda a,b: a<= b,
+        '>=': lambda a,b: a>= b,
+        '<': lambda a,b: a < b,
+        '>': lambda a,b: a > b,
+        }
+
+fix_symbol_pip = lambda a: '=' if a == '==' else a
+
 def pip_join_expr(expr, params):
     """ 
     It gets an expr and if there is a coefficient, it 
@@ -13,7 +24,6 @@ def pip_join_expr(expr, params):
     expr_rest = ' * '.join([ x for x in expr if x in params ])
     coef = coef + ' ' if coef != '' and expr_rest != '' else coef 
     return coef + expr_rest
-
 
 def test_pip_join_expr():
     assert pip_join_expr(['0.5', 'X00.Y00'], ['X00.Y00', 'Z1', 'Z0']) == '0.5 X00.Y00'
@@ -59,12 +69,12 @@ class Program:
                 setattr(M, p, pyo.Var(bounds = (0,1)))
             else:
                 setattr(M, p, pyo.Var())
+        # Next loop is not elegant, needs refactoring
         for i, c in enumerate(self.constraints):
             setattr(M, 'c' + str(i), 
-                pyo.Constraint(expr = 
-                    sum([ mult_params_pyomo(self.parameters, k, M )
-                                    for k in c ]) == 0
-                )
+                    pyo.Constraint(expr = 
+                        pyomo_symb[c[-1][0]](sum([ mult_params_pyomo(self.parameters, k, M ) for k in c[:-1] ]), 0)
+                    )
             )
         M1 = deepcopy(M)
         M2 = deepcopy(M)
@@ -90,9 +100,8 @@ class Program:
         filep.write(sense + '\n' + '  obj: objvar' + '\n')
         filep.write('\nSUBJECT TO\n')
         for i, c in enumerate(self.constraints):
-            filep.write(f'  a{i}: ' + ' + '.join([ 
-               pip_join_expr(k, self.parameters) for k in c ]) 
-                + ' = 0\n') 
+            filep.write('a' + str(i) + ': ' + ' + '.join([pip_join_expr(k, self.parameters) 
+                for k in c[:-1] ]) + ' ' + fix_symbol_pip(c[-1][0]) + ' 0\n')
         filep.write('\nBOUNDS\n')
         for p in self.parameters:
             if p != 'objvar':

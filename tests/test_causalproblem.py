@@ -12,10 +12,9 @@ def test_add_constraints():
     x.set_p_to_zero(['Z0'])
     assert (0, 'Z0') in x.parameters
     x.add_constraint([(-0.15, ['1']), (-0.15, ['1']), (1, ['X1111']), (-1, ['X1111', 'Z1']), (2, ['X1111'])])
-    x.constraints
-    assert [(-0.3, ['1']), (3, ['X1111']), (-1, ['X1111', 'Z1'])] in x.constraints
+    assert [(-0.3, ['1']), (3, ['X1111']), (-1, ['X1111', 'Z1']), (1, ['=='])] in x.constraints
     x.add_constraint([(1, ['X1110']), (-1, ['X1110', 'Z1']), (-1, ['X1110'])])
-    assert [(-1, ['X1110', 'Z1'])] in x.constraints
+    assert [(-1, ['X1110', 'Z1']), (1, ['=='])] in x.constraints
 
 def test_check_constraints():
     y = DAG()
@@ -42,7 +41,7 @@ def test_conditional_estimand():
     z = Parser(y)
     x.set_estimand(x.query('Y(X=1)=1') + x.query('Y(X=0)=1', -1), cond = x.query('X=0'))
     x.query('X=0')
-    assert x.constraints[-1] ==  [(1, ['X00.Y01']), (1, ['X01.Y01']), (1, ['X10.Y01']), (1, ['X11.Y01']), (-1, ['X00.Y10']), (-1, ['X01.Y10']), (-1, ['X10.Y10']), (-1, ['X11.Y10']), (-1, ['X00.Y00', 'Z0', 'objvar']), (-1, ['X00.Y00', 'Z1', 'objvar']), (-1, ['X00.Y01', 'Z0', 'objvar']), (-1, ['X00.Y01', 'Z1', 'objvar']), (-1, ['X00.Y10', 'Z0', 'objvar']), (-1, ['X00.Y10', 'Z1', 'objvar']), (-1, ['X00.Y11', 'Z0', 'objvar']), (-1, ['X00.Y11', 'Z1', 'objvar']), (-1, ['X01.Y00', 'Z0', 'objvar']), (-1, ['X01.Y01', 'Z0', 'objvar']), (-1, ['X01.Y10', 'Z0', 'objvar']), (-1, ['X01.Y11', 'Z0', 'objvar']), (-1, ['X10.Y00', 'Z1', 'objvar']), (-1, ['X10.Y01', 'Z1', 'objvar']), (-1, ['X10.Y10', 'Z1', 'objvar']), (-1, ['X10.Y11', 'Z1', 'objvar'])]
+    assert x.constraints[-1] ==  [(1, ['X00.Y01']), (1, ['X01.Y01']), (1, ['X10.Y01']), (1, ['X11.Y01']), (-1, ['X00.Y10']), (-1, ['X01.Y10']), (-1, ['X10.Y10']), (-1, ['X11.Y10']), (-1, ['X00.Y00', 'Z0', 'objvar']), (-1, ['X00.Y00', 'Z1', 'objvar']), (-1, ['X00.Y01', 'Z0', 'objvar']), (-1, ['X00.Y01', 'Z1', 'objvar']), (-1, ['X00.Y10', 'Z0', 'objvar']), (-1, ['X00.Y10', 'Z1', 'objvar']), (-1, ['X00.Y11', 'Z0', 'objvar']), (-1, ['X00.Y11', 'Z1', 'objvar']), (-1, ['X01.Y00', 'Z0', 'objvar']), (-1, ['X01.Y01', 'Z0', 'objvar']), (-1, ['X01.Y10', 'Z0', 'objvar']), (-1, ['X01.Y11', 'Z0', 'objvar']), (-1, ['X10.Y00', 'Z1', 'objvar']), (-1, ['X10.Y01', 'Z1', 'objvar']), (-1, ['X10.Y10', 'Z1', 'objvar']), (-1, ['X10.Y11', 'Z1', 'objvar']), (1, ['=='])]
 
 def test_conditional_data():
     y = DAG()
@@ -65,8 +64,7 @@ def test_conditional_data():
     assert 'objvar' in z.parameters
     assert 'X00.Y00' in z.parameters
     assert len(z.constraints) == 10
-    assert z.constraints[1] == [['0.475', 'X00.Y00'], ['-0.025', 'X00.Y00'], ['0.475', 'X00.Y01'], ['-0.025', 'X00.Y01'], ['-0.025', 'X00.Y10'], ['-0.025', 'X00.Y10'], ['-0.025', 'X00.Y11'], ['-0.025', 'X00.Y11'], ['0.475', 'X01.Y00'], ['0.475', 'X01.Y01'], ['-0.025', 'X01.Y10'], ['-0.025', 'X01.Y11'], ['-0.025', 'X10.Y00'], ['-0.025', 'X10.Y01'], ['-0.025', 'X10.Y10'], ['-0.025', 'X10.Y11']]
-
+    assert z.constraints[1] == [['0.475', 'X00.Y00'], ['-0.025', 'X00.Y00'], ['0.475', 'X00.Y01'], ['-0.025', 'X00.Y01'], ['-0.025', 'X00.Y10'], ['-0.025', 'X00.Y10'], ['-0.025', 'X00.Y11'], ['-0.025', 'X00.Y11'], ['0.475', 'X01.Y00'], ['0.475', 'X01.Y01'], ['-0.025', 'X01.Y10'], ['-0.025', 'X01.Y11'], ['-0.025', 'X10.Y00'], ['-0.025', 'X10.Y01'], ['-0.025', 'X10.Y10'], ['-0.025', 'X10.Y11'], ['==']]
 
 def test_causalproblem():
     y = DAG()
@@ -89,8 +87,8 @@ def test_causalproblem():
     assert 'objvar' in z.parameters
     assert 'X00.Y00' in z.parameters
     assert len(z.constraints) == 10
-    assert z.constraints[0] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'], ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar']]
-    assert z.constraints[1] == [['-0.05'], ['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01']]
+    assert z.constraints[0] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'], ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar'], ['==']]
+    assert z.constraints[1] == [['-0.05'], ['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['==']]
 
 def test_replace_first_nodes():
     assert replace_first_nodes([('Z0', 0.5), ('Z1', 0.5)], 

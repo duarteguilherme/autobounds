@@ -19,7 +19,7 @@ def test_program_proxy():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-    z.to_pip('/home/beta/test_iv.proxy')
+#    z.to_pip('/home/beta/test_iv.proxy')
 
 def test_program_iv():
     dag = DAG()
@@ -38,9 +38,9 @@ def test_program_iv():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-    b = z.run_pyomo()
+    b = z.run_pyomo(verbose=False)
     assert b[0] <= -0.48
     assert b[0] >= -0.52
     assert b[1] <= 0.52
     assert b[1] >= 0.48
-    z.to_pip('/home/beta/test_iv.pip')
+#    z.to_pip('/home/beta/test_iv.pip')

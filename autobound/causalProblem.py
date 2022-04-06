@@ -194,10 +194,13 @@ class causalProblem:
                 if x[1] not in parameter_list ] + [ (0, x) 
                         for x in parameter_list ]
     
-    def add_constraint(self, constraint):
+    def add_constraint(self, constraint, symbol = '=='):
         """
         Input: list of tuples with constant and 
         statemenets. For example [(-1, ['X1111', 'Z1']), (2, ['X1111'])]
+
+        symbol argument indicates if constraint will be an equality 
+        or inequality. The default parameter will be an equality
         """
         # Sorting constraint
         constraint = [ (x[0], sorted(x[1])) for x in constraint ] 
@@ -208,7 +211,7 @@ class causalProblem:
         constraint = [ (sum([ i[0] 
             for i in constraint if x == i[1] ]), x)
                 for x in expr_list ]
-        constraint = [ (x[0], x[1]) for x in constraint if x[0] != 0 ]
+        constraint = [ (x[0], x[1]) for x in constraint if x[0] != 0 ] + [ (1, [ symbol ] ) ]
         self.constraints.append(constraint)
     
     def set_estimand(self,estimand, cond = [(1, ['1'])]):
