@@ -16,13 +16,14 @@ def sorted1(list1):
 
 # Simplifiers 
 ### 1) First nodes
-def simplify_first_nodes(problem, dag, datam_no_cond): 
+def simplify_first_nodes(problem, dag, datam, cond): 
     """ 
     Firstly, all first nodes are collected from dag.
     Secondly, if data is complete for those nodes,
     they must be set to zero.
     """
-    datam = datam_no_cond
+    if len(cond) > 0: # Simplifier 1 cannot handle conditional data
+        return None
     data_count = datam.drop('prob', axis = 1).nunique()
     complete_data = [ i  for i, j in dict(data_count).items() 
             if problem.number_values[i] == j ]
@@ -187,7 +188,7 @@ class causalProblem:
         for i, row in grouped_data.iterrows():
             self.add_constraint(get_constraint_from_row(row[column_rest], 
                     row['prob'], self.Parser, cond_data, i))
-        simplify_first_nodes(self, self.dag, datam.drop(cond, axis = 1))
+        simplify_first_nodes(self, self.dag, datam, cond)
     
     def set_p_to_zero(self, parameter_list):
         """
