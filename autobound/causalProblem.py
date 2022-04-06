@@ -9,6 +9,11 @@ from itertools import product
 from functools import reduce
 
 
+
+def sorted1(list1):
+    list1.sort()
+    return list1
+
 # Simplifiers 
 ### 1) First nodes
 def simplify_first_nodes(problem, dag, datam_no_cond): 
@@ -203,8 +208,8 @@ class causalProblem:
         or inequality. The default parameter will be an equality
         """
         # Sorting constraint
-        constraint = [ (x[0], sorted(x[1])) for x in constraint ] 
-        constraint = [ [x[0], sorted(x[1])] for x in constraint ] 
+#        constraint = [ (x[0], sorted1(x[1])) for x in constraint ] 
+        constraint = [ [x[0], sorted1(x[1])] for x in constraint ] 
         expr_list = [ x[1]  # Removing duplicated
                 for n, x in enumerate(constraint) 
                 if x[1] not in [ i[1] for i in constraint[:n] ] ]
