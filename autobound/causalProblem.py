@@ -66,6 +66,7 @@ def transform_constraint(constraint, zero_parameters = []):
         for k in constraint ] 
     res = [ [ j for j in i if j != '' ] for i in res  ]
     res = [ [ j for j in i if j not in zero_parameters ] for i in res  ]
+    res = [ [ j for j in i if j ] for i in res if len(i) > 0 ]
     return res
 
 
