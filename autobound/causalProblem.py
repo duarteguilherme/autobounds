@@ -54,7 +54,7 @@ def replace_first_nodes(first_nodes, constraint):
             
 
 
-def transform_constraint(constraint):
+def transform_constraint(constraint, zero_parameters = []):
     """ 
     To be used inside write_program method
     This functions gets a constraint in 
@@ -65,6 +65,7 @@ def transform_constraint(constraint):
             [ i for i in k[1] if i != '1' ] 
         for k in constraint ] 
     res = [ [ j for j in i if j != '' ] for i in res  ]
+    res = [ [ j for j in i if j not in zero_parameters ] for i in res  ]
     return res
 
 
@@ -131,8 +132,11 @@ class causalProblem:
         program.parameters = [ x[1] 
                 for x in self.parameters 
                 if x[0] == 1 ] + [ 'objvar']
+        zero_parameters = [ x[1] 
+                for x in self.parameters 
+                if x[0] == 0 ] 
         program.constraints = [
-                transform_constraint(x )
+                transform_constraint(x, zero_parameters )
                 for x in self.constraints
                 ]
         return program

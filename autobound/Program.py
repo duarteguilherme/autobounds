@@ -57,7 +57,7 @@ class Program:
         self.parameters = [ ]
         self.constraints = [ tuple() ]
     
-    def run_pyomo(self, solver_name = 'ipopt', verbose = True):
+    def run_pyomo(self, solver_name = 'ipopt', model = False, verbose = True):
         """ This method runs program directly in python using pyomo
         """
         import pyomo.environ as pyo
@@ -79,6 +79,8 @@ class Program:
         M1 = deepcopy(M)
         M2 = deepcopy(M)
         M1.obj = pyo.Objective(expr = M1.objvar, sense = pyo.maximize)
+        if model:
+            return M1
         M2.obj = pyo.Objective(expr = M2.objvar, sense = pyo.minimize)
         solver.solve(M1, tee = verbose)
         solver.solve(M2, tee = verbose)
