@@ -68,7 +68,7 @@ class Program:
             if p != 'objvar':
                 setattr(M, p, pyo.Var(bounds = (0,1)))
             else:
-                setattr(M, p, pyo.Var())
+                setattr(M, p, pyo.Var(bounds = (-1, 1)))
         # Next loop is not elegant, needs refactoring
         for i, c in enumerate(self.constraints):
             setattr(M, 'c' + str(i), 
