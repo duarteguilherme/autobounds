@@ -125,6 +125,15 @@ class causalProblem:
         """
         return [ (sign, list(x)) for x in self.Parser.parse(expr) ]
     
+    def set_ate(self, ind, dep, cond = ''):
+        """ Recipe for declaring ATEs"""
+        cond = '&' + cond if cond != '' else cond
+        query = self.query(f'{dep}({ind}=1)=1{cond}') + self.query(f'{dep}({ind}=0)=1{cond}', -1) 
+        if cond != '':
+            self.set_estimand(query, div = self.query(cond[1:]))
+        else:
+            self.set_estimand(query)
+    
     def write_program(self):
         """ It returns an object Program
         """
@@ -209,7 +218,7 @@ class causalProblem:
         """
         Input: list of tuples with constant and 
         statemenets. For example [(-1, ['X1111', 'Z1']), (2, ['X1111'])]
-
+    
         symbol argument indicates if constraint will be an equality 
         or inequality. The default parameter will be an equality
         """
@@ -225,7 +234,7 @@ class causalProblem:
         constraint = [ (x[0], x[1]) for x in constraint if x[0] != 0 ] + [ (1, [ symbol ] ) ]
         self.constraints.append(constraint)
     
-    def set_estimand(self,estimand, cond = [(1, ['1'])]):
+    def set_estimand(self,estimand, div = [(1, ['1'])]):
         """
         Input: an expression similar to a constraint
         This algorithm there will 
@@ -235,15 +244,11 @@ class causalProblem:
         is multiplied by objvar, according to the algebraic formula.
         P(Y|X) = P(Y,X)/P(X) = objvar, then P(Y,X) - P(X) * objvar = 0
         """
-        print(estimand)
-        estimand = [ i for i in estimand if i in cond ] if cond != [(1, ['1'])] else estimand
-        print('Now it is the second')
-        print(estimand)
-        for x in cond:
+        for x in div:
             if x[0] != 1:
                 raise Exception("Some value in conditional query was above 1. Check expression!")
         self.add_constraint(estimand + 
-                [ (-1, ['objvar'] + x[1] ) for x in cond ]  )
+                [ (-1, ['objvar'] + x[1] ) for x in div ]  )
     
     def check_indep(self, c):
         """
