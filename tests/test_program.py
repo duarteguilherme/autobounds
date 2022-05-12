@@ -2,7 +2,7 @@ from autobound.autobound.causalProblem import causalProblem
 from autobound.autobound.DAG import DAG
 import io
 
-def test_program_proxy():
+def test_program_parallel():
     dag = DAG()
     dag.from_structure("W -> X, W -> Y, W -> P, X -> Y", unob = "U")
     problem = causalProblem(dag)
@@ -19,7 +19,8 @@ def test_program_proxy():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-#    z.to_pip('/home/beta/test_iv.proxy')
+    z.run_pyomo('ipopt', parallel = True)
+    #    z.to_pip('/home/beta/test_iv.proxy')
 
 def test_program_iv():
     dag = DAG()

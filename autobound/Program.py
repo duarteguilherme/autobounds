@@ -1,7 +1,7 @@
 from functools import reduce
 import io 
 from copy import deepcopy
-
+from multiprocessing import Pool
 
 pyomo_symb = {
         '==': lambda a,b: a== b,
@@ -57,13 +57,15 @@ class Program:
         self.parameters = [ ]
         self.constraints = [ tuple() ]
     
-    def run_pyomo(self, solver_name = 'ipopt', model = False, verbose = True):
+    def run_pyomo(self, solver_name = 'ipopt', model = False, verbose = True, parallel = False):
         """ This method runs program directly in python using pyomo
         """
         import pyomo.environ as pyo
         from pyomo.opt import SolverFactory
         M = pyo.ConcreteModel()
         solver = pyo.SolverFactory(solver_name)
+        def solve(a): # Lambda does not work with multiprocessing
+            return solver.solve(a, tee = verbose)
         for p in self.parameters:
             if p != 'objvar':
                 setattr(M, p, pyo.Var(bounds = (0,1)))
@@ -82,6 +84,11 @@ class Program:
         if model:
             return M1
         M2.obj = pyo.Objective(expr = M2.objvar, sense = pyo.minimize)
+        if parallel:
+            with Pool(2) as p:
+                p.map(solve, [M1,M2])
+        else:
+            results = list(map(solve, [M1,M2]))
         solver.solve(M1, tee = verbose)
         solver.solve(M2, tee = verbose)
         lower_bound = pyo.value(M2.objvar)
