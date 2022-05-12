@@ -35,12 +35,19 @@ def test_check_constraints():
     assert (0.5, ['X00.Y00', '1']) in x.constraints[0]
 
 def test_conditional_estimand():
-    y = DAG()
-    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
-    x = causalProblem(y, {'X': 2})
-    z = Parser(y)
-    x.set_estimand(x.query('Y(X=1)=1') + x.query('Y(X=0)=1', -1), cond = x.query('X=0'))
-    x.query('X=0')
+y = DAG()
+y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+x = causalProblem(y, {'X': 2})
+z = Parser(y)
+x.constraints[0]
+test1 = x.query('Y(X=1)=1') + x.query('Y(X=0)=1', -1)
+test2 = x.query('X=0')
+[ i for i in test1 ]
+test2
+x.set_estimand(x.query('Y(X=1)=1&X=0') + x.query('Y(X=0)=1&X=0', -1))
+x.set_estimand(x.query('Y(X=1)=1') + x.query('Y(X=0)=1', -1), cond = x.query('X=0'))
+x.query('X=0')
+x.constraints[-1]
     assert x.constraints[-1] ==  [(1, ['X00.Y01']), (1, ['X01.Y01']), (1, ['X10.Y01']), (1, ['X11.Y01']), (-1, ['X00.Y10']), (-1, ['X01.Y10']), (-1, ['X10.Y10']), (-1, ['X11.Y10']), (-1, ['X00.Y00', 'Z0', 'objvar']), (-1, ['X00.Y00', 'Z1', 'objvar']), (-1, ['X00.Y01', 'Z0', 'objvar']), (-1, ['X00.Y01', 'Z1', 'objvar']), (-1, ['X00.Y10', 'Z0', 'objvar']), (-1, ['X00.Y10', 'Z1', 'objvar']), (-1, ['X00.Y11', 'Z0', 'objvar']), (-1, ['X00.Y11', 'Z1', 'objvar']), (-1, ['X01.Y00', 'Z0', 'objvar']), (-1, ['X01.Y01', 'Z0', 'objvar']), (-1, ['X01.Y10', 'Z0', 'objvar']), (-1, ['X01.Y11', 'Z0', 'objvar']), (-1, ['X10.Y00', 'Z1', 'objvar']), (-1, ['X10.Y01', 'Z1', 'objvar']), (-1, ['X10.Y10', 'Z1', 'objvar']), (-1, ['X10.Y11', 'Z1', 'objvar']), (1, ['=='])]
 
 def test_conditional_data():

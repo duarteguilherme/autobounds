@@ -235,6 +235,10 @@ class causalProblem:
         is multiplied by objvar, according to the algebraic formula.
         P(Y|X) = P(Y,X)/P(X) = objvar, then P(Y,X) - P(X) * objvar = 0
         """
+        print(estimand)
+        estimand = [ i for i in estimand if i in cond ] if cond != [(1, ['1'])] else estimand
+        print('Now it is the second')
+        print(estimand)
         for x in cond:
             if x[0] != 1:
                 raise Exception("Some value in conditional query was above 1. Check expression!")
