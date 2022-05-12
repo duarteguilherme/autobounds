@@ -1,125 +1,66 @@
-import pandas as pd 
+from .canonicalModel import canonicalModel
+from .DAG import DAG
+from .Parser import Parser
+from autobound.canonicalModel import canonicalModel
 from autobound.DAG import DAG
-from autobound.SCM import SCM
-from autobound.bounds import causalProgram
-from pyscipopt import quicksum
-from autobound.utils import *
-
-N = 10000 # Size of simulations 
-
-
-def unconfounded_simple_model():
-    """ it must return a dag and an estimand -- 
-    for instance the ate
-    Estimand exprs like 
-    { 'sign': -1,
-    'var': ('Y', 1),
-    'do': ('X', 0) }
-    (a,b,c) -> a is the sign of the expr, b is the variable,
-    and c is the value of this variable
-    """
-    dag = DAG()
-    dag.from_structure("X -> Y")
-    return (dag, prepare_ate('Y', 'X'))
-
-def confounded_simple_model():
-    dag = DAG()
-    dag.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
-    return (dag, prepare_ate('Y', 'X'))
-
-def balke_pearl():
-    dag = DAG()
-    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
-    return (dag, prepare_ate('Y', 'X'))
-
-def front_door():
-    dag = DAG()
-    dag.from_structure("Z -> X, X -> Y, U1 -> Z, U1 -> Y", unob = "U1")
-    return (dag, prepare_ate('Y', 'Z'))
-
-def napkin():
-    dag = DAG()
-    dag.from_structure("""W -> Z, Z -> X, X -> Y, Uxw -> X, U -> W, 
-            Uxw -> W,
-            U -> Y""", 
-        unob = "U,Uxw")
-    dag.find_c_components()
-    return (dag, prepare_ate('Y', 'X'))
-
-def selection_graph():
-    dag = DAG()
-    dag.from_structure("X -> Y, U -> X, U -> Y, Y -> S",
-            unob = "U")
-    return (dag, prepare_ate('Y', 'X'))
-
-
-def get_bound(dag, m, estimand, typeb = 'minimize'):
-    """ typeb must indicate the type of the bound.
-    There are two types: 'minimize' for lower bound
-    and 'maximize' for upper bound
-    """
-    program = causalProgram(typeb)
-    program.from_dag(dag)
-    program.add_prob_constraints()
-    program.add_indep_constraints()
-    program.program.setRealParam('limits/gap', 0.5)
-    introduce_prob_into_progr(program,
-    get_probability_from_model(m))
-    program.set_obj(parse_estimand(program, estimand))
-    program.program.writeProblem('/home/beta/check.cip')
-    program.program.optimize()
-    sol = program.program.getBestSol()
-    sol = program.program.getSolObjVal(sol)
-    return sol
+from autobound.Parser import Parser
+import numpy as np
+import pandas as pd
+from copy import deepcopy
+from itertools import product
+from functools import reduce
 
 
 
-def test_model(func):
-    dag, estimand = func()
-    m = simulate_model(dag)
-    get_probability_from_model(m, overlap = True)
-#    input("Continue?:")
-    lb = get_bound(dag, m, estimand, 'minimize')
-    ub = get_bound(dag, m, estimand, 'maximize')
-    estimand_value  = get_c_estimand_value(m, estimand)
-    return {'lb':lb,  'estimand': estimand_value, 'ub': ub}
+def test_simulation():
+dag = DAG()
+dag.from_structure('X -> Y, Z -> X, U -> Y, U -> X')
+x = Simulation()
 
 
-test_model(confounded_simple_model)
-test_model(unconfounded_simple_model)
-test_model(balke_pearl)
-test_model(front_door)
-test_model(napkin)
+class Simulation:
+    def __init__(self, dag, number_values = {}):
+        """
+        Simulation object has to have only one element. 
+            a) canonicalModel: a canonical model;
+            b) parameters: those are parameters of 
+            the canonical model. It will be represented 
+            as a dictionary and values.
+        It is optional if one wants to restrict the values of 
+        some canonical parameters to some numerical value. 
+        This is relevant when one wants to set the values for the ATE or 
+        other estimand.
+        """
+        self.canModel = canonicalModel()
+        self.dag = dag
+        self.canModel.from_dag(self.dag, number_values)
+        self.Parser = Parser(dag, number_values)
+        self.parameters = [ (1, x) for x in self.canModel.parameters ]
+        
+    def query(self, expr, sign = 1):
+        """ 
+        Important function:
+        This function is exactly like parse in Parser class.
+        However, here it returns a constraint structure.
+        So one can do causalProgram.query('Y(X=1)=1') in order 
+        to get P(Y(X=1)=1) constraint.
+        sign can be 1, if positive, or -1, if negative.
+        """
+        return [ (sign, list(x)) for x in self.Parser.parse(expr) ]
+    
+    def set_param_value(self, param_list):
+        if param_list is not list:
+            param_list = [ param_list ] 
+        for i in param_list:
+            if i is not dict:
+                raise Exception("Introduce a dictionary or a list of dictionaries. Format: {'R00':0.04}")
 
+    def convert
+    def simulate(self):
+        """  For all the parameters not yet determined,
+        it derives values for them utilizing uniform and 
+        dirichlet distributions
+        """
+        pass
 
-
-
-def get_bound_from_csv(dag, filename, estimand, typeb = 'minimize'):
-    """ typeb must indicate the type of the bound.
-    There are two types: 'minimize' for lower bound
-    and 'maximize' for upper bound
-    """
-    program = causalProgram(typeb)
-    program.from_dag(dag)
-    program.add_prob_constraints()
-    p_table = pd.read_csv(filename)
-    introduce_prob_into_progr(program,p_table)
-    program.set_obj(parse_estimand(program, estimand))
-    program.program.optimize()
-    sol = program.program.getBestSol()
-    sol = program.program.getSolObjVal(sol)
-    program.program.writeProblem('/home/beta/check.cip')
-    return sol
-
-
-
-def test_from_file(func, filename):
-    dag, estimand = func()
-    lb = get_bound_from_csv(dag, filename, estimand, 'minimize')
-    ub = get_bound_from_csv(dag, filename, estimand, 'maximize')
-    return {'lb':lb,  'ub': ub}
-
-
-filename = "selection_obsqty.csv"
-test_from_file(selection_graph, filename)
 
