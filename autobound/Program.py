@@ -13,6 +13,19 @@ pyomo_symb = {
 
 fix_symbol_pip = lambda a: '=' if a == '==' else a
 
+
+# Workaround in order to use lambda inside multiprocessing
+_func = None
+
+def worker_init(func):
+  global _func
+  _func = func
+  
+
+def worker(x):
+  return _func(x)
+
+
 def pip_join_expr(expr, params):
     """ 
     It gets an expr and if there is a coefficient, it 
@@ -64,8 +77,7 @@ class Program:
         from pyomo.opt import SolverFactory
         M = pyo.ConcreteModel()
         solver = pyo.SolverFactory(solver_name)
-        def solve(a): # Lambda does not work with multiprocessing
-            return solver.solve(a, tee = verbose)
+        solve = lambda a: solver.solve(a, tee = verbose)
         for p in self.parameters:
             if p != 'objvar':
                 setattr(M, p, pyo.Var(bounds = (0,1)))
@@ -85,8 +97,8 @@ class Program:
             return M1
         M2.obj = pyo.Objective(expr = M2.objvar, sense = pyo.minimize)
         if parallel:
-            with Pool(2) as p:
-                p.map(solve, [M1,M2])
+            with Pool(None, initializer=worker_init, initargs=(solve,)) as p:
+                p.map(worker, [M1,M2])
         else:
             results = list(map(solve, [M1,M2]))
         solver.solve(M1, tee = verbose)

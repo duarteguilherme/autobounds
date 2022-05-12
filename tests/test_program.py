@@ -19,7 +19,11 @@ def test_program_parallel():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-    z.run_pyomo('ipopt', parallel = True)
+    res = z.run_pyomo('ipopt', parallel = True)
+    assert res[0] < -0.08
+    assert res[0] < -0.08
+    assert res[1] > -0.1
+    assert res[1] > -0.1
     #    z.to_pip('/home/beta/test_iv.proxy')
 
 def test_program_iv():
