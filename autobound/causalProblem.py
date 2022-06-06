@@ -174,6 +174,28 @@ class causalProblem:
                 prob_constraints += [ (-1.0, ['1'])]
                 self.add_constraint(prob_constraints)
     
+    def load_data_experimental(self, filename, cond = [ ]):
+        """
+        Similar to load_data, but loads data according to the topological order
+        -------------------------------------------------------------------
+        Method: 
+        1) For each row of data, data is parsed and added as a constraint to the problem.
+        2) If conditioned data is present, arrangement for that are prepared
+        Extra: 
+        This method also implements one simplifier (first nodes simplifier).
+        If data regarding first nodes is complete, then numeric values are added directly.
+        """
+        datam = pd.read_csv(filename) 
+        cond_data = datam[cond] if len(cond) > 0 else [ ]
+        columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
+        datam = datam[columns]
+        column_rest = [x for x in columns if x!= 'prob']
+        grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
+        for i, row in grouped_data.iterrows():
+            self.add_constraint(get_constraint_from_row(row[column_rest], 
+                    row['prob'], self.Parser, cond_data, i))
+        simplify_first_nodes(self, self.dag, datam, cond)
+    
     def load_data(self, filename, cond = [ ]):
         """ It accepts a file 
         file must be csv. Columns will be added if they match parameters...
@@ -223,7 +245,6 @@ class causalProblem:
         or inequality. The default parameter will be an equality
         """
         # Sorting constraint
-#        constraint = [ (x[0], sorted1(x[1])) for x in constraint ] 
         constraint = [ [x[0], sorted1(x[1])] for x in constraint ] 
         expr_list = [ x[1]  # Removing duplicated
                 for n, x in enumerate(constraint) 
