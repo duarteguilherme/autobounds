@@ -1,7 +1,9 @@
 from functools import reduce
 import io 
 from copy import deepcopy
-from multiprocessing import Pool
+from multiprocessing import Process,Pool
+import time
+import sys
 
 pyomo_symb = {
         '==': lambda a,b: a== b,
@@ -25,6 +27,10 @@ def worker_init(func):
 def worker(x):
   return _func(x)
 
+def solve1(solver, model, sensetype, verbose):
+    sys.stdout = open('.' + sensetype + '.log', 'w', buffering = 1)
+    solver.solve(model, tee = verbose)
+ 
 
 def pip_join_expr(expr, params):
     """ 
@@ -53,6 +59,127 @@ def mult_params_pyomo(params, k, M):
     [ getattr(M, r) if r in params else float(r)  
         for r in k ])
 
+
+
+def parse_cbc_line(line, sign = 1):
+    """ 
+    Parses particular rows in parse_particular_bound
+    It returns dual, primal, and time.
+    It only works for cbc. Not for cbl
+
+    Due to a particularity of couenne, if one intends to get upper bound, 
+    sign must be -1
+    """
+    result_data = {
+            'primal': sign*float(line.split('on tree,')[1].split('best solution')[0].strip()),
+            'dual': sign*float(line.split('best possible')[1].split('(')[0].strip()),
+            'time': float(line.split('(')[-1].split('seconds')[0].strip())
+            }
+    return result_data
+    
+
+def parse_particular_bound(filename, n_bound):
+    """ Read any of ".lower.log" or
+    ".upper.log" and it returns 
+    data
+    """
+    sign = 1 if filename == ".lower.log" else -1
+    with open(filename) as f:
+        data = f.readlines()
+    datarows = [ x 
+            for x in data if x.strip().startswith('Cbc') and 'After' in x ]
+    datarows = [ parse_cbc_line(x, sign) 
+            for x in datarows ]
+    if len(datarows) > n_bound:
+        return (len(datarows), datarows[(n_bound-1):])
+    else:
+        return (n_bound, {})
+
+
+def get_final_bound(filename):
+    with open(filename,'r') as f: 
+        data = f.readlines()
+    sign = 1 if filename == ".lower.log" else -1
+    result = {}
+    result['primal'] = sign*float([ k for k in data if k.startswith('Upper bound:')][-1]
+            .split(':')[1].split('(')[0].strip())
+    result['dual'] = sign*float([ k for k in data if k.startswith('Lower bound:')][-1]
+            .split(':')[1].split('(')[0].strip())
+    result['time'] = float([ k for k in data if k.startswith('Total solve time')][-1]
+            .split(':')[1].split('s')[0].strip())
+    return result
+
+
+
+def check_process_end(p, filename):
+    with open(filename,'r') as f: 
+        data = f.readlines()
+    if any([x for x in data if '"Finished"' in x ]):
+        print("Problem is finished! Returning final values")
+        p.terminate()
+        return 1
+    if any([x for x in data if 'Problem infeasible' in x ]):
+        print("Problem is infeasible. Returning without solutions")
+        p.terminate()
+        return 0
+    else:
+        return -1
+
+
+
+def parse_bounds(p_lower, p_upper, epsilon = 0.01, theta = 0.01):
+    """ 
+    Read files ".lower.log" and ".upper.log" each 1000 miliseconds 
+    and retrieve data on dual and primal bounds.
+    Also, it returns sucessful or not
+    - Input: two multiprocessing processes, and thresholds for epsilon and theta
+    - Output: lower bound dict, upper bound dict, current_theta, current_epsilon or 
+    ( {}, {}, -1, -1 ) if it fails.
+    - States:
+        * n_upper = number of rows in upper data
+        * n_lower = number of rows in lower data
+    """
+    time.sleep(0.5)
+    total_lower,total_upper = [], []
+    n_lower, n_upper = 0,0
+    current_theta, current_epsilon = 9999, 9999
+    while True:
+        n_lower, partial_lower = parse_particular_bound('.lower.log', n_lower)
+        n_upper, partial_upper = parse_particular_bound('.upper.log', n_upper)
+        total_lower += partial_lower
+        total_upper += partial_upper
+        if len(partial_lower) > 0:
+            for i in partial_lower:
+                print(f"LOWER BOUND: # -- Primal: {i['primal']} / Dual: {i['dual']} / Time: {i['time']} ##")
+        if len(partial_upper) > 0:
+            for j in partial_upper:
+                print(f"UPPER BOUND: # -- Primal: {j['primal']} / Dual: {j['dual']} / Time: {j['time']} ##")
+        if len(total_lower) > 0 and len(total_upper) > 0:
+            current_theta = total_upper[-1]['dual'] - total_lower[-1]['dual']
+            current_epsilon = current_theta/abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) - 1
+            print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
+            if current_theta <  theta or current_epsilon < epsilon:
+                p_lower.terminate()
+                p_upper.terminate()
+                break
+        end_lower = check_process_end(p_lower, '.lower.log')
+        end_upper = check_process_end(p_upper, '.upper.log')
+        if end_lower != -1 and end_upper != -1:
+            break
+        time.sleep(0.1)
+    # Checking bounds if problem is finished
+    if end_lower == 1: 
+        i,j = get_final_bound('.lower.log'), get_final_bound('.upper.log')
+        current_theta = j['dual'] - i['dual']
+        current_epsilon = current_theta/abs(j['primal'] - i['primal']) - 1
+    else:
+        if end_lower == 0:
+            i, j, current_theta, current_epsilon = {}, {},-1,-1
+    i['end'] = end_lower
+    j['end'] = end_upper
+    return (i, j, current_theta, current_epsilon)
+    
+
 class Program:
     """ This class
     will state a optimization program
@@ -70,7 +197,39 @@ class Program:
         self.parameters = [ ]
         self.constraints = [ tuple() ]
     
-    def run_pyomo(self, solver_name = 'ipopt', model = False, verbose = True, parallel = False):
+    def run_couenne(self, verbose = True, epsilon = 0.01, theta = 0.01):
+        """ This method runs programs directly in python using pyomo and couenne
+        """
+        import pyomo.environ as pyo
+        from pyomo.opt import SolverFactory
+        M = pyo.ConcreteModel()
+        solver = pyo.SolverFactory('couenne')
+        for p in self.parameters:
+            if p != 'objvar':
+                setattr(M, p, pyo.Var(bounds = (0,1)))
+            else:
+                setattr(M, p, pyo.Var())
+        # Next loop is not elegant, needs refactoring
+        for i, c in enumerate(self.constraints):
+            setattr(M, 'c' + str(i), 
+                    pyo.Constraint(expr = 
+                        pyomo_symb[c[-1][0]](sum([ mult_params_pyomo(self.parameters, k, M ) for k in c[:-1] ]), 0)
+                    )
+            )
+        self.M_upper = deepcopy(M)
+        self.M_lower = deepcopy(M)
+        self.M_upper.obj = pyo.Objective(expr = self.M_upper.objvar, sense = pyo.maximize)
+        self.M_lower.obj = pyo.Objective(expr = self.M_lower.objvar, sense = pyo.minimize)
+        open('.lower.log','w').close()
+        open('.upper.log','w').close()
+        p_lower = Process(target=solve1, args=(solver, self.M_lower,'lower', verbose)) 
+        p_upper = Process(target=solve1, args=(solver, self.M_upper,'upper', verbose)) 
+        p_lower.start()
+        p_upper.start()
+        optim_data = parse_bounds(p_lower, p_upper, epsilon = epsilon, theta = theta)
+        return optim_data
+   
+    def run_pyomo(self, solver_name = 'ipopt', verbose = True, parallel = False):
         """ This method runs program directly in python using pyomo
         """
         import pyomo.environ as pyo
@@ -90,21 +249,19 @@ class Program:
                         pyomo_symb[c[-1][0]](sum([ mult_params_pyomo(self.parameters, k, M ) for k in c[:-1] ]), 0)
                     )
             )
-        M1 = deepcopy(M)
-        M2 = deepcopy(M)
-        M1.obj = pyo.Objective(expr = M1.objvar, sense = pyo.maximize)
-        if model:
-            return M1
-        M2.obj = pyo.Objective(expr = M2.objvar, sense = pyo.minimize)
+        self.M1 = deepcopy(M)
+        self.M2 = deepcopy(M)
+        self.M1.obj = pyo.Objective(expr = self.M1.objvar, sense = pyo.maximize)
+        self.M2.obj = pyo.Objective(expr = self.M2.objvar, sense = pyo.minimize)
         if parallel:
             with Pool(None, initializer=worker_init, initargs=(solve,)) as p:
-                p.map(worker, [M1,M2])
+                p.map(worker, [self.M1,self.M2])
         else:
-            results = list(map(solve, [M1,M2]))
-        solver.solve(M1, tee = verbose)
-        solver.solve(M2, tee = verbose)
-        lower_bound = pyo.value(M2.objvar)
-        upper_bound = pyo.value(M1.objvar)
+            results = list(map(solve, [self.M1,self.M2]))
+        solver.solve(self.M1, tee = verbose)
+        solver.solve(self.M2, tee = verbose)
+        lower_bound = pyo.value(self.M2.objvar)
+        upper_bound = pyo.value(self.M1.objvar)
         return (lower_bound, upper_bound)
    
     def to_obj_pyomo(self):
