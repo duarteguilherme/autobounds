@@ -127,6 +127,12 @@ def clean_irreducible_expr(expr):
     return (main_expr, do_expr)
 
 
+def get_funcs(parser, funcs, v, do_to_dict):
+    funcs_output = [ ]
+    for f in funcs:
+        for r in parser.filter_functions(v, do_to_dict(f[1])):
+            funcs_output.append( (r[0] + ',' + f[0], r[1] ) )
+    return funcs_output
 
  
 class Parser():
@@ -230,15 +236,36 @@ class Parser():
         # STEP 3 --- Run find_functions in order
         funcs = [ ('', dict([main_expr])) ]
         for v in top_order:
-            funcs = [ ( r[0] + ',' + f[0], r[1])  
-                    for f in funcs
-                    for r in self.filter_functions(v, do_to_dict(f[1]))   ]
+            funcs = get_funcs(self, funcs, v, do_to_dict)
+#        for v in top_order:
+#            print(v)
+#            funcs = [ ( r[0] + ',' + f[0], r[1])  
+#                    for f in funcs
+#                    for r in self.filter_functions(v, do_to_dict(f[1]))   ]
         funcs = [ [ k for k in x[0].split(',') if k!= '' ] for x in funcs ]
         # STEP 4 --- Separate parameters by c_components
         funcs = [ a for k in funcs for a in get_c_component(k, self.c_parameters) ]
         return funcs
     
     def parse(self, expr):
+        """
+        Input: complete expression, for example P(Y(x=1, W=0)=1&X(Z = 1)=0)
+        Output: a list of canonical expressions, representing this expr 
+        -----------------------------------------------------
+        Algorithm:
+            STEP 1) Separate expr into irreducible exprs
+            STEP 2) Run self.parse_irreducible_expr for each
+            STEP 3) Collect the interesection of those expressions
+        """
+        expr = expr.strip() 
+        expr = expr.replace('P(', '', 1)[:-1] if expr.startswith('P(') else expr
+        expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
+        exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
+        exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
+        exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
+        return sorted(exprs)
+    
+    def parse2(self, expr):
         """
         Input: complete expression, for example P(Y(x=1, W=0)=1&X(Z = 1)=0)
         Output: a list of canonical expressions, representing this expr 
