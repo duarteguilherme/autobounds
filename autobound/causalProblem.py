@@ -86,7 +86,7 @@ def get_constraint_from_row(row_data, row_prob, parser, cond = [ ], n = 0):
         return [( -1 * row_prob, [ i for i in k ]) 
                 for k in parser.parse('&'.join(query_cond)) ] + [ (1, [ i for i in x ]) 
                 for x in parser.parse('&'.join(query)) ]
-    return [( -1 * row_prob, [ '1' ])] + [ (1, [ i for i in x ]) 
+    return  [( -1 * row_prob, [ '1' ])] + [ (1, [ i for i in x ]) 
             for x in parser.parse('&'.join(query)) ]
 
 
@@ -174,9 +174,10 @@ class causalProblem:
                 prob_constraints += [ (-1.0, ['1'])]
                 self.add_constraint(prob_constraints)
     
-    def load_data_experimental(self, filename, cond = [ ]):
+    def load_data_experimental(self, filename, cond = [ ], do = [ ]):
         """
         Similar to load_data, but loads data according to the topological order
+        It can use load_data
         -------------------------------------------------------------------
         Method: 
         1) For each row of data, data is parsed and added as a constraint to the problem.
@@ -222,8 +223,12 @@ class causalProblem:
         column_rest = [x for x in columns if x!= 'prob']
         grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
         for i, row in grouped_data.iterrows():
-            self.add_constraint(get_constraint_from_row(row[column_rest], 
-                    row['prob'], self.Parser, cond_data, i))
+            self.add_constraint(
+                    get_constraint_from_row(row[column_rest], 
+                                            row['prob'], 
+                                            self.Parser, 
+                                            cond_data, 
+                                            i))
         simplify_first_nodes(self, self.dag, datam, cond)
     
     def set_p_to_zero(self, parameter_list):
