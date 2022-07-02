@@ -265,21 +265,3 @@ class Parser():
         exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
         return sorted(exprs)
     
-    def parse2(self, expr):
-        """
-        Input: complete expression, for example P(Y(x=1, W=0)=1&X(Z = 1)=0)
-        Output: a list of canonical expressions, representing this expr 
-        -----------------------------------------------------
-        Algorithm:
-            STEP 1) Separate expr into irreducible exprs
-            STEP 2) Run self.parse_irreducible_expr for each
-            STEP 3) Collect the interesection of those expressions
-        """
-        expr = expr.strip() 
-        expr = expr.replace('P(', '', 1)[:-1] if expr.startswith('P(') else expr
-        expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
-        exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
-        exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
-        exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
-        return sorted(exprs)
-
