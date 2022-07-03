@@ -30,6 +30,19 @@ def get_range_number_system(end, system):
     return [ str(convert_to_system(i, system)).zfill(digit_range) for i in range(end) ]
 
 
+def get_index(vec, number_values, total):
+    if len(vec) == 0:
+        return None
+    index = 0
+    r = total
+    for i, k in enumerate(vec):
+        r = r // number_values[i] 
+        index += k * r
+    return index
+
+
+def filter_params(ind, params, v):
+    return [ m for m in params if m[ind  + 1] == str(v[1]) ] 
 
 
 class canonicalModel():
@@ -50,15 +63,40 @@ class canonicalModel():
         self.parameters = list()
         self.iso_params = {}
     
-    def get_functions(self, v, parents):
+    def find_index(self, orde, value, ):
+        pass
+
+    def get_functions(self, v, data):
         """
+        INPUT: 1) v (target variable): [ 'V', 1] 
+        2) data: [['Y',1], ['X',0]]
+        OUTPUT: list of parameters satisfying those conditions
+
+        STEP 1: get all parameters from iso_params for letter v
+        STEP 2: for elements in data that are parents, get index of their presence in v params
+        STEP 3: filter params that satisfy v[1] in those index.
         Given parents in format
         [ [A, 1], [B,2] ]
         return all values of v that satisfy those rules
         """
-        parents = [ i for i in parents if i in self.dag.find_parents_no_u(v) ] 
+        params = self.iso_params[v[0]] # STEP 1
+        total = len(params[0]) - 1
+        parents = list(self.dag.find_parents_no_u(v[0]))
         parents.sort()
-        params = self.iso_params[v]
+        parents_data = { k[0]: k[1] for k in data }
+        parents_data_keys = parents_data.keys()
+        index_list = [ ]
+        for i in parents:
+            if i in parents_data_keys:
+                index_list.append([i, [ parents_data[i] ]])
+            else:
+                index_list.append([i, list(range(self.number_values[i])) ])
+#        index_list_pa = [ k[0] for k in index_list ] 
+        number_values = [ self.number_values[k[0]] for k in index_list ] 
+        index_list = list(product(*[ k[1] for k in index_list]))
+        for k in index_list:
+            params = filter_params(get_index(k,number_values,total), params, v)
+        return params
 
     def from_dag(self, dag, number_values = {}):
         """
@@ -106,6 +144,7 @@ class canonicalModel():
         c_comp = [ list(c) for c in c_comp ]
         list(map(lambda a: a.sort(), c_comp))
         c_comp.sort()
+        self.iso_params = { }
         for v in self.dag.V:
             # To find the number of possible functions
             # Find first the number of ordered pairs for the independent variables,
@@ -125,6 +164,9 @@ class canonicalModel():
                         )
                     )
                 )
+            self.iso_params[v] = [ v + i for i in 
+                    get_range_number_system(self.number_canonical_variables[v], 
+                    self.number_values[v]) ]
         for c in c_comp:
             self.parameters += list(
                     product(*[ [ x + a for a in get_range_number_system(
@@ -132,14 +174,7 @@ class canonicalModel():
                             self.number_values[x]) ]  for x in c ]
                         )
                     )
-        iso = self.parameters.copy()
         self.parameters = [ '.'.join(x) for x in self.parameters ]
         self.parameters = list(set(self.parameters)) # Removing duplicated els
         self.parameters.sort() # Sorting parameters
-        for j in iso:
-            for k in j:
-                try:
-                    self.iso_params[k[0]].append(k)
-                except:
-                    self.iso_params[k[0]] = [ k ]
 

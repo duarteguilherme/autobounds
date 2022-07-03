@@ -9,7 +9,6 @@ def test_fromdag():
     y = DAG()
     y.from_structure("Z -> Y, Z -> X, U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")
     x.from_dag(y, {'X': 3})
-    x.number_canonical_variables
     assert x.c_comp == set({frozenset({'Z'}), frozenset({'X', 'Y'})})
     assert x.number_parents == {'Z': 0, 'X': 1, 'Y': 2 }
     assert x.number_values == {'X': 3, 'Z': 2, 'Y': 2}
@@ -19,4 +18,11 @@ def test_fromdag():
     assert x.parameters[50] == 'X00.Y110010'
 
 
+
+def test_get_functions():
+    x = canonicalModel()
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U , Uy")
+    x.from_dag(y, {'Y': 3})
+    x.get_functions(['X',0], [['Z',1]]) == ['X00','X10']
 
