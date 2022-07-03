@@ -129,8 +129,10 @@ def clean_irreducible_expr(expr):
 
 def get_funcs(parser, funcs, v, do_to_dict):
     funcs_output = [ ]
+    print(f"Size of funcs is: {len(funcs)}")
     for f in funcs:
         for r in parser.filter_functions(v, do_to_dict(f[1])):
+#            print(r)
             funcs_output.append( (r[0] + ',' + f[0], r[1] ) )
     return funcs_output
 
@@ -198,6 +200,39 @@ class Parser():
         res_functions = [ ( x[0], {**dict(zip(parents ,x[1] )), **query} )   for x in res_functions ]  
         return res_functions
  
+    def parse_expr(self, expr):
+        """
+        It gets a whole expression in terms of a world and returns 
+        the equivalence in terms of a canonical model
+        """
+        main_expr, do_expr = clean_irreducible_expr(expr) 
+        dag = deepcopy(self.dag)
+        # do_expr requires two changes
+        # 1) dag truncation
+        # 2) dict substitution
+        # For example, if Z(X=1),
+        # then dag.truncate('X')
+        # and add2dict
+        dag.truncate(','.join([ x[0] for x in do_expr ]))
+        do_to_dict = add2dict({x[0]: x[1] for x in do_expr })
+        # STEP 1 --- Truncate Model if necessary 
+        # STEP 2 --- Check topological order of truncated DAG
+        top_order = dag.get_top_order()
+        top_order.reverse()
+        # STEP 3 --- Run find_functions in order
+        funcs = [ ('', dict([main_expr])) ]
+        for v in top_order:
+            funcs = get_funcs(self, funcs, v, do_to_dict)
+#        for v in top_order:
+#            print(v)
+#            funcs = [ ( r[0] + ',' + f[0], r[1])  
+#                    for f in funcs
+#                    for r in self.filter_functions(v, do_to_dict(f[1]))   ]
+        funcs = [ [ k for k in x[0].split(',') if k!= '' ] for x in funcs ]
+        # STEP 4 --- Separate parameters by c_components
+        funcs = [ a for k in funcs for a in get_c_component(k, self.c_parameters) ]
+        return funcs
+
     def parse_irreducible_expr(self, expr):
         """
         It gets an expr such as "Y(X=1, B=0)=1"
@@ -247,21 +282,49 @@ class Parser():
         funcs = [ a for k in funcs for a in get_c_component(k, self.c_parameters) ]
         return funcs
     
+    def collect_worlds(self, expr):
+        """ 
+        Gets an expr of variables and divide them according to different worlds.
+
+        For instance, X=1,Y=1,X(Z=1)=1...
+        X=1,Y=1 belong to the same worlds, but X(Z=1)=1 is a different world
+        """
+        exprs = expr.split('&')
+        dict_expr = {}
+        for i in exprs:
+            j = i.split(')')
+            if len(j) == 1:
+                try:
+                    dict_expr['()'].append(i)
+                except:
+                    dict_expr['()'] = [ i ]
+                continue
+            k = j[0].split('(')
+            try:
+                dict_expr[k[1]].append(k[0] + j[1])
+            except:
+                dict_expr[k[1]] = [ k[0] + j[1] ]
+        return dict_expr
+
+
     def parse(self, expr):
         """
         Input: complete expression, for example P(Y(x=1, W=0)=1&X(Z = 1)=0)
         Output: a list of canonical expressions, representing this expr 
         -----------------------------------------------------
         Algorithm:
-            STEP 1) Separate expr into irreducible exprs
-            STEP 2) Run self.parse_irreducible_expr for each
+            STEP 1) Separate expr into exprs, according to different worlds.
+            STEP 2) Run self.parse_expr on each of those exprs.
             STEP 3) Collect the interesection of those expressions
         """
         expr = expr.strip() 
         expr = expr.replace('P(', '', 1)[:-1] if expr.startswith('P(') else expr
         expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
-        exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
-        exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
-        exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
-        return sorted(exprs)
+        exprs = self.collect_worlds(expr)
+        exprs = [ self.parse_expr(i,j) for i,j in exprs.items() ]
+        return exprs
+#        exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
+#        exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
+#        exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
+#        return sorted(exprs)
     
