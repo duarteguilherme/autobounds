@@ -37,6 +37,9 @@ class canonicalModel():
     Class that can be related to a DAG, with 
     all the stratification of this DAG.
     Independent classes can be constructed, however.
+
+    self.parameters will indicate all the parameters separated by c components.
+    self.iso_params will indicate all the parameters separated by variables
     """
     def __init__(self):
         # Parameters will be modelled as lists. 
@@ -45,7 +48,18 @@ class canonicalModel():
         # The best way of solving this problem would be 
         # to use ordered sets rather than lists
         self.parameters = list()
+        self.iso_params = {}
     
+    def get_functions(self, v, parents):
+        """
+        Given parents in format
+        [ [A, 1], [B,2] ]
+        return all values of v that satisfy those rules
+        """
+        parents = [ i for i in parents if i in self.dag.find_parents_no_u(v) ] 
+        parents.sort()
+        params = self.iso_params[v]
+
     def from_dag(self, dag, number_values = {}):
         """
         This method acoplates a DAG to a causalProblem.
@@ -118,7 +132,14 @@ class canonicalModel():
                             self.number_values[x]) ]  for x in c ]
                         )
                     )
+        iso = self.parameters.copy()
         self.parameters = [ '.'.join(x) for x in self.parameters ]
         self.parameters = list(set(self.parameters)) # Removing duplicated els
         self.parameters.sort() # Sorting parameters
+        for j in iso:
+            for k in j:
+                try:
+                    self.iso_params[k[0]].append(k)
+                except:
+                    self.iso_params[k[0]] = [ k ]
 

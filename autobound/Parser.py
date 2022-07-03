@@ -5,6 +5,13 @@ from functools import reduce
 from copy import deepcopy
 
 
+def find_vs(v,dag):
+    ch = dag.find_children(v)
+    if len(ch) == 0:
+        return v
+    else: 
+        return [ find_vs(k, dag) for k in ch ]
+
 def intersect_tuple_parameters(par1, par2):
     """
     Get two parameters, for instance,
@@ -150,76 +157,48 @@ class Parser():
         self.c_parameters = deepcopy([ [ k 
             for k in self.canModel.parameters if list(c)[0] in k ] 
             for c in self.canModel.c_comp ] )
-                
-    def filter_functions(self, v, query, dag = None):
-        """
-        Input: 
-            a)a variable v of a particular model ,
-            b) a query with values to be filtered such as {'v': v, 'a': a, ...} 
-            c) An optional dag is necessary rather than self.dag.  This is due 
-            to the use of filter_functions with truncated models.
-        Output: a list with correct functions and 
-        possible parent values.
-        For instance, [('Y111111', {X:'0', Z:'0'} ), 
-                       ('Y111111', {X:'0', Z:'1'} )]
-        ----------------------------------------
-        Algorithm:
-        Step 0: If v is not refered in the query, return [('', query)]
-        Step 1: List all parents of v
-        Step 2: Get all canonical variables with respect to v. Call this list functions
-        Step 3: Filter those functions with respect to all values in the query
-            a) transform parameters to a matrix according to alphanumeric order of parents;
-            b) return indexes for those with 'V' == v
-            c) For those indexes, iterate over parents that are in the query
-            and filter those where PA == pa
-        """
-        canModel = deepcopy(self.canModel)
-        if dag is None:
-            dag = self.dag
-        if v not in query.keys():
-            return [('', query)]
-        parents = list(dag.find_parents_no_u(v))
-        parents.sort()
-        # Select relevant canonical variables
-        functions = list(set([ k for x in canModel.parameters for k in x.split('.') ]))
-        functions = [ x for x in functions if x.startswith(v) ] 
-        functions = [ x.replace(v, '',1) for x in functions if str(query[v]) in x ]
-        pa_dimensions = tuple(canModel.number_values[k] for k in parents)
-        # res_functions is named differently from functions to 
-        # emphasize that we are returning not only functions, but also 
-        # new queries with respect to parents
-        pa_order = { pa: index for index, pa in enumerate(parents) if pa in query.keys() }
-        res_functions = [ (v + x, y)
-            for x in functions 
-            for y in search_value(x, str(query[v]), pa_dimensions).tolist() 
-            ] 
-        for pa,order in pa_order.items():
-            res_functions = [ k for k in res_functions 
-                    if k[1][order] == query[pa] ] 
-#        res_functions = [ ( x[0], dict(zip(parents ,x[1] )) | query )   for x in res_functions ]  
-        res_functions = [ ( x[0], {**dict(zip(parents ,x[1] )), **query} )   for x in res_functions ]  
-        return res_functions
- 
-    def parse_expr(self, expr):
+        
+    def parse_expr(self, world, expr):
         """
         It gets a whole expression in terms of a world and returns 
         the equivalence in terms of a canonical model
         """
-        main_expr, do_expr = clean_irreducible_expr(expr) 
         dag = deepcopy(self.dag)
+        do_expr = [ i.split('=') for i in world.split(',') ]
+        do_var = [ i[0]  for i in do_expr ] 
+        main_expr = [ i.split('=') for i in expr if i[0] not in do_var ]
+        main_var = [ i[0] for i in main_expr ] 
+        print(main_expr)
         # do_expr requires two changes
         # 1) dag truncation
         # 2) dict substitution
         # For example, if Z(X=1),
         # then dag.truncate('X')
-        # and add2dict
         dag.truncate(','.join([ x[0] for x in do_expr ]))
-        do_to_dict = add2dict({x[0]: x[1] for x in do_expr })
         # STEP 1 --- Truncate Model if necessary 
+        # and remove any variable related to do from main_expr
         # STEP 2 --- Check topological order of truncated DAG
+        # just to see who is first in main_var 
+        # Get recursively every children
         top_order = dag.get_top_order()
-        top_order.reverse()
+        for v in top_order:
+            if v in main_var:
+                first_v = v
+                break
+        funcs = {}
+        # Need a recursive function to get parameters from children
+        print(f"First v: {first_v}")
+        all_children = [first_v ] + list(set(find_vs(first_v, dag)))
         # STEP 3 --- Run find_functions in order
+        for v in all_children:
+            self.canModel.get_functions(v, main_expr)
+        # STEP 4 --- Join parameters according to c-components
+#        for v in top_order:
+#            if v not in main_var:
+#                funcs[v] = self.canModel.iso_params[v]
+#            else:
+#                funcs[v] = self.canModel.get_values(v, main_expr)
+        return ""
         funcs = [ ('', dict([main_expr])) ]
         for v in top_order:
             funcs = get_funcs(self, funcs, v, do_to_dict)
@@ -295,9 +274,9 @@ class Parser():
             j = i.split(')')
             if len(j) == 1:
                 try:
-                    dict_expr['()'].append(i)
+                    dict_expr[''].append(i)
                 except:
-                    dict_expr['()'] = [ i ]
+                    dict_expr[''] = [ i ]
                 continue
             k = j[0].split('(')
             try:
