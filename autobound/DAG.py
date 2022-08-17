@@ -64,6 +64,14 @@ class DAG:
         """
         return set([ x[1] for x in self.E if x[0] == v.strip() ])
     
+    def find_descendents(self, v_set):
+        """
+        Given a list of variables, find all the descedents
+
+        Not the most efficient algorithm
+        """
+        return set([ j for i in list(set(v_set)) for j in self.find_children(i) ] )
+    
     def find_paths(self, v1, v2):
         """ 
         Find all paths from v1 to v2
