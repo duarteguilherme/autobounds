@@ -22,12 +22,15 @@ def test_dag_find_algorithms():
     x = DAG()
     x.from_structure("U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")
     y = DAG()
-    y.from_structure("V -> Z, V -> X, Z -> X, W -> Y, Z -> W, Z -> Y, X -> Y, U -> X, U -> Y", unob = "U")
+    y.from_structure("V -> Z, V -> X, Z -> X, W -> Y, Z -> W, X -> Y, U -> X, U -> Y", unob = "U")
+    z = DAG()
+    z.from_structure("A -> B, B -> C, C -> D, X -> Y, Y -> Z, Z -> D")
     assert x.find_parents('Y') == set(('Uy','X','U'))
     assert x.find_children('X') == set(('Y'))
     assert x.find_roots() == set(('Y'))
     assert x.find_first_nodes() == set(('X'))
     assert y.find_descendents(['Z']) == set(('X','W','Y'))
+    assert z.find_ancestors(['D']) == set(('A','B','C', 'X', 'Y', 'Z'))
 
 def test_dag_top_order():
     x = DAG()

@@ -64,13 +64,49 @@ class DAG:
         """
         return set([ x[1] for x in self.E if x[0] == v.strip() ])
     
-    def find_descendents(self, v_set):
+    def find_descendents(self, v_set, no_v = True):
         """
-        Given a list of variables, find all the descedents
+        Given a list of variables, find all the descendents
 
-        Not the most efficient algorithm
+        If no_v is set to True, method returns exclusive descendents, i.e., 
+        all v' != v that are descendents of v 
+
+        Not using recursion
         """
-        return set([ j for i in list(set(v_set)) for j in self.find_children(i) ] )
+        desc = list(v_set)
+        count = 0
+        while count < len(desc):
+            for j in self.find_children(desc[count]):
+                if j not in desc:
+                    desc.append(j)
+            count += 1
+        desc = set(desc)
+        if no_v:
+            for i in list(v_set):
+                desc.remove(i)
+        return desc
+    
+    def find_ancestors(self, v_set, no_v = True):
+        """
+        Given a list of variables, find all the ancestors
+
+        If no_v is set to True, method returns exclusive ancestors, i.e., 
+        all v' != v that are ancestors of v 
+
+        Not using recursion
+        """
+        ancestors = list(v_set)
+        count = 0
+        while count < len(ancestors):
+            for j in self.find_parents_no_u(ancestors[count]):
+                if j not in ancestors:
+                    ancestors.append(j)
+            count += 1
+        ancestors = set(ancestors)
+        if no_v:
+            for i in list(v_set):
+                ancestors.remove(i)
+        return ancestors
     
     def find_paths(self, v1, v2):
         """ 
