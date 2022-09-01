@@ -68,6 +68,12 @@ class canonicalModel():
 
     def get_functions(self, v, data):
         """
+        The purpose of this method is very simple.
+        Suppose you want to know all the functions causing V = 1,
+        and you have some data about some of X's parents, 
+        for instance, Y=1, X=0. This method will return all the functions 
+        allowing this transformation.
+
         INPUT: 1) v (target variable): [ 'V', 1] 
         2) data: [['Y',1], ['X',0]]
         OUTPUT: list of parameters satisfying those conditions
@@ -82,6 +88,9 @@ class canonicalModel():
         params = self.iso_params[v[0]] # STEP 1
         total = len(params[0]) - 1
         parents = list(self.dag.find_parents_no_u(v[0]))
+        if len(parents) == 0: # If there are no parents, so v returns v
+            v[1] = str(v[1])
+            return ''.join(v)
         parents.sort()
         parents_data = { k[0]: k[1] for k in data }
         parents_data_keys = parents_data.keys()

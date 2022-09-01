@@ -24,5 +24,11 @@ def test_get_functions():
     y = DAG()
     y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U , Uy")
     x.from_dag(y, {'Y': 3})
+    dag = DAG()
+    dag.from_structure("V -> Z, V -> X, Z -> X, Z -> W, Z -> Y, W -> Y, X -> Y, U -> X, U -> Y", unob = "U")
+    k = canonicalModel()
+    k.from_dag(dag)
     x.get_functions(['X',0], [['Z',1]]) == ['X00','X10']
+    k.get_functions(['V',0], [[]])  == ['V0']
+    
 
