@@ -197,7 +197,7 @@ class causalProblem:
                     row['prob'], self.Parser, cond_data, i))
         simplify_first_nodes(self, self.dag, datam, cond)
     
-    def load_data(self, filename, cond = [ ]):
+    def load_data(self, filename, cond = [ ], optimize = True):
         """ It accepts a file 
         file must be csv. Columns will be added if they match parameters...
         Column prob must indicate probability.
@@ -229,7 +229,8 @@ class causalProblem:
                                             self.Parser, 
                                             cond_data, 
                                             i))
-        simplify_first_nodes(self, self.dag, datam, cond)
+        if optimize:
+            simplify_first_nodes(self, self.dag, datam, cond)
     
     def set_p_to_zero(self, parameter_list):
         """

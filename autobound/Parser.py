@@ -162,29 +162,47 @@ class Parser():
         """
         It gets a whole expression in terms of a world and returns 
         the equivalence in terms of a canonical model
+
+        Step 1) If there is intervention, original model must be truncated.
+        For instance, a graph with Z -> X -> Y, with do(X = 1), 
+        we must have a DAG with X forced to be 1. 
+
+        Step 2) From the expression, select all relevant variables. 
+        Model will have to include all those variables, as well as 
+        their ancestors. 
+        For instance, for a graphg Z -> X -> Y, if we query P(X = 1),
+        we will have to select X and Z. Y can be discarded.
+        They have to be put in topological order.
+
+        Step 3) 
         """
         dag = deepcopy(self.dag)
+        # STEP 1 -- truncate and remove do vars from main
         do_expr = [ i.split('=') for i in world.split(',') ]
         do_var = [ i[0]  for i in do_expr ] 
         main_expr = [ i.split('=') for i in expr if i[0] not in do_var ]
         main_var = [ i[0] for i in main_expr ] 
-        print(main_expr)
-        # do_expr requires two changes
-        # 1) dag truncation
-        # 2) dict substitution
-        # For example, if Z(X=1),
-        # then dag.truncate('X')
         dag.truncate(','.join([ x[0] for x in do_expr ]))
-        # STEP 1 --- Truncate Model if necessary 
-        # and remove any variable related to do from main_expr
-        # STEP 2 --- Check topological order of truncated DAG
-        # just to see who is first in main_var 
-        # Get recursively every children
-        top_order = dag.get_top_order()
-        for v in top_order:
-            if v in main_var:
-                first_v = v
-                break
+        
+        # STEP 2 --- Get variable and its ancestors in topological order
+        ancestors = list(dag.find_ancestors(main_var, no_v = False))
+        all_var = [ i for i in dag.get_top_order() if i in ancestors ]
+
+        # STEP 3 --  
+        param_dict = {}
+        can_prob = [ ]
+        for i in all_var:
+            if i in main_var:
+                pass
+            else:
+                for j in range(self.canModel.number_values[i]):
+                    print(i)
+                    print(j)
+                    print(main_expr)
+                    input("")
+#                    for k in self.canModel.get_functions([i, j], main_expr):
+#                        print(f'k = {k} \n')
+#                        pass
         funcs = {}
         # Need a recursive function to get parameters from children
         print(f"First v: {first_v}")
