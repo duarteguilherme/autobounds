@@ -90,7 +90,7 @@ class canonicalModel():
         parents = list(self.dag.find_parents_no_u(v[0]))
         if len(parents) == 0: # If there are no parents, so v returns v
             v[1] = str(v[1])
-            return ''.join(v)
+            return [''.join(v)]
         parents.sort()
         parents_data = { k[0]: k[1] for k in data }
         parents_data_keys = parents_data.keys()
