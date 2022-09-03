@@ -175,7 +175,6 @@ class Parser():
         main_expr = [ i.split('=') for i in expr if i[0] not in do_var ]
         main_var = [ i[0] for i in main_expr ] 
         dag.truncate(','.join([ x[0] for x in do_expr ]))
-        
         # STEP 2 --- Get variable and its ancestors in topological order
         ancestors = list(dag.find_ancestors(main_var, no_v = False))
         all_var = [ i for i in dag.get_top_order() if i in ancestors ]
@@ -196,7 +195,7 @@ class Parser():
                 for j in can_prob:
                     can_prob_next.append(
                             (
-                            j[0] + var_entry,
+                            j[0] + [ var_entry ],
                             j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0]) ]
                             ))
                 can_prob = can_prob_next
@@ -258,8 +257,6 @@ class Parser():
         expr = expr.replace('P(', '', 1)[:-1] if expr.startswith('P(') else expr
         expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
         exprs = self.collect_worlds(expr)
-        print(exprs)
-        input("")
         exprs = [ self.parse_expr(i,j) for i,j in exprs.items() ]
         exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
         exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''

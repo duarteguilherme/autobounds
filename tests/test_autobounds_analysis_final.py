@@ -20,6 +20,7 @@ def test_parse_expr():
 #    print(test_p.parse('P(Z=1)'))
 #    print(test_p.parse('P(Y(X=1)=1)'))
     print(test_p.parse('P(X=1&Y=1)'))
+#    print(test_p.parse('P(Y=1)'))
 
 def test_collect_worlds():
     dag = DAG()

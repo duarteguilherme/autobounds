@@ -30,5 +30,6 @@ def test_get_functions():
     k.from_dag(dag)
     assert x.get_functions(['X',0], [['Z',1]]) == ['X00','X10']
     assert k.get_functions(['V',0], [[]])  == ['V0']
+    assert k.get_functions(['Z',0], [['V', 0]])  == ['Z00','Z01']
     
 
