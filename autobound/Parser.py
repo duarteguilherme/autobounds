@@ -5,6 +5,20 @@ from functools import reduce
 from copy import deepcopy
 
 
+
+#def force_do(do_expr, data):
+#    """ Inside parse_expr method,
+#    when one calls get_functions, 
+#    force_do sets values of do_expr inside data
+#    """
+#    if len(do_expr) == 0:
+#        return data
+#    for i in do_expr:
+#        for j in data:
+#            if j[0] == i[0]:
+                
+
+
 def find_vs(v,dag):
     ch = dag.find_children(v)
     if len(ch) == 0:
@@ -171,6 +185,7 @@ class Parser():
         dag = deepcopy(self.dag)
         # STEP 1 -- truncate and remove do vars from main
         do_expr = [ i.split('=') for i in world.split(',') ]
+        do_expr = [ [i[0], int(i[1]) ]for i in do_expr ]
         do_var = [ i[0]  for i in do_expr ] 
         main_expr = [ i.split('=') for i in expr if i[0] not in do_var ]
         main_var = [ i[0] for i in main_expr ] 
@@ -186,6 +201,9 @@ class Parser():
         # if we are getting the functions from X to Y, we need to remember to include 
         # data for each piece of Z (1 or 0, if binary).
         # The second element is the list of parameters until that moment.
+        #
+        # An important detail of this step is that data for get_functions must be forced 
+        # to include variables and values of do.
         can_prob = [ ([], [] ) ]
         for i in all_var:
             can_prob_next = [ ]
@@ -196,7 +214,7 @@ class Parser():
                     can_prob_next.append(
                             (
                             j[0] + [ var_entry ],
-                            j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0]) ]
+                            j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0] + do_expr) ]
                             ))
                 can_prob = can_prob_next
             else:
@@ -206,7 +224,7 @@ class Parser():
                         can_prob_next.append(
                                 (
                                 j[0] + [ var_entry],
-                                j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0]) ]
+                                j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0] + do_expr) ]
                                 ))
                 can_prob = can_prob_next
         
