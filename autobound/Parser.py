@@ -185,10 +185,15 @@ class Parser():
         dag = deepcopy(self.dag)
         # STEP 1 -- truncate and remove do vars from main
         do_expr = [ i.split('=') for i in world.split(',') ]
-        do_expr = [ [i[0], int(i[1]) ]for i in do_expr ]
+        if do_expr != [['']]: # Clean do_expr 
+            do_expr = [ [i[0], int(i[1]) ]for i in do_expr ]
+        else:
+            do_expr = list()
         do_var = [ i[0]  for i in do_expr ] 
         main_expr = [ i.split('=') for i in expr if i[0] not in do_var ]
         main_var = [ i[0] for i in main_expr ] 
+        if  len(main_var) > len(set(main_var)): # Check if one is querying intersection such as Y = 1 and Y = 0
+                return [] 
         dag.truncate(','.join([ x[0] for x in do_expr ]))
         # STEP 2 --- Get variable and its ancestors in topological order
         ancestors = list(dag.find_ancestors(main_var, no_v = False))
@@ -274,11 +279,10 @@ class Parser():
         expr = expr.strip() 
         expr = expr.replace('P(', '', 1)[:-1] if expr.startswith('P(') else expr
         expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
+        expr = expr.replace(' ','')
         exprs = self.collect_worlds(expr)
         exprs = [ self.parse_expr(i,j) for i,j in exprs.items() ]
         exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
         exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
         return sorted(exprs)
-        return exprs
-#        exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
     
