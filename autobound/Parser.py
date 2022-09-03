@@ -134,14 +134,6 @@ def clean_irreducible_expr(expr):
     return (main_expr, do_expr)
 
 
-def get_funcs(parser, funcs, v, do_to_dict):
-    funcs_output = [ ]
-    print(f"Size of funcs is: {len(funcs)}")
-    for f in funcs:
-        for r in parser.filter_functions(v, do_to_dict(f[1])):
-#            print(r)
-            funcs_output.append( (r[0] + ',' + f[0], r[1] ) )
-    return funcs_output
 
  
 class Parser():
@@ -166,14 +158,14 @@ class Parser():
         Step 1) If there is intervention, original model must be truncated.
         For instance, a graph with Z -> X -> Y, with do(X = 1), 
         we must have a DAG with X forced to be 1. 
-
+        
         Step 2) From the expression, select all relevant variables. 
         Model will have to include all those variables, as well as 
         their ancestors. 
         For instance, for a graphg Z -> X -> Y, if we query P(X = 1),
         we will have to select X and Z. Y can be discarded.
         They have to be put in topological order.
-
+        
         Step 3) 
         """
         dag = deepcopy(self.dag)
@@ -187,96 +179,44 @@ class Parser():
         # STEP 2 --- Get variable and its ancestors in topological order
         ancestors = list(dag.find_ancestors(main_var, no_v = False))
         all_var = [ i for i in dag.get_top_order() if i in ancestors ]
-
-        # STEP 3 --  
-        param_dict = {}
-        can_prob = [ ]
+        
+        # STEP 3 -- Translate from prob to can_prob
+        # can_prob will be list of tuples. The first element of the tuple 
+        # is a list with data including all the values of variables before.
+        # For instance, for Z -> X -> Y,
+        # if we are getting the functions from X to Y, we need to remember to include 
+        # data for each piece of Z (1 or 0, if binary).
+        # The second element is the list of parameters until that moment.
+        can_prob = [ ([], [] ) ]
         for i in all_var:
+            can_prob_next = [ ]
             if i in main_var:
-                pass
+                var_entry = [ b for b in main_expr if b[0] == i ][0]
+                var_entry[1] = int(var_entry[1])
+                for j in can_prob:
+                    can_prob_next.append(
+                            (
+                            j[0] + var_entry,
+                            j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0]) ]
+                            ))
+                can_prob = can_prob_next
             else:
-                for j in range(self.canModel.number_values[i]):
-                    print(i)
-                    print(j)
-                    print(main_expr)
-                    input("")
-#                    for k in self.canModel.get_functions([i, j], main_expr):
-#                        print(f'k = {k} \n')
-#                        pass
-        funcs = {}
-        # Need a recursive function to get parameters from children
-        print(f"First v: {first_v}")
-        all_children = [first_v ] + list(set(find_vs(first_v, dag)))
-        # STEP 3 --- Run find_functions in order
-        for v in all_children:
-            self.canModel.get_functions(v, main_expr)
-        # STEP 4 --- Join parameters according to c-components
-#        for v in top_order:
-#            if v not in main_var:
-#                funcs[v] = self.canModel.iso_params[v]
-#            else:
-#                funcs[v] = self.canModel.get_values(v, main_expr)
-        return ""
-        funcs = [ ('', dict([main_expr])) ]
-        for v in top_order:
-            funcs = get_funcs(self, funcs, v, do_to_dict)
-#        for v in top_order:
-#            print(v)
-#            funcs = [ ( r[0] + ',' + f[0], r[1])  
-#                    for f in funcs
-#                    for r in self.filter_functions(v, do_to_dict(f[1]))   ]
-        funcs = [ [ k for k in x[0].split(',') if k!= '' ] for x in funcs ]
-        # STEP 4 --- Separate parameters by c_components
-        funcs = [ a for k in funcs for a in get_c_component(k, self.c_parameters) ]
-        return funcs
-
-    def parse_irreducible_expr(self, expr):
-        """
-        It gets an expr such as "Y(X=1, B=0)=1"
-        and returns an expresion in terms of canonical model variables
-        The procedure is to separate which is the main_var (Y) and its value (1).
-        Then, one has to parse all the intervention variables "X=1, B=0".
-        It's possible to have empty interventions, for instance, "Y=1"
-        Algorithm:
-            INPUT: irreducible expression, DAG, and a canModel
-        1) Put all variables in descendent topological order and 
-        find the first referred in the expression.
-         EXAMPLE: A -> B -> Y -> Z, A -> Y, X -> B -> Z, and  (Y=1, B=1).
-        Reverse topological order is: Z, Y, B, X, A. It will start with Z. 
-        But Z is not contained in expr, so the first will be Y.
-        2) For v in V (starting in the first for the reverse topological order),
-        OUTPUT: a list of canonical expressions, representing this irreducible expr
-        ----------------------------------------------------------------
-        Note: There is a difference between irreducible and parse_expr, in general.
-      parse_expr will accept condiitonal and joint probability expressions, such 
-        as P(Y(X=1)=1, A(B=0)=1 | K(B=1) = 0, A(Y=0) = 1)
-        """
-        main_expr, do_expr = clean_irreducible_expr(expr) 
-        dag = deepcopy(self.dag)
-        # do_expr requires two changes
-        # 1) dag truncation
-        # 2) dict substitution
-        # For example, if Z(X=1),
-        # then dag.truncate('X')
-        # and add2dict
-        dag.truncate(','.join([ x[0] for x in do_expr ]))
-        do_to_dict = add2dict({x[0]: x[1] for x in do_expr })
-        # STEP 1 --- Truncate Model if necessary 
-        # STEP 2 --- Check topological order of truncated DAG
-        top_order = dag.get_top_order()
-        top_order.reverse()
-        # STEP 3 --- Run find_functions in order
-        funcs = [ ('', dict([main_expr])) ]
-        for v in top_order:
-            funcs = get_funcs(self, funcs, v, do_to_dict)
-#        for v in top_order:
-#            print(v)
-#            funcs = [ ( r[0] + ',' + f[0], r[1])  
-#                    for f in funcs
-#                    for r in self.filter_functions(v, do_to_dict(f[1]))   ]
-        funcs = [ [ k for k in x[0].split(',') if k!= '' ] for x in funcs ]
-        # STEP 4 --- Separate parameters by c_components
-        funcs = [ a for k in funcs for a in get_c_component(k, self.c_parameters) ]
+                for m in range(self.canModel.number_values[i]):
+                    for j in can_prob:
+                        var_entry = [i, m ]
+                        can_prob_next.append(
+                                (
+                                j[0] + [ var_entry],
+                                j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0]) ]
+                                ))
+                can_prob = can_prob_next
+        
+        # STEP 3.5 -- Get complete list of parameters
+        can_param = [ list(product(*x[1])) for x in can_prob ] 
+        can_param = [ j for i in can_param for j in i ]  
+        
+        # STEP 4 --- From parameters get c-components
+        funcs = [ a for k in can_param for a in get_c_component(list(k), self.c_parameters) ]
         return funcs
     
     def collect_worlds(self, expr):
@@ -318,10 +258,12 @@ class Parser():
         expr = expr.replace('P(', '', 1)[:-1] if expr.startswith('P(') else expr
         expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
         exprs = self.collect_worlds(expr)
+        print(exprs)
+        input("")
         exprs = [ self.parse_expr(i,j) for i,j in exprs.items() ]
+        exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
+        exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
+        return sorted(exprs)
         return exprs
 #        exprs = [ self.parse_irreducible_expr(x.strip()) for x in expr.split('&')]
-#        exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
-#        exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
-#        return sorted(exprs)
     

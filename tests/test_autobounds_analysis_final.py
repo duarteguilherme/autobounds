@@ -14,9 +14,12 @@ from autobound.autobound.Parser import Parser
 
 def test_parse_expr():
     dag = DAG()
-    dag.from_structure("V -> Z, V -> X, Z -> X, Z -> W, Z -> Y, W -> Y, X -> Y, U -> X, U -> Y", unob = "U")
+#    dag.from_structure("V -> Z, V -> X, Z -> X, Z -> W, Z -> Y, W -> Y, X -> Y, U -> X, U -> Y", unob = "U")
+    dag.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
     test_p = Parser(dag)
-    test_p.parse('P(X=1)')
+#    print(test_p.parse('P(Z=1)'))
+#    print(test_p.parse('P(Y(X=1)=1)'))
+    print(test_p.parse('P(X=1&Y=1)'))
 
 def test_collect_worlds():
     dag = DAG()
