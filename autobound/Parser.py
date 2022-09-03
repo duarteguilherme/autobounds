@@ -6,18 +6,6 @@ from copy import deepcopy
 
 
 
-#def force_do(do_expr, data):
-#    """ Inside parse_expr method,
-#    when one calls get_functions, 
-#    force_do sets values of do_expr inside data
-#    """
-#    if len(do_expr) == 0:
-#        return data
-#    for i in do_expr:
-#        for j in data:
-#            if j[0] == i[0]:
-                
-
 
 def find_vs(v,dag):
     ch = dag.find_children(v)
