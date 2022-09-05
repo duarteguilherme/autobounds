@@ -1,4 +1,5 @@
 from .canonicalModel import canonicalModel
+from .Query import Query
 from .Program import Program
 from .DAG import DAG
 from .Parser import Parser
@@ -123,7 +124,7 @@ class causalProblem:
         to get P(Y(X=1)=1) constraint.
         sign can be 1, if positive, or -1, if negative.
         """
-        return [ (sign, list(x)) for x in self.Parser.parse(expr) ]
+        return Query([ (sign, list(x)) for x in self.Parser.parse(expr) ])
     
     def set_ate(self, ind, dep, cond = ''):
         """ Recipe for declaring ATEs"""
