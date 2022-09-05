@@ -9,7 +9,7 @@ def test_query():
     x = causalProblem(y, {'X': 2})
     z = Parser(y)
     print(x.query('Y=1') + x.query('Y=0'))
-    print(x.query('Y=1') - x.query('Y=0'))
+    assert x.query('Y=1') + x.query('Y=0', -1) == x.query('Y=1') - x.query('Y=0')
 #    x.set_estimand(x.query('Y(X=1)=1&X=0') + x.query('Y(X=0)=1&X=0', -1), div = x.query('X=0'))
 
 
