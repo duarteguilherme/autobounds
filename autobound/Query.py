@@ -22,7 +22,7 @@ def sorted1(list1):
 class Query():
     def __init__(self, lst):
         self._lst = lst
-
+    
     def __getitem__(self, item):
         return self._lst[item]
     
@@ -35,14 +35,17 @@ class Query():
     def __add__(self, query2):
         lst = self._lst + query2._lst
         return clean_query(Query(lst))
-
+    
     def __sub__(self, query2):
         lst2 = []
         for i in query2._lst.copy():
             lst2.append( (i[0] * -1, i[1]))
         lst = self._lst + lst2
         return clean_query(Query(lst))
-
+    
+    def clean(self):
+        self._lst = clean_query(self._lst)
+    
     def __mul__(self, query2):
         pass
 #        lst2 = query2._lst.copy()
