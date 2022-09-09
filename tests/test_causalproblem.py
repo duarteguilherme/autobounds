@@ -1,5 +1,6 @@
 from autobound.autobound.DAG import DAG
 from autobound.autobound.causalProblem import *
+from autobound.autobound.Query import Query, clean_query
 import io
 from copy import deepcopy
 
@@ -39,17 +40,18 @@ def test_set_ate():
     y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
     x = causalProblem(y, {'X': 2})
     z = Parser(y)
-    x.set_estimand(x.query('Y(X=1)=1&X=0') + x.query('Y(X=0)=1&X=0', -1), div = x.query('X=0'))
+    x.set_estimand(x.query('Y(X=1)=1&X=0') - x.query('Y(X=0)=1&X=0'), div = x.query('X=0'))
     x.set_ate('X','Y', cond = 'X=0')
-    assert x.constraints[-1] == x.constraints[-2]
+    assert clean_query(x.constraints[-1]) == clean_query(x.constraints[-2])
 
 def test_conditional_estimand():
     y = DAG()
-    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    y.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
     x = causalProblem(y, {'X': 2})
     z = Parser(y)
-    x.set_estimand(x.query('Y(X=1)=1') + x.query('Y(X=0)=1', -1), div = x.query('X=0'))
-    assert x.constraints[-1] ==  [(1, ['X00.Y01']), (1, ['X01.Y01']), (1, ['X10.Y01']), (1, ['X11.Y01']), (-1, ['X00.Y10']), (-1, ['X01.Y10']), (-1, ['X10.Y10']), (-1, ['X11.Y10']), (-1, ['X00.Y00', 'Z0', 'objvar']), (-1, ['X00.Y00', 'Z1', 'objvar']), (-1, ['X00.Y01', 'Z0', 'objvar']), (-1, ['X00.Y01', 'Z1', 'objvar']), (-1, ['X00.Y10', 'Z0', 'objvar']), (-1, ['X00.Y10', 'Z1', 'objvar']), (-1, ['X00.Y11', 'Z0', 'objvar']), (-1, ['X00.Y11', 'Z1', 'objvar']), (-1, ['X01.Y00', 'Z0', 'objvar']), (-1, ['X01.Y01', 'Z0', 'objvar']), (-1, ['X01.Y10', 'Z0', 'objvar']), (-1, ['X01.Y11', 'Z0', 'objvar']), (-1, ['X10.Y00', 'Z1', 'objvar']), (-1, ['X10.Y01', 'Z1', 'objvar']), (-1, ['X10.Y10', 'Z1', 'objvar']), (-1, ['X10.Y11', 'Z1', 'objvar']), (1, ['=='])]
+    x.set_estimand(x.query('Y(X=1)=1') - x.query('Y(X=0)=1'), div = x.query('X=0'))
+    assert Query(clean_query(x.constraints[-1])) ==  Query('X0.Y01') + Query('X1.Y01') - Query('X0.Y10') - Query('X1.Y10') - ( x.query('X=0') * Query('objvar') ) + Query('==')
+
 
 def test_conditional_data():
     y = DAG()
@@ -74,6 +76,7 @@ def test_conditional_data():
     assert 'Z0' in z.parameters
     assert len(z.constraints) == 11
     assert z.constraints[1] ==  [['0.95', 'X00.Y00', 'Z0'], ['-0.05', 'X00.Y00', 'Z1'], ['0.95', 'X00.Y01', 'Z0'], ['-0.05', 'X00.Y01','Z1'], ['-0.05', 'X00.Y10', 'Z0'], ['-0.05', 'X00.Y10', 'Z1'], ['-0.05', 'X00.Y11', 'Z0'], ['-0.05', 'X00.Y11', 'Z1'], ['0.95', 'X01.Y00', 'Z0'], ['0.95', 'X01.Y01', 'Z0'], ['-0.05', 'X01.Y10', 'Z0'], ['-0.05', 'X01.Y11', 'Z0'], ['-0.05', 'X10.Y00', 'Z1'], ['-0.05', 'X10.Y01', 'Z1'], ['-0.05', 'X10.Y10', 'Z1'], ['-0.05', 'X10.Y11', 'Z1'], ['==']]
+
 
 def test_causalproblem():
     y = DAG()

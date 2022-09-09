@@ -262,7 +262,7 @@ class causalProblem:
         constraint = [ (x[0], x[1]) for x in constraint if x[0] != 0 ] + [ (1, [ symbol ] ) ]
         self.constraints.append(constraint)
     
-    def set_estimand(self,estimand, div = [(1, ['1'])]):
+    def set_estimand(self,estimand, div = Query(1)):
         """
         Input: an expression similar to a constraint
         This algorithm there will 
@@ -272,11 +272,7 @@ class causalProblem:
         is multiplied by objvar, according to the algebraic formula.
         P(Y|X) = P(Y,X)/P(X) = objvar, then P(Y,X) - P(X) * objvar = 0
         """
-        for x in div:
-            if x[0] != 1:
-                raise Exception("Some value in conditional query was above 1. Check expression!")
-        self.add_constraint(estimand + 
-                [ (-1, ['objvar'] + x[1] ) for x in div ]  )
+        self.add_constraint(estimand -  (Query('objvar') * div ))
     
     def check_indep(self, c):
         """
