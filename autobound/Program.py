@@ -167,8 +167,8 @@ def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01
         end_upper = check_process_end(p_upper, '.upper.log')
         if len(total_lower) > 0 and len(total_upper) > 0:
             current_theta = total_upper[-1]['dual'] - total_lower[-1]['dual']
-            gamma = abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) - 1
-            current_epsilon = current_theta/gamma if gamma != 0 else 99999999
+            gamma = abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) 
+            current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
             print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
             if current_theta <  theta or current_epsilon < epsilon:
                 p_lower.terminate()
