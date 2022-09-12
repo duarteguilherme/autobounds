@@ -127,7 +127,7 @@ def check_process_end(p, filename):
 
 
 
-def parse_bounds(p_lower, p_upper, epsilon = 0.01, theta = 0.01):
+def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01):
     """ 
     Read files ".lower.log" and ".upper.log" each 1000 miliseconds 
     and retrieve data on dual and primal bounds.
@@ -143,6 +143,9 @@ def parse_bounds(p_lower, p_upper, epsilon = 0.01, theta = 0.01):
     total_lower,total_upper = [], []
     n_lower, n_upper = 0,0
     current_theta, current_epsilon = 9999, 9999
+    if filename is not None:
+        with open(filename, 'w') as f:
+            f.write(f"bound,primal,dual,time\n")
     while True:
         n_lower, partial_lower = parse_particular_bound('.lower.log', n_lower)
         n_upper, partial_upper = parse_particular_bound('.upper.log', n_upper)
@@ -151,9 +154,15 @@ def parse_bounds(p_lower, p_upper, epsilon = 0.01, theta = 0.01):
         if len(partial_lower) > 0:
             for i in partial_lower:
                 print(f"LOWER BOUND: # -- Primal: {i['primal']} / Dual: {i['dual']} / Time: {i['time']} ##")
+                if filename is not None:
+                    with open(filename, 'a') as f:
+                        f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
         if len(partial_upper) > 0:
             for j in partial_upper:
                 print(f"UPPER BOUND: # -- Primal: {j['primal']} / Dual: {j['dual']} / Time: {j['time']} ##")
+                if filename is not None:
+                    with open(filename, 'a') as f:
+                        f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
         end_lower = check_process_end(p_lower, '.lower.log')
         end_upper = check_process_end(p_upper, '.upper.log')
         if len(total_lower) > 0 and len(total_upper) > 0:
@@ -178,6 +187,10 @@ def parse_bounds(p_lower, p_upper, epsilon = 0.01, theta = 0.01):
             i, j, current_theta, current_epsilon = {}, {},-1,-1
     i['end'] = end_lower
     j['end'] = end_upper
+    if filename is not None:
+        with open(filename, 'a') as f:
+            f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
+            f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
     return (i, j, current_theta, current_epsilon)
     
 
@@ -198,7 +211,7 @@ class Program:
         self.parameters = [ ]
         self.constraints = [ tuple() ]
     
-    def run_couenne(self, verbose = True, epsilon = 0.01, theta = 0.01):
+    def run_couenne(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
         """ This method runs programs directly in python using pyomo and couenne
         """
         import pyomo.environ as pyo
@@ -227,7 +240,7 @@ class Program:
         p_upper = Process(target=solve1, args=(solver, self.M_upper,'upper', verbose)) 
         p_lower.start()
         p_upper.start()
-        optim_data = parse_bounds(p_lower, p_upper, epsilon = epsilon, theta = theta)
+        optim_data = parse_bounds(p_lower, p_upper, filename, epsilon = epsilon, theta = theta)
         return optim_data
    
     def run_pyomo(self, solver_name = 'ipopt', verbose = True, parallel = False):
