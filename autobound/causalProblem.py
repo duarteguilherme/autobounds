@@ -8,6 +8,33 @@ import pandas as pd
 from copy import deepcopy
 from itertools import product
 from functools import reduce
+from scipy.optimize import newton
+from numpy import log
+import statsmodels.stats.proportion
+
+def solve_kl_p(ns, K, o, alpha):
+    """ alpha is the level of confidence...
+    ns is the number of sample
+    p is the population distribution we are trying to find
+    K is the number of pieces of data
+    obs is the observed data 
+    """
+    KL = lambda p: o * log(o / p) + (1 - o) * log((1 - o) / (1 - p)) 
+    thresh = log(2 * K / alpha) / ns
+    optim_func = lambda p: KL(p) - thresh
+    if o == 0:
+        return np.array(
+                statsmodels
+                .stats
+                .proportion.proportion_confint(0, ns, alpha = alpha/K, method = 'agresti_coull'))
+    elif o == 1:
+        return np.array(
+                statsmodels
+                .stats
+                .proportion.proportion_confint(ns, ns, alpha = alpha/K, method = 'agresti_coull'))
+    else:
+        return newton(optim_func, [o/2, (1+o)/2])
+
 
 
 
@@ -197,6 +224,37 @@ class causalProblem:
             self.add_constraint(get_constraint_from_row(row[column_rest], 
                     row['prob'], self.Parser, cond_data, i))
         simplify_first_nodes(self, self.dag, datam, cond)
+    
+    def load_data_kl(self, filename, N = 0, alpha = 0.05, cond = [ ], optimize = True):
+        """ It accepts a file 
+        """
+        if N == 0:
+            raise Exception("N cannot be 0!")
+        datam = pd.read_csv(filename) 
+        cond_data = datam[cond] if len(cond) > 0 else [ ]
+        columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
+        datam = datam[columns]
+        column_rest = [x for x in columns if x!= 'prob']
+        grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
+        K = grouped_data.shape[0]
+        for i, row in grouped_data.iterrows():
+            min_max_kl = solve_kl_p(ns = N, alpha = alpha, K = K,
+                    o = alpha )
+            print(K)
+            self.add_constraint(
+                    get_constraint_from_row(row[column_rest], 
+                                            min_max_kl[0],
+                                            self.Parser, 
+                                            cond_data, 
+                                            i), ">=")
+            self.add_constraint(
+                    get_constraint_from_row(row[column_rest], 
+                                            min_max_kl[1],
+                                            self.Parser, 
+                                            cond_data, 
+                                            i), "<=")
+        if optimize:
+            simplify_first_nodes(self, self.dag, datam, cond)
     
     def load_data(self, filename, cond = [ ], optimize = True):
         """ It accepts a file 
