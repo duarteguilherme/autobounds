@@ -12,12 +12,24 @@ from scipy.optimize import newton
 from numpy import log
 import statsmodels.stats.proportion
 
+
+
+
+def load_data_gaussian(nr, o, alpha):
+    """ alpha is the level of confidence...
+    nr is the number of rows
+    p is the population distribution we are trying to find
+    K is the number of pieces of data
+    obs is the observed data 
+    """
+    pass
+
 def solve_kl_p(ns, K, o, alpha):
     """ alpha is the level of confidence...
     ns is the number of sample
     p is the population distribution we are trying to find
     K is the number of pieces of data
-    obs is the observed data 
+    o is the observed data 
     """
     KL = lambda p: o * log(o / p) + (1 - o) * log((1 - o) / (1 - p)) 
     thresh = log(2 * K / alpha) / ns
@@ -179,6 +191,9 @@ class causalProblem:
                 ]
         return program
         
+    def add_parameter(self, param_name):
+        self.parameters += [(1, param_name)] 
+    
     def check_constraints(self):
         """ 
         Check all constraints 
@@ -239,8 +254,7 @@ class causalProblem:
         K = grouped_data.shape[0]
         for i, row in grouped_data.iterrows():
             min_max_kl = solve_kl_p(ns = N, alpha = alpha, K = K,
-                    o = alpha )
-            print(K)
+                    o = row['prob'] )
             self.add_constraint(
                     get_constraint_from_row(row[column_rest], 
                                             min_max_kl[0],

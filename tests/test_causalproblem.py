@@ -31,7 +31,6 @@ def test_load_data_kl():
     x = causalProblem(y, {'X': 2})
     x.load_data_kl(datafile, N = 1000)
     assert -1 * x.constraints[-1][0][0] == solve_kl_p(ns = 1000, K = 8, o = 0.125, alpha = 0.05)[1]
-#    assert -1 * x.constraints[-1][0][0] == solve_kl_p(ns = 1000, K = 8, o = 0.125, alpha = 0.05)[1]
 
 
 
