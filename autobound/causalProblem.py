@@ -11,18 +11,22 @@ from functools import reduce
 from scipy.optimize import newton
 from numpy import log
 import statsmodels.stats.proportion
+import string
 
 
 
-
-def load_data_gaussian(nr, o, alpha):
+def load_data_gaussian(program, nr, o, alpha):
     """ alpha is the level of confidence...
     nr is the number of rows
     p is the population distribution we are trying to find
     K is the number of pieces of data
     obs is the observed data 
     """
+    index = ''.join(np.random.choice(list(string.ascii_letters), 10))
+    print(index)
     pass
+
+load_data_gaussian('', 1000, np.array([0.25, 0.25, 0.25, 0.25]), 0.05)
 
 def solve_kl_p(ns, K, o, alpha):
     """ alpha is the level of confidence...
