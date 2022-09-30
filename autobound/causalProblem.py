@@ -9,24 +9,43 @@ from copy import deepcopy
 from itertools import product
 from functools import reduce
 from scipy.optimize import newton
+import scipy
 from numpy import log
 import statsmodels.stats.proportion
 import string
 
 
+def multiply_matrix_gaussian(q, mu, sigma_inv):
+    if len(q) != len(mu):
+        " Q and mu have different sizes"
+    len_proc = len(q)
+    q_minus_mu = [ q[i] - mu[i]      for i in range(len_proc) ] 
+    sum_result = Query(0)
+    for i in range(len_proc):
+        for j in range(len_proc):
+            sum_result += q_minus_mu[i] * sigma_inv[i,j] * q_minus_mu[j]
+    return sum_result
 
-def load_data_gaussian(program, nr, o, alpha):
+def solve_gaussian(nr, o, alpha):
     """ alpha is the level of confidence...
     nr is the number of rows
     p is the population distribution we are trying to find
     K is the number of pieces of data
     obs is the observed data 
     """
-    index = ''.join(np.random.choice(list(string.ascii_letters), 10))
-    print(index)
-    pass
+    query_vectorize = np.vectorize(lambda a: Query(a))
+    index = 'q' + ''.join(np.random.choice(list(string.ascii_letters), 10))
+    mu = np.array([o[:-1]])
+    params = [ Query(index + '_' + str(i)) for i,f in enumerate(o[:-1]) ]
+    sigma = np.matmul(mu.transpose(),mu) / nr
+    sigma_inv_query = query_vectorize(np.linalg.pinv(sigma))
+    mu_query = [ Query(i) for i in o[:-1] ]
+    lh_side = multiply_matrix_gaussian(params, mu_query, sigma_inv_query)
+    k = len(o)
+    rh_side = Query(scipy.stats.chi2.ppf(alpha, k))
+    res = lh_side - rh_side
+    return (params, res)
 
-load_data_gaussian('', 1000, np.array([0.25, 0.25, 0.25, 0.25]), 0.05)
 
 def solve_kl_p(ns, K, o, alpha):
     """ alpha is the level of confidence...
@@ -112,6 +131,24 @@ def transform_constraint(constraint, zero_parameters = []):
     res = [ [ j for j in i ] for i in res 
             if not any([ j in zero_parameters for j in i ]) ]  # Check if there are zero parameters
     return res
+
+def get_constraint_from_row_gaussian(row_data, q, parser, cond = [ ], n = 0):
+    """ 
+    Function to be employed in load_data method in causalProgram
+    One introduces the row data , row prob , Parser
+    and function returns constraints 
+    """
+    row_cond = cond.iloc[n] if len(cond) > 0  else []
+    query = [ f'{row_data.index[j]}={int(row_data[j])}'
+                    for j,k in enumerate(list(row_data)) ]
+    if len(row_cond) > 0:
+        query_cond = [ f'{row_cond.index[j]}={int(row_cond[j])}'
+                    for j,k in enumerate(list(row_cond)) ]
+        return Query(q) * Query([( -1, [ i for i in k ]) 
+                for k in parser.parse('&'.join(query_cond)) ]) + Query([ (1, [ i for i in x ]) 
+                for x in parser.parse('&'.join(query)) ])
+    return  Query(q) + Query([ (1, [ i for i in x ]) 
+            for x in parser.parse('&'.join(query)) ])
 
 
 
@@ -243,6 +280,30 @@ class causalProblem:
             self.add_constraint(get_constraint_from_row(row[column_rest], 
                     row['prob'], self.Parser, cond_data, i))
         simplify_first_nodes(self, self.dag, datam, cond)
+    
+    def load_data_gaussian(self, filename, N = 0, alpha = 0.05, cond = [ ], optimize = True):
+        """ It accepts a file 
+        """
+        if N == 0:
+            raise Exception("N cannot be 0!")
+        datam = pd.read_csv(filename) 
+        cond_data = datam[cond] if len(cond) > 0 else [ ]
+        columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
+        datam = datam[columns]
+        column_rest = [x for x in columns if x!= 'prob']
+        grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
+        constraint, qs = solve_gaussian(N, grouped_data['prob'], alpha)
+        for i, row in grouped_data.iterrows():
+            self.parameters += [(1, qs[i])]
+            self.add_constraint(
+                    get_constraint_from_row_gaussian(row[column_rest], 
+                                            qs[0],
+                                            self.Parser, 
+                                            cond_data, 
+                                            i))
+            self.add_constraint(qs[i] - Query(constraint), "<=")
+        if optimize:
+            simplify_first_nodes(self, self.dag, datam, cond)
     
     def load_data_kl(self, filename, N = 0, alpha = 0.05, cond = [ ], optimize = True):
         """ It accepts a file 
