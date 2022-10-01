@@ -261,10 +261,11 @@ class causalProblem:
         sum_qs = Query(0)
         for i in range(k):
             sum_qs = sum_qs + Query(index + '_' + str(i)) 
+        self.add_constraint(sum_qs)
         for i in range(k - 1):
             self.add_constraint(Query(constraint), "<=")
-        if optimize:
-            simplify_first_nodes(self, self.dag, datam, cond)
+#        if optimize:
+#            simplify_first_nodes(self, self.dag, datam, cond)
     
     def load_data_kl(self, filename, N = 0, alpha = 0.05, cond = [ ], optimize = True):
         """ It accepts a file 
