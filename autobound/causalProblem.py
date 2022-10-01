@@ -26,23 +26,25 @@ def multiply_matrix_gaussian(q, mu, sigma_inv):
             sum_result += q_minus_mu[i] * sigma_inv[i,j] * q_minus_mu[j]
     return sum_result
 
-def solve_gaussian(nr, o, alpha):
+def solve_gaussian(nr, o, alpha, index = 'qp'):
     """ alpha is the level of confidence...
     nr is the number of rows
     p is the population distribution we are trying to find
     K is the number of pieces of data
     obs is the observed data 
     """
+    if index == 'qp':
+        print("Make sure that this dataset is the first to be introduced. For other datasets, remember to introduce the argument index")
     query_vectorize = np.vectorize(lambda a: Query(a))
-    index = 'q' + ''.join(np.random.choice(list(string.ascii_letters), 10))
     mu = np.array([o[:-1]])
     params = [ Query(index + '_' + str(i)) for i,f in enumerate(o[:-1]) ]
-    sigma = np.matmul(mu.transpose(),mu) / nr
+    mu_diag = np.diag(np.array(o[:-1]))
+    sigma = (mu_diag - np.matmul(mu.transpose(),mu)) / nr
     sigma_inv_query = query_vectorize(np.linalg.pinv(sigma))
     mu_query = [ Query(i) for i in o[:-1] ]
     lh_side = multiply_matrix_gaussian(params, mu_query, sigma_inv_query)
     k = len(o)
-    rh_side = Query(scipy.stats.chi2.ppf(alpha, k))
+    rh_side = Query(scipy.stats.chi2.ppf( 1- alpha, k - 1))
     res = lh_side - rh_side
     return (params, res)
 

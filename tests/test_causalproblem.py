@@ -15,6 +15,10 @@ def test_solve_kl():
     assert result[1] < 0.17
 
 
+def test_solve_gaussian():
+    res = solve_gaussian(nr = 100, o = [0.25, 0.25, 0.25, 0.25] , alpha = 0.05)
+    print(res)
+
 def test_load_data_kl():
     datafile = io.StringIO('''X,Y,Z,prob
     0,0,0,0.125
