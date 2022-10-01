@@ -153,8 +153,7 @@ def get_constraint_from_row_gaussian(row_data, q, parser, cond = [ ], n = 0):
             for x in parser.parse('&'.join(query)) ])
 
 
-
-def get_constraint_from_row(row_data, row_prob, parser, cond = [ ], n = 0):
+def get_constraint_from_row_new(row_data, row_prob, parser, cond = [ ], n = 0):
     """ 
     Function to be employed in load_data method in causalProgram
     One introduces the row data , row prob , Parser
@@ -171,6 +170,22 @@ def get_constraint_from_row(row_data, row_prob, parser, cond = [ ], n = 0):
                 for x in parser.parse('&'.join(query)) ]
     return  [( -1 * row_prob, [ '1' ])] + [ (1, [ i for i in x ]) 
             for x in parser.parse('&'.join(query)) ]
+
+
+def get_constraint_from_row(row_data, row_prob, program, cond = [ ], n = 0):
+    """ 
+    Function to be employed in load_data method in causalProgram
+    One introduces the row data , row prob , Parser
+    and function returns constraints 
+    """
+    row_cond = cond.iloc[n] if len(cond) > 0  else []
+    query = [ f'{row_data.index[j]}={int(row_data[j])}'
+                    for j,k in enumerate(list(row_data)) ]
+    if len(row_cond) > 0:
+        query_cond = [ f'{row_cond.index[j]}={int(row_cond[j])}'
+                    for j,k in enumerate(list(row_cond)) ]
+        return program.query('&'.join(query)) - Query(row_prob) * program.query('&'.join(query_cond))
+    return   program.query('&'.join(query)) - Query(row_prob)
 
 
 class causalProblem:
@@ -325,13 +340,13 @@ class causalProblem:
             self.add_constraint(
                     get_constraint_from_row(row[column_rest], 
                                             min_max_kl[0],
-                                            self.Parser, 
+                                            self, 
                                             cond_data, 
                                             i), ">=")
             self.add_constraint(
                     get_constraint_from_row(row[column_rest], 
                                             min_max_kl[1],
-                                            self.Parser, 
+                                            self, 
                                             cond_data, 
                                             i), "<=")
         if optimize:
@@ -366,7 +381,7 @@ class causalProblem:
             self.add_constraint(
                     get_constraint_from_row(row[column_rest], 
                                             row['prob'], 
-                                            self.Parser, 
+                                            self, 
                                             cond_data, 
                                             i))
         if optimize:

@@ -17,7 +17,6 @@ def test_solve_kl():
 
 def test_solve_gaussian():
     res = solve_gaussian(nr = 100, o = [0.25, 0.25, 0.25, 0.25] , alpha = 0.05)
-    print(res)
 
 def test_load_data_kl():
     datafile = io.StringIO('''X,Y,Z,prob
@@ -34,7 +33,7 @@ def test_load_data_kl():
     y.from_structure("Z -> Y, X -> Y, U -> X, U -> Y", unob = 'U')
     x = causalProblem(y, {'X': 2})
     x.load_data_kl(datafile, N = 1000)
-    assert -1 * x.constraints[-1][0][0] == solve_kl_p(ns = 1000, K = 8, o = 0.125, alpha = 0.05)[1]
+    assert -1 * x.constraints[-1][-2][0] == solve_kl_p(ns = 1000, K = 8, o = 0.125, alpha = 0.05)[1]
 
 
 
@@ -108,7 +107,7 @@ def test_conditional_data():
     assert 'X00.Y00' in z.parameters
     assert 'Z0' in z.parameters
     assert len(z.constraints) == 11
-    assert z.constraints[1] ==  [['0.95', 'X00.Y00', 'Z0'], ['-0.05', 'X00.Y00', 'Z1'], ['0.95', 'X00.Y01', 'Z0'], ['-0.05', 'X00.Y01','Z1'], ['-0.05', 'X00.Y10', 'Z0'], ['-0.05', 'X00.Y10', 'Z1'], ['-0.05', 'X00.Y11', 'Z0'], ['-0.05', 'X00.Y11', 'Z1'], ['0.95', 'X01.Y00', 'Z0'], ['0.95', 'X01.Y01', 'Z0'], ['-0.05', 'X01.Y10', 'Z0'], ['-0.05', 'X01.Y11', 'Z0'], ['-0.05', 'X10.Y00', 'Z1'], ['-0.05', 'X10.Y01', 'Z1'], ['-0.05', 'X10.Y10', 'Z1'], ['-0.05', 'X10.Y11', 'Z1'], ['==']]
+    assert z.constraints[1] ==  [['0.95', 'X00.Y00', 'Z0'], ['0.95', 'X00.Y01', 'Z0'], ['0.95', 'X01.Y00', 'Z0'], ['0.95', 'X01.Y01', 'Z0'], ['-0.05', 'X00.Y00', 'Z1'], ['-0.05', 'X00.Y01', 'Z1'], ['-0.05', 'X00.Y10', 'Z0'], ['-0.05', 'X00.Y10', 'Z1'], ['-0.05',   'X00.Y11', 'Z0'], ['-0.05', 'X00.Y11', 'Z1'], ['-0.05', 'X01.Y10', 'Z0'], ['-0.05', 'X01.Y11', 'Z0'], ['-0.05', 'X10.Y00', 'Z1'], ['-0.05', 'X10.Y01', 'Z1'], ['-0.05', 'X10.Y10', 'Z1'], ['-0.05', 'X10.Y11', 'Z1'], ['==']]
 
 
 def test_causalproblem():
@@ -132,8 +131,10 @@ def test_causalproblem():
     assert 'objvar' in z.parameters
     assert 'X00.Y00' in z.parameters
     assert len(z.constraints) == 10
+#[['0.05'], ['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['==']]
     assert z.constraints[0] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'], ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar'], ['==']]
-    assert z.constraints[1] == [['-0.05'], ['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['==']]
+    print(z.constraints[1])
+    assert z.constraints[1] == [['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['-0.05'], ['==']]
 
 def test_replace_first_nodes():
     assert replace_first_nodes([('Z0', 0.5), ('Z1', 0.5)], 
