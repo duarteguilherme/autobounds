@@ -39,6 +39,8 @@ class Query():
             self._lst = [(1 * lst, ['1'])]
         elif isinstance(lst, int):
             self._lst = [(1 * lst, ['1'])]
+        elif 'Query.Query' in str(type(lst)):
+            self._lst = lst._lst
         else:
             raise Exception('Verify argument')
     
