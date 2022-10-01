@@ -46,7 +46,7 @@ def solve_gaussian(nr, o, alpha, index = 'qp'):
     k = len(o)
     rh_side = Query(scipy.stats.chi2.ppf( 1- alpha, k - 1))
     res = lh_side - rh_side
-    return (params, res)
+    return (index,k, res)
 
 
 def solve_kl_p(ns, K, o, alpha):
@@ -248,16 +248,21 @@ class causalProblem:
         datam = datam[columns]
         column_rest = [x for x in columns if x!= 'prob']
         grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
-        constraint, qs = solve_gaussian(N, grouped_data['prob'], alpha)
+        index, k, constraint = solve_gaussian(N, grouped_data['prob'], alpha)
         for i, row in grouped_data.iterrows():
-            self.parameters += [(1, qs[i])]
+            print(index + '_' + str(i))
+            self.add_parameter(index + '_' + str(i))
             self.add_constraint(
-                    get_constraint_from_row_gaussian(row[column_rest], 
-                                            qs[0],
-                                            self.Parser, 
+                    get_constraint_from_row(row[column_rest], 
+                                            index + '_' + str(i),
+                                            self, 
                                             cond_data, 
                                             i))
-            self.add_constraint(qs[i] - Query(constraint), "<=")
+        sum_qs = Query(0)
+        for i in range(k):
+            sum_qs = sum_qs + Query(index + '_' + str(i)) 
+        for i in range(k - 1):
+            self.add_constraint(Query(constraint), "<=")
         if optimize:
             simplify_first_nodes(self, self.dag, datam, cond)
     
