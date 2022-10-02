@@ -19,7 +19,7 @@ def multiply_matrix_gaussian(q, mu, sigma_inv):
     if len(q) != len(mu):
         " Q and mu have different sizes"
     len_proc = len(q)
-    q_minus_mu = [ q[i] - mu[i]      for i in range(len_proc) ] 
+    q_minus_mu = [ mu[i] - q[i]      for i in range(len_proc) ] 
     sum_result = Query(0)
     for i in range(len_proc):
         for j in range(len_proc):
@@ -258,12 +258,11 @@ class causalProblem:
                                             self, 
                                             cond_data, 
                                             i))
-        sum_qs = Query(0)
+        sum_qs = Query(-1)
         for i in range(k):
             sum_qs = sum_qs + Query(index + '_' + str(i)) 
         self.add_constraint(sum_qs)
-        for i in range(k - 1):
-            self.add_constraint(Query(constraint), "<=")
+        self.add_constraint(Query(constraint), "<=")
 #        if optimize:
 #            simplify_first_nodes(self, self.dag, datam, cond)
     

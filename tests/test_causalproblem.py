@@ -18,6 +18,29 @@ def test_solve_kl():
 def test_solve_gaussian():
     res = solve_gaussian(nr = 100, o = [0.25, 0.25, 0.25, 0.25] , alpha = 0.05)
 
+def test_load_data_gaussian():
+    datafile = io.StringIO('''X,Y,prob
+    0,0,0.25
+    0,1,0.25
+    1,0,0.25
+    1,1,0.25''')
+    y = DAG()
+    y.from_structure("U -> X, U -> Y", unob = 'U')
+    x = causalProblem(y, {'X': 2})
+    x.load_data_gaussian(datafile, N = 1000)
+    x.add_prob_constraints()
+    p00_problem, p01_problem, p10_problem, p11_problem = [deepcopy(x) for i in range(4) ]
+    p00_problem.set_estimand(x.query('X=0&Y=0'))
+#    p01_problem.set_estimand(x.query('X=0&Y=1'))
+#    p10_problem.set_estimand(x.query('X=1&Y=0'))
+#    p11_problem.set_estimand(x.query('X=1&Y=1'))
+#    p00 = p00_problem.write_program().run_couenne()
+#    p01 = p01_problem.write_program().run_couenne()
+#    p10 = p10_problem.write_program().run_couenne()
+#    p11 = p11_problem.write_program().run_couenne()
+    p00_problem.write_program().to_pip('/home/beta/gauss.pip')
+
+
 def test_load_data_kl():
     datafile = io.StringIO('''X,Y,Z,prob
     0,0,0,0.125
@@ -133,7 +156,6 @@ def test_causalproblem():
     assert len(z.constraints) == 10
 #[['0.05'], ['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['==']]
     assert z.constraints[0] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'], ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar'], ['==']]
-    print(z.constraints[1])
     assert z.constraints[1] == [['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['-0.05'], ['==']]
 
 def test_replace_first_nodes():
