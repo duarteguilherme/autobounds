@@ -178,12 +178,16 @@ def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01
             break
         time.sleep(0.1)
     # Checking bounds if problem is finished
-    if end_lower == 1: 
-        i,j = get_final_bound('.lower.log'), get_final_bound('.upper.log')
+    if end_lower == 1 or end_upper == 1: 
+        if end_lower == 1:
+            i = get_final_bound('.lower.log')
+        if end_upper == 1:
+            j = get_final_bound('.upper.log')
+#        i,j = get_final_bound('.lower.log'), get_final_bound('.upper.log')
         current_theta = j['dual'] - i['dual']
         current_epsilon = current_theta/abs(j['primal'] - i['primal']) - 1
     else:
-        if end_lower == 0:
+        if end_lower == 0 and end_upper == 0:
             i, j, current_theta, current_epsilon = {}, {},-1,-1
     i['end'] = end_lower
     j['end'] = end_upper

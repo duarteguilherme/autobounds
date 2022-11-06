@@ -222,6 +222,8 @@ class causalProblem:
         self.constraints = [ [ replace_first_nodes(self.unconf_first_nodes, y) 
             for y in x ]  
                 for x in self.constraints ] 
+        # Remove tautologies now
+   #     self.constraints = [ j for j in self.constraints if all([ l[-1] == ['1'] for l in j[:-1] ])] 
     
     def add_prob_constraints(self):
         """
@@ -263,8 +265,8 @@ class causalProblem:
             sum_qs = sum_qs + Query(index + '_' + str(i)) 
         self.add_constraint(sum_qs)
         self.add_constraint(Query(constraint), "<=")
-#        if optimize:
-#            simplify_first_nodes(self, self.dag, datam, cond)
+        if optimize:
+            simplify_first_nodes(self, self.dag, datam, cond)
     
     def load_data_kl(self, filename, N = 0, alpha = 0.05, cond = [ ], optimize = True):
         """ It accepts a file 
