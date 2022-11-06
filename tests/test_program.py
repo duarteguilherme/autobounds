@@ -24,7 +24,6 @@ def test_program_parallel():
     assert res[0] < -0.08
     assert res[1] > -0.1
     assert res[1] > -0.1
-    #    z.to_pip('/home/beta/test_iv.proxy')
 
 
 def test_couenne_parse():
@@ -69,8 +68,44 @@ def test_couenne_threshold():
     problem.set_ate('A','Y')
     program = problem.write_program()
     result = program.run_couenne(theta = 0.4, epsilon = 1)
-#
 
+
+
+def test_numeric_lines():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    problem = causalProblem(dag)
+    datafile1 = io.StringIO('''X,A,prob
+    0,1,0.230271252339654
+    1,1,0.299527260157004''')
+    datafile2 = io.StringIO('''Y,B,prob
+    0,1,0.317930571936706
+    1,1,0.176816814870372''')
+    datafile3 = io.StringIO('''X,Y,A,B,prob
+    0,0,1,1,0.087024102667622
+    1,0,1,1,0.171021677876195
+    0,1,1,1,0.0777025072996138
+    1,1,1,1,0.0516439605484204''')
+    datafile4 = io.StringIO('''A,B,prob
+    0,0,0.362846349088114
+    1,0,0.142406264104807
+    0,1,0.107355138415228
+    1,1,0.387392248391851''')
+    dag = DAG()
+    dag.from_structure("X -> Y, A -> B, Y -> B")
+    problem = causalProblem(dag)
+    problem.load_data(datafile1, optimize = True)
+    problem.load_data(datafile2, optimize = True)
+    problem.load_data(datafile3, optimize = True)
+    problem.load_data(datafile4, optimize = True)
+    problem.set_estimand(problem.query('Y(X=1)=1') + problem.query('Y(X=0)=1', -1))
+    problem.add_prob_constraints()
+    program = problem.write_program()
+#    for i in program.constraints:
+#        print(i)
+#        input("")
+#    print(program.run_pyomo('ipopt'))
+#    input("")
 
 
 
@@ -96,4 +131,3 @@ def test_program_iv():
     assert b[0] >= -0.52
     assert b[1] <= 0.52
     assert b[1] >= 0.48
-#    z.to_pip('/home/beta/test_iv.pip')

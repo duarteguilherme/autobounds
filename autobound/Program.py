@@ -78,6 +78,19 @@ def parse_cbc_line(line, sign = 1):
     return result_data
     
 
+def test_string_numeric(string):
+    """
+    Test if a string is numeric, or equal to "==", ">=", or "<="
+    """
+    if ( string == '==' ) or ( string == '>=' ) or (string == '<=' ):
+        return True
+    try:
+        float(string)
+        return True
+    except:
+        return False
+
+
 def parse_particular_bound(filename, n_bound):
     """ Read any of ".lower.log" or
     ".upper.log" and it returns 
@@ -214,6 +227,18 @@ class Program:
     def __init__(self):
         self.parameters = [ ]
         self.constraints = [ tuple() ]
+    
+    def optimize_remove_numeric_lines(self):
+        """ 
+        All lines of the type [[0.25], [-0.25], [==]. []] 
+        i.e. no numeric parameter is included ,
+        should be removed
+        """
+        constraints2 = [ ]
+        for i in self.constraints:
+            if not all([ test_string_numeric(j) for j in i ]):
+                constraints2.append(i)
+        self.constraints = constraints2
     
     def run_couenne(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
         """ This method runs programs directly in python using pyomo and couenne

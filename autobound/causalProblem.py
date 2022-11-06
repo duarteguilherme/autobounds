@@ -92,6 +92,8 @@ def simplify_first_nodes(problem, dag, datam, cond):
     data_count = datam.drop('prob', axis = 1).nunique()
     complete_data = [ i  for i, j in dict(data_count).items() 
             if problem.number_values[i] == j ]
+    if any([k for k in data_count == 1]): # Important, if data has selection, for instance all elements of X are 1, then return None
+        return None
     first_nodes = [ k for k in dag.find_first_nodes() 
             if len(dag.find_u_linked(k)) == 0 and k in complete_data ]
     # Need to check if data is complete
