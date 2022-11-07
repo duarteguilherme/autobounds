@@ -138,6 +138,18 @@ def check_process_end(p, filename):
     else:
         return -1
 
+def change_constraint_parameter_value(constraint, parameter, value):
+    constraint2 = [ j.copy() for j in constraint ]
+    const = [ ]
+    for i in constraint2:
+        if parameter in i:
+            if test_string_numeric(i[0]):
+                i[0] =  str(float(i[0]) * value) 
+            else:
+                i = [  str(value)  ] + i
+        const.append([ k for k in i if k != parameter ])
+    return const
+
 
 
 def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01):
@@ -238,6 +250,18 @@ class Program:
         for i in self.constraints:
             if not all([ test_string_numeric(j) for j in i ]):
                 constraints2.append(i)
+        self.constraints = constraints2
+    
+    def optimize_add_param_value(self, parameter, value):
+        """ 
+        Replace directly one of the parameter by a certain value...
+        That's ideal when we want to introduce a value directly
+        """
+        constraints2 = [ ]
+        for i in self.constraints:
+            constraints2.append(
+                    change_constraint_parameter_value(i, parameter, value)
+                    )
         self.constraints = constraints2
     
     def run_couenne(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
