@@ -1,6 +1,16 @@
 from autobound.autobound.causalProblem import causalProblem
 from autobound.autobound.DAG import DAG
+from autobound.autobound.Program import change_constraint_parameter_value
 import io
+
+
+
+def test_optimizers():
+    const = [['Y01'], ['-1', 'Y10'], ['X10', 'X11', 'Y11'], ['-1', 'objvar'], ['==']]
+    print(change_constraint_parameter_value(const, 'Y10', 0.20))
+    print(const)
+    print(change_constraint_parameter_value(const, 'X11', 0.31))
+    input("")
 
 def test_program_parallel():
     dag = DAG()
@@ -101,11 +111,11 @@ def test_numeric_lines():
     problem.set_estimand(problem.query('Y(X=1)=1') + problem.query('Y(X=0)=1', -1))
     problem.add_prob_constraints()
     program = problem.write_program()
-#    for i in program.constraints:
-#        print(i)
-#        input("")
-#    print(program.run_pyomo('ipopt'))
-#    input("")
+    for i in program.constraints:
+        print(i)
+        input("")
+    print(program.run_pyomo('ipopt'))
+    input("")
 
 
 
