@@ -1,6 +1,7 @@
 from autobound.autobound.DAG import DAG
 from autobound.autobound.causalProblem import *
 from autobound.autobound.Query import Query, clean_query
+import pandas as pd
 import io
 from copy import deepcopy
 
@@ -40,6 +41,18 @@ def test_load_data_gaussian():
 #    p11 = p11_problem.write_program().run_couenne()
     p00_problem.write_program().to_pip('/home/beta/gauss.pip')
 
+
+def test_load_pandas():
+    data = pd.DataFrame({
+        'X': [0,0,0,0,1,1,1,1],
+        'Y': [0,0,1,1,0,0,1,1],
+        'Z': [0,1,0,1,0,1,0,1],
+        'prob': [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]
+        })
+    y = DAG()
+    y.from_structure("Z -> Y, X -> Y, U -> X, U -> Y", unob = 'U')
+    x = causalProblem(y, {'X': 2})
+    x.load_data(data) # No need to assert
 
 def test_load_data_kl():
     datafile = io.StringIO('''X,Y,Z,prob

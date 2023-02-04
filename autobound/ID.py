@@ -1,7 +1,8 @@
-def ID(DAG, S, T):
-    """ 
-    Identify a quantity P(S|do(T))
-    """
-    C = find_c_comp(DAG) # easy
+from .DAG import DAG
 
+class ID:
+    """ 
+    Implementation of Jin Tian's ID algorithm.
+    """
+    def __init__(self):
 

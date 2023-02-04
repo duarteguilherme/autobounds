@@ -241,12 +241,12 @@ class causalProblem:
                 prob_constraints += [ (-1.0, ['1'])]
                 self.add_constraint(prob_constraints)
     
-    def load_data_gaussian(self, filename, N = 0, alpha = 0.05, cond = [ ], optimize = True):
+    def load_data_gaussian(self, data, N = 0, alpha = 0.05, cond = [ ], optimize = True):
         """ It accepts a file 
         """
         if N == 0:
             raise Exception("N cannot be 0!")
-        datam = pd.read_csv(filename) 
+        datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data) 
         cond_data = datam[cond] if len(cond) > 0 else [ ]
         columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
         datam = datam[columns]
@@ -270,12 +270,12 @@ class causalProblem:
         if optimize:
             simplify_first_nodes(self, self.dag, datam, cond)
     
-    def load_data_kl(self, filename, N = 0, alpha = 0.05, cond = [ ], optimize = True):
+    def load_data_kl(self, data, N = 0, alpha = 0.05, cond = [ ], optimize = True):
         """ It accepts a file 
         """
         if N == 0:
             raise Exception("N cannot be 0!")
-        datam = pd.read_csv(filename) 
+        datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data) 
         cond_data = datam[cond] if len(cond) > 0 else [ ]
         columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
         datam = datam[columns]
@@ -300,7 +300,7 @@ class causalProblem:
         if optimize:
             simplify_first_nodes(self, self.dag, datam, cond)
     
-    def load_data(self, filename, cond = [ ], optimize = True):
+    def load_data(self, data, cond = [ ], optimize = True):
         """ It accepts a file 
         file must be csv. Columns will be added if they match parameters...
         Column prob must indicate probability.
@@ -319,7 +319,7 @@ class causalProblem:
         This method also implements one simplifier (first nodes simplifier).
         If data regarding first nodes is complete, then numeric values are added directly.
         """
-        datam = pd.read_csv(filename) 
+        datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data) 
         cond_data = datam[cond] if len(cond) > 0 else [ ]
         columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
         datam = datam[columns]

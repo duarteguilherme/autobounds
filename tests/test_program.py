@@ -10,7 +10,7 @@ def test_optimizers():
     print(change_constraint_parameter_value(const, 'Y10', 0.20))
     print(const)
     print(change_constraint_parameter_value(const, 'X11', 0.31))
-    input("")
+#    input("")
 
 def test_program_parallel():
     dag = DAG()
@@ -111,11 +111,11 @@ def test_numeric_lines():
     problem.set_estimand(problem.query('Y(X=1)=1') + problem.query('Y(X=0)=1', -1))
     problem.add_prob_constraints()
     program = problem.write_program()
-    for i in program.constraints:
-        print(i)
-        input("")
-    print(program.run_pyomo('ipopt'))
-    input("")
+#    for i in program.constraints:
+#        print(i)
+#        input("")
+#    print(program.run_pyomo('ipopt'))
+#    input("")
 
 
 
