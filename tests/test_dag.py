@@ -18,6 +18,13 @@ def test_dag_str():
     assert x.E == set((('Uy', 'Y'), ('X','Y'),('U','Y'),('U','X')))
     assert x.U == set(('Uy','U'))
 
+def test_dag_factorization():
+    dag = DAG()
+    dag.from_structure('W -> X, X -> Y, W -> Y, W -> V')
+    test_y =  [ i for i in dag.get_factors() if i[0] == 'Y' ]
+    assert test_y == [('Y', {'W','X'})]
+
+
 def test_dag_find_algorithms():
     x = DAG()
     x.from_structure("U -> X, X -> Y, U -> Y, Uy -> Y", unob = "U , Uy")

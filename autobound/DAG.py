@@ -108,6 +108,17 @@ class DAG:
                 ancestors.remove(i)
         return ancestors
     
+    def get_factors(self):
+        """ If one has a regular DAG (not semi-Markovian),
+        it returns the factorization
+        """
+        if len(self.U) > 0:
+            raise Exception("This method only works for standard DAGs, not ADMGs.")
+        factors = [ ]
+        for v in self.get_top_order():
+            factors.append((v,  self.find_parents(v)))
+        return factors
+    
     def find_paths(self, v1, v2):
         """ 
         Find all paths from v1 to v2
