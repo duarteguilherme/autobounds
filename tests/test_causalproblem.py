@@ -15,6 +15,15 @@ def test_solve_kl():
     assert result[0] > 0.09
     assert result[1] < 0.17
 
+def test_solve_kl_bug_log():
+    ns = 20
+    K = 8
+    o = 0.0001
+    alpha = 0.05
+    result = solve_kl_p(ns=ns, K = K, o = o, alpha = alpha)
+    assert result[0] == 0
+
+
 
 def test_solve_gaussian():
     res = solve_gaussian(nr = 100, o = [0.25, 0.25, 0.25, 0.25] , alpha = 0.05)

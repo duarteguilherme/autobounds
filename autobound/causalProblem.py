@@ -34,7 +34,7 @@ def solve_gaussian(nr, o, alpha, index = 'qp'):
     obs is the observed data 
     """
     if index == 'qp':
-        print("Make sure that this dataset is the first to be introduced. For other datasets, remember to introduce the argument index")
+        print("Make sure that this dataset is the first to be introduced. For other datasets, remember to introduce the argument data_name")
     query_vectorize = np.vectorize(lambda a: Query(a))
     mu = np.array([o[:-1]])
     params = [ Query(index + '_' + str(i)) for i,f in enumerate(o[:-1]) ]
@@ -70,8 +70,12 @@ def solve_kl_p(ns, K, o, alpha):
                 .stats
                 .proportion.proportion_confint(ns, ns, alpha = alpha/K, method = 'agresti_coull'))
     else:
-        return newton(optim_func, [o/2, (1+o)/2])
-
+        res = newton(optim_func, [o/2, (1+o)/2])
+    if np.isnan(res[0]):
+        res[0] = 0
+    if np.isnan(res[1]):
+        res[1] = 1
+    return res
 
 
 
@@ -241,7 +245,7 @@ class causalProblem:
                 prob_constraints += [ (-1.0, ['1'])]
                 self.add_constraint(prob_constraints)
     
-    def load_data_gaussian(self, data, N = 0, alpha = 0.05, cond = [ ], optimize = True):
+    def load_data_gaussian(self, data, N = 0, alpha = 0.05, cond = [ ], optimize = True, data_name = 'qp'):
         """ It accepts a file 
         """
         if N == 0:
@@ -252,7 +256,7 @@ class causalProblem:
         datam = datam[columns]
         column_rest = [x for x in columns if x!= 'prob']
         grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
-        index, k, constraint = solve_gaussian(N, grouped_data['prob'], alpha)
+        index, k, constraint = solve_gaussian(N, grouped_data['prob'], alpha, index = data_name)
         for i, row in grouped_data.iterrows():
             print(index + '_' + str(i))
             self.add_parameter(index + '_' + str(i))
