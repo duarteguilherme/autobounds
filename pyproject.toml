@@ -1,6 +1,7 @@
 [build-system]
 requires = [
     "setuptools",
+    "pandas",
     "wheel",
     "numpy",
     "pandas"

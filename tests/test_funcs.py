@@ -1,4 +1,4 @@
-from autobound.autobound.funcs import *
+from autobounds.autobounds.funcs import *
 import numpy.random as rd
 import pytest
 import os

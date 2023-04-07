@@ -1,6 +1,6 @@
-from autobound.autobound.DAG import DAG
-from autobound.autobound.causalProblem import *
-from autobound.autobound.Query import Query, clean_query
+from autobounds.autobounds.DAG import DAG
+from autobounds.autobounds.causalProblem import *
+from autobounds.autobounds.Query import Query, clean_query
 import pandas as pd
 import io
 from copy import deepcopy

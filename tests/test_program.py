@@ -1,6 +1,6 @@
-from autobound.autobound.causalProblem import causalProblem
-from autobound.autobound.DAG import DAG
-from autobound.autobound.Program import change_constraint_parameter_value
+from autobounds.autobounds.causalProblem import causalProblem
+from autobounds.autobounds.DAG import DAG
+from autobounds.autobounds.Program import change_constraint_parameter_value
 import io
 
 

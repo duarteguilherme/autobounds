@@ -1,5 +1,5 @@
-from autobound.autobound.DAG import DAG
-from autobound.autobound.Parser import *
+from autobounds.autobounds.DAG import DAG
+from autobounds.autobounds.Parser import *
 
 
 def test_collect_worlds():

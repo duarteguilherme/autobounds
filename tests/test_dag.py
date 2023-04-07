@@ -1,4 +1,4 @@
-from autobound.autobound.DAG import DAG
+from autobounds.autobounds.DAG import DAG
 import numpy.random as rd
 import pytest
 import os

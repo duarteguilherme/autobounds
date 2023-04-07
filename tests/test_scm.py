@@ -1,5 +1,5 @@
-from autobound.autobound.DAG import DAG
-from autobound.autobound.SCM import SCM
+from autobounds.autobounds.DAG import DAG
+from autobounds.autobounds.SCM import SCM
 import numpy as np
 import pytest
 import os
