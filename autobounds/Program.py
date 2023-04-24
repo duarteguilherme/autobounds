@@ -90,6 +90,17 @@ def test_string_numeric(string):
     except:
         return False
 
+def test_string_numeric_list(lst):
+    """ Same as test_string_numeric, but with lists
+    """
+    if len(lst) == 1:
+        return test_string_numeric(lst[0])
+    elif len(lst) == 0:
+        return True
+    else:
+        return False
+
+
 
 def parse_particular_bound(filename, n_bound):
     """ Read any of ".lower.log" or
@@ -248,7 +259,7 @@ class Program:
         """
         constraints2 = [ ]
         for i in self.constraints:
-            if not all([ test_string_numeric(j) for j in i ]):
+            if not all([ test_string_numeric_list(j) for j in i ]):
                 constraints2.append(i)
         self.constraints = constraints2
     
