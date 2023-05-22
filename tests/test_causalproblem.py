@@ -48,7 +48,7 @@ def test_load_data_gaussian():
 #    p01 = p01_problem.write_program().run_couenne()
 #    p10 = p10_problem.write_program().run_couenne()
 #    p11 = p11_problem.write_program().run_couenne()
-    p00_problem.write_program().to_pip('/home/beta/gauss.pip')
+#    p00_problem.write_program().to_pip('/home/beta/gauss.pip')
 
 
 def test_load_pandas():
