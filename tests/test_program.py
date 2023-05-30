@@ -12,6 +12,28 @@ def test_optimizers():
     print(change_constraint_parameter_value(const, 'X11', 0.31))
 #    input("")
 
+def test_program_pip():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    problem = causalProblem(dag)
+    datafile = io.StringIO('''X,Y,Z,prob
+    0,0,0,0.05
+    0,0,1,0.05
+    0,1,0,0.1
+    0,1,1,0.1
+    1,0,0,0.15
+    1,0,1,0.15
+    1,1,0,0.2
+    1,1,1,0.2''')
+    problem.set_estimand(problem.query('Y(X=1)=1') + problem.query('Y(X=0)=1', -1))
+    problem.load_data(datafile)
+    problem.add_prob_constraints()
+    z = problem.write_program()
+    pot = z.run_scip()
+    print(pot)
+#    pot.writeProblem('/home/beta/pot.cip')
+    input("")
+
 def test_program_parallel():
     dag = DAG()
     dag.from_structure("W -> X, W -> Y, W -> P, X -> Y", unob = "U")

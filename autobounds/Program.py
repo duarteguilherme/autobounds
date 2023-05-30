@@ -1,11 +1,11 @@
 from functools import reduce
 import io 
-from copy import deepcopy
+from copy import deepcopy, copy
 from multiprocessing import Process,Pool
 import time
 import sys
 
-pyomo_symb = {
+get_symb_func = {
         '==': lambda a,b: a== b,
         '<=': lambda a,b: a<= b,
         '>=': lambda a,b: a>= b,
@@ -28,8 +28,14 @@ def worker(x):
   return _func(x)
 
 def solve1(solver, model, sensetype, verbose):
+    """ To be used with couenne """
     sys.stdout = open('.' + sensetype + '.log', 'w', buffering = 1)
     solver.solve(model, tee = verbose)
+
+def solve2(model):
+    """ To be used with scip """
+    model.optimize()
+    
  
 
 def pip_join_expr(expr, params):
@@ -51,12 +57,20 @@ def test_pip_join_expr():
     assert pip_join_expr(['0.5', 'X00.Y00', 'Z1'], ['X00.Y00', 'Z1', 'Z0']) == '0.5 X00.Y00 * Z1'
 
 
-def mult_params_pyomo(params, k, M):
+def mult_params(params, k, M):
     """ Function to be used in run_pyomo
     Get parameters and multiply them
     """
     return reduce(lambda a, b: a * b, 
     [ getattr(M, r) if r in params else float(r)  
+        for r in k ])
+
+def mult_params_scip(k, par_dict):
+    """ Function to be used in run_pyomo
+    Get parameters and multiply them
+    """
+    return reduce(lambda a, b: a * b, 
+    [ par_dict[r] if r in par_dict.keys() else float(r)  
         for r in k ])
 
 
@@ -275,6 +289,38 @@ class Program:
                     )
         self.constraints = constraints2
     
+    def run_scip(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
+        from pyscipopt import Model
+        self.M_upper, self.M_lower = Model(), Model() # Unfortunately we cannot use deepcopy with scip
+        par_dict_upper = { }
+        par_dict_lower = { }
+        for p in self.parameters:
+            if p != 'objvar':
+                par_dict_lower[p] = self.M_lower.addVar(p, lb=0.0, ub=1.0)
+                par_dict_upper[p] = self.M_upper.addVar(p, lb=0.0, ub=1.0)
+            else:
+                par_dict_upper[p] = self.M_upper.addVar(p, lb = None, ub = None)
+                par_dict_lower[p] = self.M_lower.addVar(p, lb = None, ub = None)
+        # Next loop is not elegant, needs refactoring
+        for i, c in enumerate(self.constraints):
+            self.M_upper.addCons(
+                        get_symb_func[c[-1][0]](sum([ mult_params_scip(k, par_dict_upper) for k in c[:-1] ]), 0)
+                    )
+            self.M_lower.addCons(
+                        get_symb_func[c[-1][0]](sum([ mult_params_scip(k, par_dict_lower) for k in c[:-1] ]), 0)
+                    )
+        self.M_upper.setObjective(par_dict_upper['objvar'], sense = 'maximize')
+        self.M_lower.setObjective(par_dict_lower['objvar'], sense = 'minimize')
+        p_lower = Process(target=solve2, args=[self.M_lower])
+        p_upper = Process(target=solve2, args=[self.M_upper])
+        p_lower.start()
+        p_upper.start()
+#        self.M_upper.optimize()
+#        self.M_lower.optimize()
+#        p_upper = self.M_upper.getDualbound()
+#        p_lower = self.M_lower.getDualbound()
+        return {'upper': p_upper, 'lower': p_lower}
+    
     def run_couenne(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
         """ This method runs programs directly in python using pyomo and couenne
         """
@@ -291,7 +337,7 @@ class Program:
         for i, c in enumerate(self.constraints):
             setattr(M, 'c' + str(i), 
                     pyo.Constraint(expr = 
-                        pyomo_symb[c[-1][0]](sum([ mult_params_pyomo(self.parameters, k, M ) for k in c[:-1] ]), 0)
+                        get_symb_func[c[-1][0]](sum([ mult_params(self.parameters, k, M ) for k in c[:-1] ]), 0)
                     )
             )
         self.M_upper = deepcopy(M)
@@ -324,7 +370,7 @@ class Program:
         for i, c in enumerate(self.constraints):
             setattr(M, 'c' + str(i), 
                     pyo.Constraint(expr = 
-                        pyomo_symb[c[-1][0]](sum([ mult_params_pyomo(self.parameters, k, M ) for k in c[:-1] ]), 0)
+                        get_symb_func[c[-1][0]](sum([ mult_params(self.parameters, k, M ) for k in c[:-1] ]), 0)
                     )
             )
         self.M1 = deepcopy(M)
