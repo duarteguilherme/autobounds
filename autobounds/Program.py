@@ -32,11 +32,12 @@ def solve1(solver, model, sensetype, verbose):
     sys.stdout = open('.' + sensetype + '.log', 'w', buffering = 1)
     solver.solve(model, tee = verbose)
 
-def solve2(model):
+def solve_scip(model, sensetype, verbose = False):
     """ To be used with scip """
+    model.redirectOutput()
+    sys.stdout = open('.' + sensetype + '.log', 'w', buffering = 1)
     model.optimize()
     
- 
 
 def pip_join_expr(expr, params):
     """ 
@@ -114,6 +115,24 @@ def test_string_numeric_list(lst):
     else:
         return False
 
+def parse_particular_bound_scip(filename, n_bound):
+    """ Read any of ".lower.log" or
+    ".upper.log" and it returns 
+    data
+    """
+    with open(filename) as f:
+        data = f.readlines()
+    datarows = [ x 
+            for x in data if len(x.split('|')) > 5 ]
+    if len(datarows) > n_bound:
+        res = datarows[-1].split('|')
+        res = res[0:1] + res[-4:-2] 
+        return (len(datarows), [{  
+                                'time': float(res[0].strip().split('s')[0]),
+                                'dual': float(res[1].strip()), 
+                                'primal': float(res[2].strip()) }])
+    else:
+        return (n_bound, {})
 
 
 def parse_particular_bound(filename, n_bound):
@@ -134,6 +153,19 @@ def parse_particular_bound(filename, n_bound):
         return (n_bound, {})
 
 
+def get_final_bound_scip(filename):
+    with open(filename,'r') as f: 
+        data = f.readlines()
+    sign = 1 if filename == ".lower.log" else -1
+    result = {}
+    result['primal'] = sign*float([ k for k in data if k.startswith('Primal Bound')][-1]
+            .split(':')[1].split('(')[0].strip())
+    result['dual'] = sign*float([ k for k in data if k.startswith('Dual Bound')][-1]
+            .split(':')[1].split('(')[0].strip())
+    result['time'] = float([ k for k in data if k.startswith('Solving Time')][-1]
+            .split(':')[1].split('s')[0].strip())
+    return result
+
 def get_final_bound(filename):
     with open(filename,'r') as f: 
         data = f.readlines()
@@ -148,6 +180,19 @@ def get_final_bound(filename):
     return result
 
 
+def check_process_end_scip(p, filename):
+    with open(filename,'r') as f: 
+        data = f.readlines()
+    if any([x for x in data if "[optimal solution found]" in x ]):
+        print("Problem is finished! Returning final values")
+        p.terminate()
+        return 1
+    if any([x for x in data if 'problem is solved [infeasible]' in x ]):
+        print("Problem is infeasible. Returning without solutions")
+        p.terminate()
+        return 0
+    else:
+        return -1
 
 def check_process_end(p, filename):
     with open(filename,'r') as f: 
@@ -176,9 +221,67 @@ def change_constraint_parameter_value(constraint, parameter, value):
     return const
 
 
+def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01):
+    time.sleep(0.5)
+    total_lower, total_upper = [ ], []
+    n_lower, n_upper = 0, 0
+    current_theta, current_epsilon = 9999, 9999
+    if filename is not None:
+        with open(filename, 'w') as f:
+            f.write(f"bound,primal,dual,time\n")
+    while True:
+        n_lower, partial_lower = parse_particular_bound_scip('.lower.log', n_lower)
+        n_upper, partial_upper = parse_particular_bound_scip('.upper.log', n_upper)
+        total_lower += partial_lower
+        total_upper += partial_upper
+        if len(partial_lower) > 0:
+            for i in partial_lower:
+                print(f"LOWER BOUND: # -- Primal: {i['primal']} / Dual: {i['dual']} / Time: {i['time']} ##")
+                if filename is not None:
+                    with open(filename, 'a') as f:
+                        f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
+        if len(partial_upper) > 0:
+            for j in partial_upper:
+                print(f"UPPER BOUND: # -- Primal: {j['primal']} / Dual: {j['dual']} / Time: {j['time']} ##")
+                if filename is not None:
+                    with open(filename, 'a') as f:
+                        f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
+        end_lower = check_process_end_scip(p_lower, '.lower.log')
+        end_upper = check_process_end_scip(p_upper, '.upper.log')
+        if len(total_lower) > 0 and len(total_upper) > 0:
+            current_theta = total_upper[-1]['dual'] - total_lower[-1]['dual']
+            gamma = abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) 
+            current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
+            print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
+            if current_theta <  theta or current_epsilon < epsilon:
+                p_lower.terminate()
+                p_upper.terminate()
+                break
+        if end_lower != -1 and end_upper != -1:
+            break
+        time.sleep(1)
+    # Checking bounds if problem is finished
+    if end_lower == 1 or end_upper == 1: 
+        if end_lower == 1:
+            i = get_final_bound_scip('.lower.log')
+        if end_upper == 1:
+            j = get_final_bound_scip('.upper.log')
+        current_theta = j['dual'] - i['dual']
+        current_epsilon = current_theta/abs(j['primal'] - i['primal']) - 1
+    else:
+        if end_lower == 0 and end_upper == 0:
+            i, j, current_theta, current_epsilon = {}, {},-1,-1
+    i['end'] = end_lower
+    j['end'] = end_upper
+    if filename is not None:
+        with open(filename, 'a') as f:
+            f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
+            f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
+    return (i, j, current_theta, current_epsilon)
 
 def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01):
     """ 
+    For couenne
     Read files ".lower.log" and ".upper.log" each 1000 miliseconds 
     and retrieve data on dual and primal bounds.
     Also, it returns sucessful or not
@@ -226,7 +329,7 @@ def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01
                 break
         if end_lower != -1 and end_upper != -1:
             break
-        time.sleep(0.1)
+        time.sleep(1)
     # Checking bounds if problem is finished
     if end_lower == 1 or end_upper == 1: 
         if end_lower == 1:
@@ -290,9 +393,11 @@ class Program:
         self.constraints = constraints2
     
     def run_scip(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
+        """ We won't be using to_pip here,
+        because we need the function to save into a .cip file
+        """
         from pyscipopt import Model
-        manager = Manager()     
-        self.M_upper = manager.Value(MyModel())
+        self.M_upper = Model()
 #        self.M_upper = manager.shared_variable(pyscipopt.Model())
         self.M_lower = Model() # Unfortunately we cannot use deepcopy with scip
         par_dict_upper = { }
@@ -314,11 +419,11 @@ class Program:
                     )
         self.M_upper.setObjective(par_dict_upper['objvar'], sense = 'maximize')
         self.M_lower.setObjective(par_dict_lower['objvar'], sense = 'minimize')
-        p_lower = Process(target=solve2, args=[self.M_lower])
-        p_upper = Process(target=solve2, args=[self.M_upper])
+        p_lower = Process(target=lambda k: solve_scip(k, 'lower'), args=[self.M_lower])
+        p_upper = Process(target=lambda k: solve_scip(k, 'upper'), args=[self.M_upper])
         p_lower.start()
         p_upper.start()
-#        optim_data = parse_bounds_scip(p_lower, p_upper, epsilon = epsilon, theta = theta)
+        optim_data = parse_bounds_scip(p_lower, p_upper, epsilon = epsilon, theta = theta)
 #        self.M_upper.optimize()
 #        self.M_lower.optimize()
 #        p_upper = self.M_upper.getDualbound()
@@ -426,21 +531,3 @@ class Program:
     def to_cip(self):
         pass
 
-
-import pyscipopt
-class MyModel(pyscipopt.Model):
-    """ Class to replace pyscipopt.Model for pickling goals """
-    def __init__(self):         
-        super().__init__()     
-
-    def __getstate__(self):         
-        state = {}         
-        for name in dir(self):             
-            attribute = getattr(self, name)             
-            if not name.startswith("_") and not callable(attribute):                 
-                state[name] = attribute         
-        return state     
-
-    def __setstate__(self, state):         
-        for name, value in state.items():             
-            setattr(self, name, value)
