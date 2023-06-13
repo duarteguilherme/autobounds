@@ -1,7 +1,7 @@
 from functools import reduce
 import io 
 from copy import deepcopy, copy
-from multiprocessing import Process,Pool
+from multiprocessing import Process,Pool,Manager
 import time
 import sys
 
@@ -291,7 +291,10 @@ class Program:
     
     def run_scip(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
         from pyscipopt import Model
-        self.M_upper, self.M_lower = Model(), Model() # Unfortunately we cannot use deepcopy with scip
+        manager = Manager()     
+        self.M_upper = manager.Value(MyModel())
+#        self.M_upper = manager.shared_variable(pyscipopt.Model())
+        self.M_lower = Model() # Unfortunately we cannot use deepcopy with scip
         par_dict_upper = { }
         par_dict_lower = { }
         for p in self.parameters:
@@ -315,11 +318,18 @@ class Program:
         p_upper = Process(target=solve2, args=[self.M_upper])
         p_lower.start()
         p_upper.start()
+#        optim_data = parse_bounds_scip(p_lower, p_upper, epsilon = epsilon, theta = theta)
 #        self.M_upper.optimize()
 #        self.M_lower.optimize()
 #        p_upper = self.M_upper.getDualbound()
 #        p_lower = self.M_lower.getDualbound()
-        return {'upper': p_upper, 'lower': p_lower}
+#        return {'upper': p_upper, 'lower': p_lower}
+    
+    def get_bounds_scip(self):
+        return (
+                {'dual': self.M_lower.getDualbound(), 'primal': self.M_lower.getPrimalbound() },
+                {'dual': self.M_upper.getDualbound(), 'primal': self.M_upper.getPrimalbound() }
+                )
     
     def run_couenne(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
         """ This method runs programs directly in python using pyomo and couenne
@@ -416,3 +426,21 @@ class Program:
     def to_cip(self):
         pass
 
+
+import pyscipopt
+class MyModel(pyscipopt.Model):
+    """ Class to replace pyscipopt.Model for pickling goals """
+    def __init__(self):         
+        super().__init__()     
+
+    def __getstate__(self):         
+        state = {}         
+        for name in dir(self):             
+            attribute = getattr(self, name)             
+            if not name.startswith("_") and not callable(attribute):                 
+                state[name] = attribute         
+        return state     
+
+    def __setstate__(self, state):         
+        for name, value in state.items():             
+            setattr(self, name, value)

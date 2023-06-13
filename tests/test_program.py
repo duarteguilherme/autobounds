@@ -2,6 +2,7 @@ from autobounds.autobounds.causalProblem import causalProblem
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.Program import change_constraint_parameter_value
 import io
+import time
 
 
 
@@ -29,10 +30,11 @@ def test_program_pip():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-    pot = z.run_scip()
-    print(pot)
+    z.run_scip()
+    time.sleep(3)
+    print(z.M_lower.getDualbound())
+#    print(z.get_bounds_scip())
 #    pot.writeProblem('/home/beta/pot.cip')
-    input("")
 
 def test_program_parallel():
     dag = DAG()
