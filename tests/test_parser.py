@@ -2,6 +2,7 @@ from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.Parser import *
 
 
+
 def test_collect_worlds():
     dag = DAG()
     dag.from_structure("V -> Z, V -> X, Z -> X, Z -> W, Z -> Y, W -> Y, X -> Y, U -> X, U -> Y", unob = "U")

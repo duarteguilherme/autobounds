@@ -4,6 +4,17 @@ import numpy as np
 from itertools import product
 import math
 
+
+
+def test_query_var_with2_letters():
+    """ It doesn't work"""
+    y = DAG()
+    y.from_structure('DT -> YT')
+    cany = canonicalModel()
+    cany.from_dag(y)
+    assert set(cany.get_functions(['YT', 1], [['DT', 0]]))  == set(['YT10', 'YT11'])
+
+
 def test_fromdag():
     x = canonicalModel()
     y = DAG()

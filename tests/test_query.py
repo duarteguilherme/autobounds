@@ -3,6 +3,13 @@ from autobounds.autobounds.causalProblem import causalProblem
 from autobounds.autobounds.Parser import *
 from autobounds.autobounds.Query import Query, clean_query
 
+def test_query_more_letters():
+model1 = DAG()
+model1.from_structure('Dt -> Yt')
+problem1 = causalProblem(model1)
+problem1.query('Yt=1')
+
+
 def test_query():
     y = DAG()
     y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")

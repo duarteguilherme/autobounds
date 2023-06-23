@@ -42,7 +42,7 @@ def get_index(vec, number_values, total):
 
 
 def filter_params(ind, params, v):
-    return [ m for m in params if m[ind  + 1] == str(v[1]) ] 
+    return [ m for m in params if m[ind  + len(v[0])] == str(v[1]) ] 
 
 
 class canonicalModel():
@@ -86,7 +86,7 @@ class canonicalModel():
         return all values of v that satisfy those rules
         """
         params = self.iso_params[v[0]] # STEP 1
-        total = len(params[0]) - 1
+        total = len(params[0].replace(v[0], ''))
         parents = list(self.dag.find_parents_no_u(v[0]))
         if len(parents) == 0: # If there are no parents, so v returns v
             v[1] = str(v[1])
