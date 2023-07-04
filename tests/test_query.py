@@ -4,10 +4,10 @@ from autobounds.autobounds.Parser import *
 from autobounds.autobounds.Query import Query, clean_query
 
 def test_query_more_letters():
-model1 = DAG()
-model1.from_structure('Dt -> Yt')
-problem1 = causalProblem(model1)
-problem1.query('Yt=1')
+    model1 = DAG()
+    model1.from_structure('Dt -> Yt')
+    problem1 = causalProblem(model1)
+    problem1.query('Yt=1')
 
 
 def test_query():

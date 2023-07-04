@@ -338,8 +338,8 @@ def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01
             j = get_final_bound('.upper.log')
 #        i,j = get_final_bound('.lower.log'), get_final_bound('.upper.log')
         current_theta = j['dual'] - i['dual']
-        current_theta = total_upper[-1]['dual'] - total_lower[-1]['dual']
-        gamma = abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) 
+        gamma = abs(j['primal'] - i['primal']) 
+        current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
     else:
         if end_lower == 0 and end_upper == 0:
             i, j, current_theta, current_epsilon = {}, {},-1,-1
