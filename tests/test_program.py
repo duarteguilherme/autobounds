@@ -5,7 +5,8 @@ import io
 import time
 
 
-
+from autobounds.causalProblem import causalProblem
+from autobounds.DAG import DAG
 #def test_optimizers():
 #    const = [['Y01'], ['-1', 'Y10'], ['X10', 'X11', 'Y11'], ['-1', 'objvar'], ['==']]
 #    print(change_constraint_parameter_value(const, 'Y10', 0.20))
@@ -30,8 +31,10 @@ def test_program_pip():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-    z.run_scip()
+    res = z.run_scip()
     time.sleep(3)
+    assert res[0]['dual'] > 0.1
+    assert res[1]['dual'] < -0.49
 #    print(z.M_lower.getDualbound())
 #    print(z.get_bounds_scip())
 #    pot.writeProblem('/home/beta/pot.cip')

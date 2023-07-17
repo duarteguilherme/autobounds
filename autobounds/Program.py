@@ -79,6 +79,7 @@ class Program:
         p_lower.start()
         p_upper.start()
         optim_data = parse_bounds_scip(p_lower, p_upper, epsilon = epsilon, theta = theta)
+        return optim_data
 #        self.M_upper.optimize()
 #        self.M_lower.optimize()
 #        p_upper = self.M_upper.getDualbound()
