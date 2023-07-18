@@ -1,6 +1,7 @@
 from autobounds.autobounds.causalProblem import causalProblem
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.Program import change_constraint_parameter_value
+from autobounds.autobounds.Query import Query
 import io
 import time
 
@@ -12,6 +13,19 @@ def test_optimizers():
     print(change_constraint_parameter_value(const, 'Y10', 0.20))
     print(const)
     print(change_constraint_parameter_value(const, 'X11', 0.31))
+
+def test_program_scip_infeasibility():
+    dag = DAG()
+    dag.from_structure("D -> Y")
+    problem = causalProblem(dag)
+    problem.set_estimand(problem.query('Y(D=1)=1') + problem.query('Y(D=0)=1', -1))
+    problem.add_prob_constraints()
+    problem.add_constraint(problem.query('Y(D=0)=0&Y(D=1)=1') - Query(2))
+    z = problem.write_program()
+    z.optimize_remove_numeric_lines()
+    res = z.run_scip(maxtime = 5)
+    assert res[0]['end'] == 0
+    assert res[1]['end'] == 0
 
 def test_program_scip_time():
     dag = DAG()
