@@ -47,13 +47,12 @@ class Program:
                     )
         self.constraints = constraints2
     
-    def run_scip(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
+    def run_scip(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01, maxtime = None):
         """ We won't be using to_pip here,
         because we need the function to save into a .cip file
         """
         from pyscipopt import Model
         self.M_upper = Model()
-#        self.M_upper = manager.shared_variable(pyscipopt.Model())
         self.M_lower = Model() # Unfortunately we cannot use deepcopy with scip
         par_dict_upper = { }
         par_dict_lower = { }
@@ -78,13 +77,8 @@ class Program:
         p_upper = Process(target=lambda k: solve_scip(k, 'upper'), args=[self.M_upper])
         p_lower.start()
         p_upper.start()
-        optim_data = parse_bounds_scip(p_lower, p_upper, epsilon = epsilon, theta = theta)
+        optim_data = parse_bounds_scip(p_lower, p_upper, epsilon = epsilon, theta = theta, maxtime = maxtime)
         return optim_data
-#        self.M_upper.optimize()
-#        self.M_lower.optimize()
-#        p_upper = self.M_upper.getDualbound()
-#        p_lower = self.M_lower.getDualbound()
-#        return {'upper': p_upper, 'lower': p_lower}
     
     def get_bounds_scip(self):
         return (

@@ -115,6 +115,13 @@ def test_string_numeric_list(lst):
     else:
         return False
 
+def tofloat(num):
+    try:
+        num = float(num)
+    except:
+        pass
+    return num
+
 def parse_particular_bound_scip(filename, n_bound):
     """ Read any of ".lower.log" or
     ".upper.log" and it returns 
@@ -128,9 +135,9 @@ def parse_particular_bound_scip(filename, n_bound):
         res = datarows[-1].split('|')
         res = res[0:1] + res[-4:-2] 
         return (len(datarows), [{  
-                                'time': float(res[0].strip().split('s')[0]),
-                                'dual': float(res[1].strip()), 
-                                'primal': float(res[2].strip()) }])
+                                'time': tofloat(res[0].strip().split('s')[0]),
+                                'dual': tofloat(res[1].strip()), 
+                                'primal': tofloat(res[2].strip()) }])
     else:
         return (n_bound, {})
 
@@ -156,11 +163,10 @@ def parse_particular_bound(filename, n_bound):
 def get_final_bound_scip(filename):
     with open(filename,'r') as f: 
         data = f.readlines()
-    sign = 1 if filename == ".lower.log" else -1
     result = {}
-    result['primal'] = sign*float([ k for k in data if k.startswith('Primal Bound')][-1]
+    result['primal'] = float([ k for k in data if k.startswith('Primal Bound')][-1]
             .split(':')[1].split('(')[0].strip())
-    result['dual'] = sign*float([ k for k in data if k.startswith('Dual Bound')][-1]
+    result['dual'] = float([ k for k in data if k.startswith('Dual Bound')][-1]
             .split(':')[1].split('(')[0].strip())
     result['time'] = float([ k for k in data if k.startswith('Solving Time')][-1]
             .split(':')[1].split('s')[0].strip())
@@ -221,8 +227,9 @@ def change_constraint_parameter_value(constraint, parameter, value):
     return const
 
 
-def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01):
+def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01, maxtime = None):
     time.sleep(0.5)
+    init_time = time.time()
     total_lower, total_upper = [ ], []
     n_lower, n_upper = 0, 0
     current_theta, current_epsilon = 9999, 9999
@@ -259,6 +266,9 @@ def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = 0.01, theta =
                 break
         if end_lower != -1 and end_upper != -1:
             break
+        if maxtime is not None:
+            if time.time() - init_time > maxtime:
+                break
         time.sleep(1)
     # Checking bounds if problem is finished
     if end_lower == 1 or end_upper == 1: 
@@ -267,7 +277,8 @@ def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = 0.01, theta =
         if end_upper == 1:
             j = get_final_bound_scip('.upper.log')
         current_theta = j['dual'] - i['dual']
-        current_epsilon = current_theta/abs(j['primal'] - i['primal']) - 1
+        gamma = abs(j['primal'] - i['primal'])
+        current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
     else:
         if end_lower == 0 and end_upper == 0:
             i, j, current_theta, current_epsilon = {}, {},-1,-1

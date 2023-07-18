@@ -4,6 +4,8 @@ from autobounds.autobounds.Program import change_constraint_parameter_value
 import io
 import time
 
+from autobounds.causalProblem import causalProblem
+from autobounds.DAG import DAG
 
 def test_optimizers():
     const = [['Y01'], ['-1', 'Y10'], ['X10', 'X11', 'Y11'], ['-1', 'objvar'], ['==']]
@@ -11,7 +13,26 @@ def test_optimizers():
     print(const)
     print(change_constraint_parameter_value(const, 'X11', 0.31))
 
-def test_program_pip():
+def test_program_scip_time():
+    dag = DAG()
+    dag.from_structure("Z -> Y, X -> Y, U -> X, U -> Z", unob = "U")
+    problem = causalProblem(dag)
+    datafile = io.StringIO('''X,Y,Z,prob
+    0,0,0,0.05
+    0,0,1,0.05
+    0,1,0,0.1
+    0,1,1,0.1
+    1,0,0,0.15
+    1,0,1,0.15
+    1,1,0,0.2
+    1,1,1,0.2''')
+    problem.set_estimand(problem.query('Y(X=1)=1') + problem.query('Y(X=0)=1', -1))
+    problem.load_data(datafile)
+    problem.add_prob_constraints()
+    z = problem.write_program()
+    res = z.run_scip(maxtime = 5)
+#
+def test_program_scip():
     dag = DAG()
     dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
     problem = causalProblem(dag)
@@ -28,9 +49,7 @@ def test_program_pip():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-    res = z.run_couenne()
     res = z.run_scip()
-    time.sleep(3)
     assert res[0]['dual'] < 0.12
     assert res[1]['dual'] > 0.49
 #    print(z.M_lower.getDualbound())
