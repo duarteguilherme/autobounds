@@ -218,8 +218,8 @@ class DAG:
         return v.difference(ch) # First nodes cannot be children
     
     def find_unconfounded_first_nodes(self):
-        return [ k for k in dag.find_first_nodes() 
-            if len(dag.find_u_linked(k)) == 0  ]
+        return [ k for k in self.dag.find_first_nodes() 
+            if len(self.dag.find_u_linked(k)) == 0  ]
 
     def get_top_order_with_u(self):
         self.order = []
