@@ -7,7 +7,6 @@ from sympy import *
 from itertools import product
 
 
-list(product(['Z=0','Z=1'],['D=0','D=1'],['Y=0','Y=1']))
 
 
 from autobounds.canonicalModel import canonicalModel
