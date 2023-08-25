@@ -1,15 +1,15 @@
 from functools import reduce
 from math import pi
-<<<<<<< HEAD
+#<<<<<<< HEAD
 
 import networkx as nx
 import matplotlib.pyplot as plt
 
 
-=======
-import networkx as nx
-import matplotlib.pyplot as plt
->>>>>>> main
+#======
+#import networkx as nx
+#import matplotlib.pyplot as plt
+#>>>>>>> main
 
 class DAG:
     """ It defines a semi-Markovian DAG
