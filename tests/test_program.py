@@ -25,6 +25,25 @@ def test_program_scip_infeasibility():
     assert res[0]['end'] == 0
     assert res[1]['end'] == 0
 
+def test_program_scip_infeasibility2():
+    df = pd.DataFrame(
+            {'Z': [0,0,0,0,1,1,1,1],
+             'X': [0,0,1,1,0,0,1,1],
+             'Y': [0,1,0,1,0,1,0,1],
+          'prob': [0.066, 0.031, 0.377, 0.176, 0.063, 0.198, 0.021, 0.068 ]
+             })
+    dag = DAG()
+    dag.from_structure('Z -> X, X -> Y, U -> X, U -> Y', unob = 'U')
+    pro = causalProblem(dag)
+    pro.load_data(df)
+    pro.add_prob_constraints()
+    pro.set_ate('X','Y', cond = 'X(Z=1)=1&X(Z=0)=0')
+    pro.add_constraint(pro.query('X(Z=1)=1&X(Z=0)=0') - Query(0.0001), '>=')
+    program = pro.write_program()
+    program.run_scip()
+
+
+
 def test_program_scip_time():
     dag = DAG()
     dag.from_structure("Z -> Y, X -> Y, U -> X, U -> Z", unob = "U")

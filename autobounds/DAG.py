@@ -1,10 +1,15 @@
 from functools import reduce
 from math import pi
+<<<<<<< HEAD
 
 import networkx as nx
 import matplotlib.pyplot as plt
 
 
+=======
+import networkx as nx
+import matplotlib.pyplot as plt
+>>>>>>> main
 
 class DAG:
     """ It defines a semi-Markovian DAG
@@ -21,7 +26,64 @@ class DAG:
         self.V = set()
         self.U = set()
         self.E = set()
-    
+      
+    def plot(self):
+        """
+        Visualise a causal DAG using networkx
+        """
+        nodes = self.V.union(self.U)
+        edges = self.E
+        G = nx.DiGraph()    
+        G.add_edges_from(edges)
+
+        generations = [gen for gen in nx.topological_generations(G)] # topological ordering
+        for layer, nodes in enumerate(generations): # create graph "layers" according to topological ordering
+            for node in nodes:
+                G.nodes[node]["layer"] = layer # add layers as node attributes
+
+        pos = nx.multipartite_layout(G, subset_key="layer") # Compute the multipartite_layout using the "layer" node attribute
+        
+        # create curved edges to avoid parallel overlapping
+        curved_edges = set()
+        
+        for edge in G.edges():
+            source, target = edge
+            for gen, nodes in enumerate(generations):
+                if source in nodes:
+                    ind1 = gen
+                if target in nodes:
+                    ind2 = gen
+                    
+            if source in self.U: # force disturbance links straight (for now)
+                continue
+            if ind2 - ind1 > 1: # curved edge if grandparents-grandchildren or greater
+                curved_edges.add(edge)
+                
+        straight_edges = edges - curved_edges
+        
+        # label the nodes
+        def label_format_latex(node_label):
+            """ 
+            Generate latex labels for the nodes
+            """
+            if len(node_label) == 1:
+                return node_label
+            else:
+                big_letter = node_label[0].upper()
+                subscript = node_label[1:].upper() # subscript after first letter
+                return f"${big_letter}_{{{subscript}}}$"
+        
+        node_labels = {node:f"{label_format_latex(node)}" for node in G.nodes()}
+
+        # draw the graph
+        fig, ax = plt.subplots()
+        nx.draw_networkx_nodes(G, pos, ax=ax, node_color="white")
+        nx.draw_networkx_labels(G, pos, ax=ax, labels = node_labels) 
+        nx.draw_networkx_edges(G, pos, ax=ax, edgelist=list(straight_edges))
+        arc_rad = pi / 9
+        nx.draw_networkx_edges(G, pos, ax=ax, edgelist=list(curved_edges), connectionstyle=f'arc3, rad = {arc_rad}')
+        fig.tight_layout()
+        plt.show()
     def from_structure(self, edges, unob = ''):
         """
         get string and absorves the data 
