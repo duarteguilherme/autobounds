@@ -1,6 +1,6 @@
 problem,time
-"X binary, Y binary, Z binary",1.299884333006048
-"X binary, Y binary, Z ternary",3.9133628430063254
-"X ternary, Y binary, Z binary",3.630775015000836
-"X binary, Y ternary, Z binary",1.178998217001208
-"X ternary, Y ternary, Z ternary",313.1236429369965
+"X binary, Y binary, Z binary",0.556117041998732
+"X binary, Y binary, Z ternary",0.544265209000514
+"X binary, Y binary, Z ternary",0.5463242090008862
+"X ternary, Y binary, Z binary",0.5710762079997949
+"X binary, Y ternary, Z binary",0.559560457999396
