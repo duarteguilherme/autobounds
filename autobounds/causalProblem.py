@@ -368,7 +368,7 @@ class causalProblem:
         constraint = [ (x[0], x[1]) for x in constraint if x[0] != 0 ] + [ (1, [ symbol ] ) ]
         self.constraints.append(constraint)
     
-    def set_estimand(self,estimand, div = Query(1)):
+    def set_estimand(self,estimand, div = None, control = 0.0001):
         """
         Input: an expression similar to a constraint
         This algorithm there will 
@@ -377,7 +377,13 @@ class causalProblem:
         If the estimand is conditioned, then this condition 
         is multiplied by objvar, according to the algebraic formula.
         P(Y|X) = P(Y,X)/P(X) = objvar, then P(Y,X) - P(X) * objvar = 0
+
+        control is a numeric parameter to avoid numeric problem, such as division by 0
         """
+        if div is None:
+            div = Query(1)
+        else:
+            self.add_constraint(div - Query(control), ">=")
         self.add_constraint(estimand -  (Query('objvar') * div ))
     
     def check_indep(self, c):

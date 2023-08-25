@@ -120,6 +120,7 @@ def tofloat(num):
         num = float(num)
     except:
         pass
+    num = -10 if num == '--' else num # Fixing problem with scip parser
     return num
 
 def parse_particular_bound_scip(filename, n_bound):

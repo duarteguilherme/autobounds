@@ -4,6 +4,8 @@ from autobounds.autobounds.Program import change_constraint_parameter_value
 from autobounds.autobounds.Query import Query
 import io
 import time
+import pandas as pd
+
 
 
 def test_optimizers():
