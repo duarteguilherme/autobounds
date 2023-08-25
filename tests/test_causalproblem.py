@@ -120,7 +120,7 @@ def test_set_ate():
     z = Parser(y)
     x.set_estimand(x.query('Y(X=1)=1&X=0') - x.query('Y(X=0)=1&X=0'), div = x.query('X=0'))
     x.set_ate('X','Y', cond = 'X=0')
-    assert clean_query(x.constraints[-1]) == clean_query(x.constraints[-2])
+    assert clean_query(x.constraints[-2]) == clean_query(x.constraints[-4])
 
 def test_conditional_estimand():
     y = DAG()
