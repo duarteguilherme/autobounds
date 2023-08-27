@@ -22,6 +22,35 @@ class Program:
     def __init__(self):
         self.parameters = [ ]
         self.constraints = [ tuple() ]
+        self.res_scip = None
+        self.scip_lower_filename = '.lower.log'
+        self.scip_upper_filename = '.upper.log'
+
+    def plot(self):
+        self.track_result_scip()
+        self.res_scip = self.res_scip.loc[lambda k: k.seconds != 'time']
+        self.res_scip = self.res_scip.astype(float)
+        self.res_scip = self.res_scip.sort_values(['seconds'])
+        self.res_scip = self.res_scip.fillna(method = 'ffill')
+        self.res_scip = self.res_scip.fillna(method = 'bfill')
+        return plot_bounds(self.res_scip)
+      
+    def track_result_scip(self):
+        """ 
+        After running the optimization, this method obtains data from 
+        the optimization routine and saves it into self.res_scip
+        """
+        res_lower = parse_whole_file_scip(self.scip_lower_filename)
+        res_upper = parse_whole_file_scip(self.scip_upper_filename)
+        if len(res_lower) == 0 and len(res_upper) == 0:
+            return None
+        df_lower = pd.DataFrame(res_lower)
+        df_upper = pd.DataFrame(res_upper)
+        df_lower = df_lower.rename({'time':'seconds', 'dual': 'lb.dual',
+                                    'primal':'lb.prim'}, axis = 1)
+        df_upper = df_upper.rename({'time':'seconds', 'dual': 'ub.dual',
+                                    'primal':'ub.prim'}, axis = 1)
+        self.res_scip = df_lower.merge(df_upper, how = 'outer')
     
     def optimize_remove_numeric_lines(self):
         """ 
@@ -47,7 +76,7 @@ class Program:
                     )
         self.constraints = constraints2
     
-    def run_scip(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01, maxtime = None):
+    def run_scip(self, verbose = True, filename = None, epsilon = -10, theta = 0.01, maxtime = None):
         """ We won't be using to_pip here,
         because we need the function to save into a .cip file
         """
