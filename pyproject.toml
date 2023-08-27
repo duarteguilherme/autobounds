@@ -6,7 +6,9 @@ requires = [
     "matplotlib",
     "wheel",
     "numpy",
-    "pandas"
+    "pandas",
+    "plotnine",
+    "scipy"
     ]
 build-backend = "setuptools.build_meta"
 

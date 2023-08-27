@@ -4,6 +4,22 @@ from copy import deepcopy, copy
 from multiprocessing import Process,Pool,Manager
 import time
 import sys
+from plotnine import (ggplot,
+                      geom_errorbar,
+                      geom_ribbon,
+                      geom_line,
+                      geom_hline,
+                      theme_classic,
+                      aes,
+                      element_line,
+                      xlim,
+                      element_text,
+                      theme,
+                      xlab,
+                      ylab)
+import pandas as pd
+import numpy as np
+
 
 get_symb_func = {
         '==': lambda a,b: a== b,
@@ -120,13 +136,41 @@ def tofloat(num):
         num = float(num)
     except:
         pass
-    num = -10 if num == '--' else num # Fixing problem with scip parser
+    num = float(np.nan) if num == '--' else num # Fixing problem with scip parser
     return num
+
+def get_parse_file_vals_scip(res):
+    return {  
+                                    'time': tofloat(res[0].strip().split('s')[0].split('L')[-1].split('*')[-1].split('R')[-1]),
+                                    'dual': tofloat(res[1].strip()), 
+                                    'primal': tofloat(res[2].strip()) 
+             }
+
+def parse_whole_file_scip(filename):
+    """ Read any of ".lower.log" or
+    ".upper.log" and it returns 
+    data
+
+    This is a variant of parse_particular_bound_scip -- It works by parsing the whole file at the end
+    """
+    with open(filename) as f:
+        data = f.readlines()
+    datarows = [ x for x in data if len(x.split('|')) > 5 ]
+    if len(datarows) > 0:
+        getn = lambda l: l[0:1] + l[-4:-2]
+        return [ get_parse_file_vals_scip(getn(k.split('|'))) 
+                for k in datarows ] + [ get_final_bound_scip(filename) ]
+    else:
+        return None
 
 def parse_particular_bound_scip(filename, n_bound):
     """ Read any of ".lower.log" or
     ".upper.log" and it returns 
     data
+
+    Every time it reads the whole file. 
+    However, it tracks the line from the last reading (n_bound).
+    If there are new lines, it returns those lines.
     """
     with open(filename) as f:
         data = f.readlines()
@@ -136,7 +180,7 @@ def parse_particular_bound_scip(filename, n_bound):
         res = datarows[-1].split('|')
         res = res[0:1] + res[-4:-2] 
         return (len(datarows), [{  
-                                'time': tofloat(res[0].strip().split('s')[0]),
+                                'time': tofloat(res[0].strip().split('s')[0].split('L')[-1].split('*')[-1].split('R')[-1]),
                                 'dual': tofloat(res[1].strip()), 
                                 'primal': tofloat(res[2].strip()) }])
     else:
@@ -228,7 +272,7 @@ def change_constraint_parameter_value(constraint, parameter, value):
     return const
 
 
-def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01, maxtime = None):
+def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = -10, theta = 0.01, maxtime = None, verbose = True):
     time.sleep(0.5)
     init_time = time.time()
     total_lower, total_upper = [ ], []
@@ -257,11 +301,17 @@ def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = 0.01, theta =
         end_lower = check_process_end_scip(p_lower, '.lower.log')
         end_upper = check_process_end_scip(p_upper, '.upper.log')
         if len(total_lower) > 0 and len(total_upper) > 0:
+            total_upper[-1]['dual'] = 1 if pd.isna(total_upper[-1]['dual']) else total_upper[-1]['dual'] # Fixing the problem with nan inside dual
+            total_lower[-1]['dual'] = -1 if pd.isna(total_lower[-1]['dual']) else total_lower[-1]['dual']
             current_theta = total_upper[-1]['dual'] - total_lower[-1]['dual']
             gamma = abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) 
             current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
             print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
             if current_theta <  theta or current_epsilon < epsilon:
+                print(current_theta)
+                print(current_epsilon)
+                print(theta)
+                print(epsilon)
                 p_lower.terminate()
                 p_upper.terminate()
                 break
@@ -270,7 +320,7 @@ def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = 0.01, theta =
         if maxtime is not None:
             if time.time() - init_time > maxtime:
                 break
-        time.sleep(1)
+        time.sleep(5)
     # Checking bounds if problem is finished
     if end_lower == 1 or end_upper == 1: 
         if end_lower == 1:
@@ -362,4 +412,95 @@ def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01
             f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
             f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
     return (i, j, current_theta, current_epsilon)
+    
+    
+    
+    
+def plot_bounds(traj,
+                lb_theory=None,
+                ub_theory=None,
+                xlab_name='Seconds',
+                ylab_name='ATE',
+                size=20,
+                family=None
+                ):
+    # Color Palette
+    red = '#A51C30'
+    lightred = '#E16273'
+    darkblue = '#0C2C5C'
+    lightblue = '#4C6C9C'
+    grey70 = "#b3b3b3"
+    grey30 = "#4d4d4d"
+    p = ggplot(traj) + \
+        geom_ribbon(aes(x='seconds',
+                        ymin='lb.dual',
+                        ymax='ub.dual'
+                        ),
+                    color=None,
+                    fill=lightred
+                    ) + \
+        geom_line(aes(x='seconds',
+                      y='ub.dual'
+                      ),
+                  color=red,
+                  lineend='square',
+                  size=3
+                  ) + \
+        geom_line(aes(x='seconds',
+                      y='lb.dual'),
+                  color=red,
+                  lineend='square',
+                  size=3
+                  ) + \
+        geom_ribbon(aes(x='seconds',
+                        ymin='lb.prim',
+                        ymax='ub.prim'
+                        ),
+                    fill=lightblue,
+                    ) + \
+        geom_line(aes(x='seconds',
+                      y='ub.prim'
+                      ),
+                  color='darkblue',
+                  lineend='square',
+                  size=1
+                  ) + \
+        geom_line(aes(x='seconds',
+                      y='lb.prim'
+                      ),
+                  color=darkblue,
+                  lineend='square',
+                  size=1
+                  )
+    if lb_theory is not None and ub_theory is not None:
+        # Define the plot data first
+        # Only use the last result to generate error_bar
+        last_row_id = np.argmax(traj['seconds'] == max(traj['seconds']))
+        bound_data = pd.DataFrame({'seconds': 1.1 * max(traj['seconds']),
+                                   'lb': lb_theory.iloc[last_row_id],
+                                   'ub': ub_theory.iloc[last_row_id]},
+                                  index=[0])
+        p = p + geom_errorbar(aes(x='seconds',
+                                  ymin='lb',
+                                  ymax='ub'
+                                  ),
+                              width=.05 * max(traj['seconds']),
+                              data=bound_data,
+                              size=2)
+    # Final Plot
+    p = p + xlab(xlab_name) + ylab(ylab_name) +\
+        geom_hline(yintercept=0, linetype='dashed') + \
+        theme_classic(base_size=size) + \
+        theme(axis_text=element_text(colour=grey30, size=12),
+              axis_line=element_line(color=grey70,
+                                     lineend='square',
+                                     size=1.5
+                                     ),
+              axis_ticks=element_line(color=grey70,
+                                      size=1.5
+                                      ),
+              text=element_text(family=family)
+              ) + \
+        xlim(0, 1.15 * max(traj['seconds']))
+    return p
     
