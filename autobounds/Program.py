@@ -26,6 +26,20 @@ class Program:
         self.scip_lower_filename = '.lower.log'
         self.scip_upper_filename = '.upper.log'
 
+    def simplify_linear(self):
+        """ Firstly, it divides constraints in linear and nonlinear
+        Then, for each linear constraint, it tries to substitute them 
+        insidee the nonlinear constraints, simplifying them """
+        linear, nonlinear = [ ], [ ]
+        for i in self.constraints:
+            if is_linear(i):
+                linear.append(i)
+            else:
+                nonlinear.append(i)
+        linear, nonlinear = replace_linear(linear, nonlinear)
+        self.constraints = linear + nonlinear
+        
+
     def plot(self):
         self.track_result_scip()
         self.res_scip = self.res_scip.loc[lambda k: k.seconds != 'time']
@@ -196,6 +210,8 @@ class Program:
         filep.write(sense + '\n' + '  obj: objvar' + '\n')
         filep.write('\nSUBJECT TO\n')
         for i, c in enumerate(self.constraints):
+            if len(c) == 0:
+                continue
             filep.write('a' + str(i) + ': ' + ' + '.join([pip_join_expr(k, self.parameters) 
                 for k in c[:-1] ]) + ' ' + fix_symbol_pip(c[-1][0]) + ' 0\n')
         filep.write('\nBOUNDS\n')

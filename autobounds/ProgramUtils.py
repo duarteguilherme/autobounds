@@ -32,13 +32,73 @@ get_symb_func = {
 fix_symbol_pip = lambda a: '=' if a == '==' else a
 
 
+def replace_expr_lin_nonlin(lin, nonlin):
+    res = 0
+    linval = lin[-2][0]
+    linexpr = lin[0:-2]
+    nonlinval = nonlin[-2]
+    nonlinsign = nonlin[-1]
+    nonlinexpr = nonlin[0:-2]
+    replace_dict = {}
+    nonlin_new = [ ]
+    el_dict = { }
+    for j in linexpr:
+        if not any([j[0] in k for k in nonlinexpr ]):
+            return (res, nonlin)
+        replace_dict[j[0]] = []
+    for i in nonlinexpr[0:-1]:
+        for j in linexpr:
+            if j[0] in i:
+                replace_dict[j[0]].append('-'.join([k for k in i if k != j[0]]))
+                try:
+                    el_dict['-'.join([k for k in i if k != j[0]])] += [ i ]
+                except:
+                    el_dict['-'.join([k for k in i if k != j[0]])] = [ i ]
+    el = list(set(el_dict.keys())) 
+    for e in el:
+        if (all([ e in replace_dict[k[0]] for k in linexpr])):
+            nonlin_new.append( [ linval ] + e.split('-') )
+            res = 1
+        else:
+            nonlin_new += el_dict[e]
+    nonlin_new += [ nonlinval ] + [ nonlinsign ]
+    return(res, nonlin_new)
+
+def replace_expr_lin(lin, nonlinear):
+    res = 0
+    nonlinear_list = [ ]
+    for nonlin in nonlinear:
+        nonlinear_list.append(replace_expr_lin_nonlin(lin, nonlin))
+    for i in nonlinear_list:
+        res += i[0]
+    nonlinear_list = [ i[1] for i in nonlinear_list] 
+    return (res, nonlinear_list)
+
+
+def replace_linear(linear, nonlinear):
+    linear_new = [ ]
+    for lin in linear:
+        res, nonlinear = replace_expr_lin(lin, nonlinear)
+        if res == 0:
+            linear_new.append(lin)
+    return (linear_new, nonlinear)
+
+        
+
 # Workaround in order to use lambda inside multiprocessing
 _func = None
 
 def worker_init(func):
   global _func
   _func = func
-  
+
+def is_linear(x):
+    if x[-1][0] != '==':
+        return False
+    for i in x:
+        if len(i) > 1:
+            return False
+    return True
 
 def worker(x):
   return _func(x)
