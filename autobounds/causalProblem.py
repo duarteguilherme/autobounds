@@ -215,6 +215,7 @@ class causalProblem:
                 transform_constraint(x, zero_parameters )
                 for x in self.constraints
                 ]
+        program.optimize_remove_numeric_lines()
         return program
         
     def add_parameter(self, param_name):

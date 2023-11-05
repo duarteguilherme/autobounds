@@ -24,30 +24,30 @@ def test_is_linear():
     program = pro.write_program()
     assert is_linear(program.constraints[-1])
 
-def test_separation_lin_nonlin():
-    df = pd.DataFrame(
-            {'Z': [0,0,0,0,1,1,1,1],
-             'W': [0,0,1,1,0,0,1,1],
-             'Y': [0,1,0,1,0,1,0,1],
-          'prob': [0.066, 0.031, 0.377, 0.176, 0.063, 0.198, 0.021, 0.068 ]
-             })
-    dag = DAG()
-    dag.from_structure('U -> Z, Z -> W, U -> Y, W -> Y')
-    pro = causalProblem(dag)
-    pro.add_constraint(pro.query('Z(U=0)=0') - Query(0.43))
-    pro.add_constraint(pro.query('Z(U=0)=1') - Query(0.25))
-    pro.add_constraint(pro.query('Z(U=1)=0') - Query(0.35))
-    pro.add_constraint(pro.query('Z(U=1)=1') - Query(0.15))
-    pro.load_data(df)
-    pro.set_ate('W','Y')
-    pro.add_prob_constraints()
-    program = pro.write_program()
-    constraints1 = program.constraints
-    program.simplify_linear()
-    constraints2 = program.constraints
-    print(len(constraints1))
-#    assert is_linear(program.constraints[-1])
-
+#def test_separation_lin_nonlin():
+#    df = pd.DataFrame(
+#            {'Z': [0,0,0,0,1,1,1,1],
+#             'W': [0,0,1,1,0,0,1,1],
+#             'Y': [0,1,0,1,0,1,0,1],
+#          'prob': [0.066, 0.031, 0.377, 0.176, 0.063, 0.198, 0.021, 0.068 ]
+#             })
+#    dag = DAG()
+#    dag.from_structure('U -> Z, Z -> W, U -> Y, W -> Y')
+#    pro = causalProblem(dag)
+#    pro.add_constraint(pro.query('Z(U=0)=0') - Query(0.43))
+#    pro.add_constraint(pro.query('Z(U=0)=1') - Query(0.25))
+#    pro.add_constraint(pro.query('Z(U=1)=0') - Query(0.35))
+#    pro.add_constraint(pro.query('Z(U=1)=1') - Query(0.15))
+#    pro.load_data(df)
+#    pro.set_ate('W','Y')
+#    pro.add_prob_constraints()
+#    program = pro.write_program()
+#    constraints1 = program.constraints
+#    program.simplify_linear()
+#    constraints2 = program.constraints
+#    print(len(constraints1))
+##    assert is_linear(program.constraints[-1])
+#
 
 def test_rdd_paper():
     # P(U=1) = 0.4
@@ -120,16 +120,23 @@ def test_rdd_paper():
     dag = DAG()
     dag.from_structure('U -> Z, U -> Y, Z -> W, W -> Y')
     problem = causalProblem(dag, {'Z': 4})
+    problem.set_ate('W', 'Y')
     problem.load_data(p_zwy)
-#    problem.load_data(p_z_cond_u.rename({'prob_z_cond_u': 'prob'}, axis = 1), cond = ['U'])
+    # Explictly setting these strata to 0
+    problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=0)=1')]) 
+    problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=1)=1')])
+    problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=2)=0')])
+    problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=3)=0')])
+    # Explictly setting the remaining stratum to 0
+    # This step is not necessary, but it might make sense to get a faster solution
+#    problem.add_constraint(problem.query('W(Z=0)=0&W(Z=1)=0&W(Z=2)=1&W(Z=3)=1') - Query(1))
     for u in range(2):
         for z in range(4):
             problem.add_constraint(problem.query(f'Z(U={u})={z}') - Query(p_z_cond_u.loc[lambda i: (i.U == u) & (i.Z == z)].iloc[0]['prob_z_cond_u']))
-    problem.add_constraint(problem.query('W(Z=0)=1'))  # prob of this expression == 0
-    problem.add_constraint(problem.query('W(Z=1)=1'))  # prob of this expression == 0
-    problem.add_constraint(problem.query('W(Z=2)=0'))  # prob of this expression == 0
-    problem.add_constraint(problem.query('W(Z=3)=0'))  # prob of this expression == 0
-    problem.set_ate('W', 'Y')
+#    problem.add_constraint(problem.query('W(Z=0)=1'))  # prob of this expression == 0
+#    problem.add_constraint(problem.query('W(Z=1)=1'))  # prob of this expression == 0
+#    problem.add_constraint(problem.query('W(Z=2)=0'))  # prob of this expression == 0
+#    problem.add_constraint(problem.query('W(Z=3)=0'))  # prob of this expression == 0
     problem.add_prob_constraints()
     program = problem.write_program()
     program.to_pip('rdd_no_simp.pip')

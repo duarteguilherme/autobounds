@@ -32,48 +32,20 @@ get_symb_func = {
 
 fix_symbol_pip = lambda a: '=' if a == '==' else a
 
-
 def replace_expr_lin_nonlin(lin, nonlin):
+    nonlin_symbols = list(set([ l for k in nonlin[0:-1] for l in k if not test_string_numeric(l) ])) 
+    lin_symbols = list(set([ l for k in lin[0:-2] for l in k if not test_string_numeric(l) ]))
     linexpr = ' + '.join([ ' * '.join(i) for i in lin[0:-2] ]) 
-    nonlinexpr = ' + '.join([ ' * '.join(i) for i in nonlin[0:-2] ])
-    linexpr = factor(simplify(linexpr))
-    nonlinexpr = simplify(nonlinexpr)
-    linval = factor(simplify(lin[-2][0]))
-    nonlinval = factor(simplify(nonlin[-2][0]))
-    nonlinexpr = nonlinexpr.replace(linexpr, linval)
-    print(nonlinexpr)
-    print(linexpr)
-    input("")
-    res = 0
-    linval = lin[-2][0]
-    linexpr = lin[0:-2]
-    nonlinval = nonlin[-2]
-    nonlinsign = nonlin[-1]
-    nonlinexpr = nonlin[0:-2]
-    replace_dict = {}
-    nonlin_new = [ ]
-    el_dict = { }
-    for j in linexpr:
-        if not any([j[0] in k for k in nonlinexpr ]):
-            return (res, nonlin)
-        replace_dict[j[0]] = []
-    for i in nonlinexpr[0:-1]:
-        for j in linexpr:
-            if j[0] in i:
-                replace_dict[j[0]].append('-'.join([k for k in i if k != j[0]]))
-                try:
-                    el_dict['-'.join([k for k in i if k != j[0]])] += [ i ]
-                except:
-                    el_dict['-'.join([k for k in i if k != j[0]])] = [ i ]
-    el = list(set(el_dict.keys())) 
-    for e in el:
-        if (all([ e in replace_dict[k[0]] for k in linexpr])):
-            nonlin_new.append( [ linval ] + e.split('-') )
-            res = 1
-        else:
-            nonlin_new += el_dict[e]
-    nonlin_new += [ nonlinval ] + [ nonlinsign ]
-    return(res, nonlin_new)
+    nonlinexpr = ' + '.join([ ' * '.join(i) for i in nonlin[0:-1] ])
+    linexpr = simplify(linexpr)
+    nonlinexpr = simplify(nonlinexpr).factor(symbols([ k for k in nonlin_symbols if k not in lin_symbols ]))
+    linval = -1 * simplify(lin[-2][0])
+    nonlinexpr = str(nonlinexpr.replace(linexpr, linval).expand()).strip().replace('- ', '-')
+    nonlinexpr = nonlinexpr.replace('-', '+ -').split('+')
+    nonlinexpr = [ [ l.strip() for l in k.split('*') ] for k in nonlinexpr if k != '' ]
+    nonlin_symbols_rest = set([ l for k in nonlinexpr for l in k ])
+    res = len(set(nonlin_symbols).difference(nonlin_symbols_rest)) > 0
+    return (res, nonlinexpr + [ nonlin[-1] ])
 
 def replace_expr_lin(lin, nonlinear):
     res = 0

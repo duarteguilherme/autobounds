@@ -68,7 +68,7 @@ class Program:
     
     def optimize_remove_numeric_lines(self):
         """ 
-        All lines of the type [[0.25], [-0.25], [==]. []] 
+        All lines of the type [[0.25], [-0.25], [==], []] 
         i.e. no numeric parameter is included ,
         should be removed
         """
