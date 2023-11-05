@@ -49,4 +49,90 @@ def test_separation_lin_nonlin():
 #    assert is_linear(program.constraints[-1])
 
 
+def test_rdd_paper():
+    # P(U=1) = 0.4
+    p_u = pd.DataFrame({
+        'U': [0, 1],
+        'prob_u': [0.6, 0.4]
+    })
+    # P(Z=0|U=0) = 0.25, P(Z=1|U=0) = 0.35, P(Z=2|U=0) = 0.40
+    # P(Z=0|U=1) = 0.40, P(Z=1|U=1) = 0.35, P(Z=2|U=1) = 0.25
+    p_z_cond_u = pd.DataFrame({
+        'U': [0, 0, 0, 0,
+          1, 1, 1, 1],
+        'Z': [0, 1, 2, 3,
+          0, 1, 2, 3],
+        'prob_z_cond_u': [0.1, 0.2, 0.3, 0.4,
+                      0.4, 0.3, 0.2, 0.1]
+    })
+    # P(W=0|Z=0) = 1
+    # P(W=1|Z=1) = 1
+    # P(W=1|Z=2) = 1
+    p_w_cond_z = pd.DataFrame({
+        'Z': [0, 0,
+          1, 1,
+          2, 2,
+          3, 3],
+        'W': [0, 1,
+          0, 1,
+          0, 1,
+          0, 1],
+        'prob_w_cond_z': [1, 0,
+                      1, 0, 
+                      0, 1,
+                      0, 1]
+    })
+    p_y_cond_uw = pd.DataFrame({
+        'U': [0, 0,
+          0, 0, 
+          1, 1,
+          1, 1],
+        'W': [0, 0, 
+          1, 1,
+          0, 0,
+          1, 1],
+        'Y': [0, 1,
+          0, 1,
+          0, 1,
+          0, 1],
+        'prob_y_cond_uw': [0.20, 0.80,
+                       0.40, 0.60,
+                       0.60, 0.40, 
+                       0.75, 0.25]
+    })
+    p_zwy = (p_u
+         .merge(p_z_cond_u)
+         .merge(p_w_cond_z)
+         .merge(p_y_cond_uw)
+         .assign(prob = lambda i: i.prob_u * i.prob_z_cond_u * i.prob_w_cond_z * i.prob_y_cond_uw)
+         .drop(['prob_u', 'prob_z_cond_u', 'prob_w_cond_z', 'prob_y_cond_uw'], axis = 1)
+         .groupby(['Z', 'W', 'Y'])
+         .sum()['prob']
+         .reset_index()
+        )
+    p_y_cond_w = (p_u
+              .merge(p_y_cond_uw)
+              .assign(prob = lambda i: i.prob_u * i.prob_y_cond_uw)
+              .groupby(['W', 'Y'])
+              .sum()['prob']
+	      .reset_index()
+              )
+    dag = DAG()
+    dag.from_structure('U -> Z, U -> Y, Z -> W, W -> Y')
+    problem = causalProblem(dag, {'Z': 4})
+    problem.load_data(p_zwy)
+#    problem.load_data(p_z_cond_u.rename({'prob_z_cond_u': 'prob'}, axis = 1), cond = ['U'])
+    for u in range(2):
+        for z in range(4):
+            problem.add_constraint(problem.query(f'Z(U={u})={z}') - Query(p_z_cond_u.loc[lambda i: (i.U == u) & (i.Z == z)].iloc[0]['prob_z_cond_u']))
+    problem.add_constraint(problem.query('W(Z=0)=1'))  # prob of this expression == 0
+    problem.add_constraint(problem.query('W(Z=1)=1'))  # prob of this expression == 0
+    problem.add_constraint(problem.query('W(Z=2)=0'))  # prob of this expression == 0
+    problem.add_constraint(problem.query('W(Z=3)=0'))  # prob of this expression == 0
+    problem.set_ate('W', 'Y')
+    problem.add_prob_constraints()
+    program = problem.write_program()
+    program.to_pip('rdd_no_simp.pip')
+    program.simplify_linear()
+    program.to_pip('rdd_simp.pip')
 

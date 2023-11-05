@@ -19,6 +19,7 @@ from plotnine import (ggplot,
                       ylab)
 import pandas as pd
 import numpy as np
+from sympy import *
 
 
 get_symb_func = {
@@ -33,6 +34,16 @@ fix_symbol_pip = lambda a: '=' if a == '==' else a
 
 
 def replace_expr_lin_nonlin(lin, nonlin):
+    linexpr = ' + '.join([ ' * '.join(i) for i in lin[0:-2] ]) 
+    nonlinexpr = ' + '.join([ ' * '.join(i) for i in nonlin[0:-2] ])
+    linexpr = factor(simplify(linexpr))
+    nonlinexpr = simplify(nonlinexpr)
+    linval = factor(simplify(lin[-2][0]))
+    nonlinval = factor(simplify(nonlin[-2][0]))
+    nonlinexpr = nonlinexpr.replace(linexpr, linval)
+    print(nonlinexpr)
+    print(linexpr)
+    input("")
     res = 0
     linval = lin[-2][0]
     linexpr = lin[0:-2]
