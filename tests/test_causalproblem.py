@@ -5,6 +5,22 @@ import pandas as pd
 import io
 from copy import deepcopy
 
+def test_load_data():
+    df_y_do_x = pd.DataFrame({
+        'X': [0,0,1,1],
+        'Y': [0,1,0,1],
+        'prob': [0.4, 0.6, 0.1, 0.9]
+        })
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
+    problem = causalProblem(dag)
+    problem.load_data(df_y_do_x, do = ['X'])
+    problem.set_ate('X','Y')
+    problem.add_prob_constraints()
+    program = problem.write_program()
+    program.to_pip('test_do.pip')
+    res = program.run_scip()
+    assert res[0]['primal'] == 0.3
 
 
 def test_solve_kl():
@@ -24,6 +40,24 @@ def test_solve_kl_bug_log():
     result = solve_kl_p(ns=ns, K = K, o = o, alpha = alpha)
     assert result[0] == 0
 
+
+
+def test_load_data():
+    df_y_do_x = pd.DataFrame({
+        'X': [0,0,1,1],
+        'Y': [0,1,0,1],
+        'prob': [0.4, 0.6, 0.1, 0.9]
+        })
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
+    problem = causalProblem(dag)
+    problem.load_data(df_y_do_x, do = ['X'])
+    problem.set_ate('X','Y')
+    problem.add_prob_constraints()
+    program = problem.write_program()
+    program.to_pip('test_do.pip')
+    res = program.run_scip()
+    assert res[0]['primal'] == 0.3
 
 
 def test_solve_gaussian():
@@ -228,7 +262,8 @@ def test_transform_constraint():
     model = DAG()
     model.from_structure("D -> Y, D -> M, M -> Y, U -> Y, U -> M", unob = "U")
     problem = causalProblem(model)
-    problem.set_p_to_zero([ x[1][0] for x in problem.query('M(D=0)=1&M(D=1)=0') ])
+#    problem.set_p_to_zero([ x[1][0] for x in problem.query('M(D=0)=1&M(D=1)=0') ])
+    problem.set_p_to_zero(problem.query('M(D=0)=1&M(D=1)=0'))
     problem.set_estimand(problem.query('Y(D=1)=1') + problem.query('Y(D=0)=1', -1),div = problem.query('M=1'))
     problem.constraints[-1]
     program = problem.write_program()

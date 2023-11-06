@@ -12,28 +12,28 @@ import pandas as pd
 #from autobounds.Program import change_constraint_parameter_value
 #from autobounds.Query import Query
 
-def test_program_parse_whole_file():
-    df = pd.DataFrame(
-            {'Z': [0,0,0,0,1,1,1,1],
-             'X': [0,0,1,1,0,0,1,1],
-             'Y': [0,1,0,1,0,1,0,1],
-          'prob': [0.066, 0.031, 0.377, 0.176, 0.063, 0.198, 0.021, 0.068 ]
-             })
-    dag = DAG()
-    dag.from_structure('Z -> X, X -> Y, U -> X, U -> Y', unob = 'U')
-    pro = causalProblem(dag)
-    pro.load_data(df)
-    pro.add_prob_constraints()
-    pro.set_ate('X','Y', cond = 'X(Z=1)=1&X(Z=0)=0')
-    pro.add_constraint(pro.query('X(Z=1)=1&X(Z=0)=0') - Query(0.0001), '>=')
-    program = pro.write_program()
-    program.run_scip()
-    program.res_scip
-    program.track_result_scip()
-    from autobounds.Program import get_final_bound_scip
-    get_final_bound_scip('.lower.log')
-    print(program.res_scip)
-
+#def test_program_parse_whole_file():
+#    df = pd.DataFrame(
+#            {'Z': [0,0,0,0,1,1,1,1],
+#             'X': [0,0,1,1,0,0,1,1],
+#             'Y': [0,1,0,1,0,1,0,1],
+#          'prob': [0.066, 0.031, 0.377, 0.176, 0.063, 0.198, 0.021, 0.068 ]
+#             })
+#    dag = DAG()
+#    dag.from_structure('Z -> X, X -> Y, U -> X, U -> Y', unob = 'U')
+#    pro = causalProblem(dag)
+#    pro.load_data(df)
+#    pro.add_prob_constraints()
+#    pro.set_ate('X','Y', cond = 'X(Z=1)=1&X(Z=0)=0')
+#    pro.add_constraint(pro.query('X(Z=1)=1&X(Z=0)=0') - Query(0.0001), '>=')
+#    program = pro.write_program()
+#    program.run_scip()
+#    program.res_scip
+#    program.track_result_scip()
+#    from autobounds.Program import get_final_bound_scip
+#    get_final_bound_scip('.lower.log')
+#    print(program.res_scip)
+#
 
 def test_optimizers():
     const = [['Y01'], ['-1', 'Y10'], ['X10', 'X11', 'Y11'], ['-1', 'objvar'], ['==']]

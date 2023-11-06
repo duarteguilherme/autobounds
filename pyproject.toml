@@ -8,6 +8,7 @@ requires = [
     "numpy",
     "pandas",
     "plotnine",
+    "sympy",
     "scipy"
     ]
 build-backend = "setuptools.build_meta"

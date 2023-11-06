@@ -155,6 +155,15 @@ def get_constraint_from_row(row_data, row_prob, program, cond = [ ], n = 0):
         return program.query('&'.join(query)) - Query(row_prob) * program.query('&'.join(query_cond))
     return   program.query('&'.join(query)) - Query(row_prob)
 
+def get_query_data_do(row, cols, do, self):
+    do_str = ','.join([
+        f'{i}={int(row[i])}' 
+        for i in do ])
+    str_query = '&'.join([
+        f'{i}({do_str})={int(row[i])}' 
+        for i in cols ])
+    return self.query(str_query)
+
 
 class causalProblem:
     def __init__(self, dag, number_values = {}):
@@ -305,7 +314,21 @@ class causalProblem:
         if optimize:
             simplify_first_nodes(self, self.dag, datam, cond)
     
-    def load_data(self, data, cond = [ ], optimize = True):
+    def load_data_do(self, datam, do = [ ], optimize = True):
+        for i in datam.groupby(do)['prob'].sum().tolist():
+            if i != 1:
+                raise Exception('Probabilities do not sum up to 1')
+        for i in datam.columns:
+            if i != 'prob':
+                if i not in list(self.dag.V):
+                    raise Exception('Included columns that do not exist in the causal model')
+        cols = [ i for i in datam.columns if i != 'prob' and i not in do ]
+        for i, row in datam.iterrows():
+            self.add_constraint(get_query_data_do(row, cols, do, self) -
+                                Query(float(row['prob']))
+                                )
+    
+    def load_data(self, data, cond = [ ], do = [ ] ,optimize = True):
         """ It accepts a file 
         file must be csv. Columns will be added if they match parameters...
         Column prob must indicate probability.
@@ -325,6 +348,12 @@ class causalProblem:
         If data regarding first nodes is complete, then numeric values are added directly.
         """
         datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data) 
+        if len(do) >= 1:
+            if len(cond) >= 1:
+                raise Exception('Data with cond and do at the same are not implemented yet')
+            print('here')
+            self.load_data_do(datam, do = do, optimize = True)
+            return None
         cond_data = datam[cond] if len(cond) > 0 else [ ]
         columns = [ x for x in datam.columns if x in list(self.dag.V) ]  + ['prob']
         datam = datam[columns]
@@ -345,10 +374,19 @@ class causalProblem:
         For a particular list  of parameters
         ['X0111', 'Z0'], set them to 0
         """
-        self.parameters = [ (x[0], x[1])
-                for x in self.parameters  
-                if x[1] not in parameter_list ] + [ (0, x) 
-                        for x in parameter_list ]
+        if isinstance(parameter_list, Query):
+            parameter_list = [ k[1][0] for k in parameter_list ]
+            self.parameters = [ (x[0], x[1])
+                    for x in self.parameters  
+                    if x[1] not in parameter_list ] + [ (0, x) 
+                            for x in parameter_list ]
+        elif isinstance(parameter_list, list):
+            self.parameters = [ (x[0], x[1])
+                    for x in self.parameters  
+                    if x[1] not in parameter_list ] + [ (0, x) 
+                            for x in parameter_list ]
+        else:
+            raise Exception('Type error - cannot set it to 0')
     
     def add_constraint(self, constraint, symbol = '=='):
         """

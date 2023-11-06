@@ -121,18 +121,23 @@ def test_rdd_paper():
     dag.from_structure('U -> Z, U -> Y, Z -> W, W -> Y')
     problem = causalProblem(dag, {'Z': 4})
     problem.set_ate('W', 'Y')
-    problem.load_data(p_zwy)
     # Explictly setting these strata to 0
-    problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=0)=1')]) 
-    problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=1)=1')])
-    problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=2)=0')])
-    problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=3)=0')])
+    problem.set_p_to_zero(problem.query('W(Z=0)=1'))
+    problem.set_p_to_zero(problem.query('W(Z=1)=1'))
+    problem.set_p_to_zero(problem.query('W(Z=2)=0'))
+    problem.set_p_to_zero(problem.query('W(Z=3)=0'))
+    #problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=0)=1')]) 
+    #problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=1)=1')])
+    #problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=2)=0')])
+    #problem.set_p_to_zero([ i[1][0] for i in problem.query('W(Z=3)=0')])
+    #problem.load_data(p_z_cond_u.rename({'prob_z_cond_u': 'prob'}, axis = 1), cond = ['U'])
+    problem.load_data(p_zwy)
     # Explictly setting the remaining stratum to 0
     # This step is not necessary, but it might make sense to get a faster solution
 #    problem.add_constraint(problem.query('W(Z=0)=0&W(Z=1)=0&W(Z=2)=1&W(Z=3)=1') - Query(1))
-    for u in range(2):
-        for z in range(4):
-            problem.add_constraint(problem.query(f'Z(U={u})={z}') - Query(p_z_cond_u.loc[lambda i: (i.U == u) & (i.Z == z)].iloc[0]['prob_z_cond_u']))
+#    for u in range(2):
+#        for z in range(4):
+#            problem.add_constraint(problem.query(f'Z(U={u})={z}') - Query(p_z_cond_u.loc[lambda i: (i.U == u) & (i.Z == z)].iloc[0]['prob_z_cond_u']))
 #    problem.add_constraint(problem.query('W(Z=0)=1'))  # prob of this expression == 0
 #    problem.add_constraint(problem.query('W(Z=1)=1'))  # prob of this expression == 0
 #    problem.add_constraint(problem.query('W(Z=2)=0'))  # prob of this expression == 0

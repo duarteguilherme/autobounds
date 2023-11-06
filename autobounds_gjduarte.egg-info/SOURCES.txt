@@ -29,3 +29,4 @@ tests/test_parser.py
 tests/test_program.py
 tests/test_query.py
 tests/test_scm.py
+tests/test_simpl_program.py
