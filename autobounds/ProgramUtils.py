@@ -20,7 +20,7 @@ from plotnine import (ggplot,
 import pandas as pd
 import numpy as np
 from sympy import *
-
+from tqdm import tqdm
 
 get_symb_func = {
         '==': lambda a,b: a== b,
@@ -60,10 +60,10 @@ def replace_expr_lin(lin, nonlinear):
 
 def replace_linear(linear, nonlinear):
     linear_new = [ ]
-    for lin in linear:
-        res, nonlinear = replace_expr_lin(lin, nonlinear)
+    for lin_i in tqdm(range(len(linear)), desc = 'Simplifying...'):
+        res, nonlinear = replace_expr_lin(linear[lin_i], nonlinear)
         if res == 0:
-            linear_new.append(lin)
+            linear_new.append(linear[lin_i])
     return (linear_new, nonlinear)
 
         
@@ -351,10 +351,10 @@ def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = -10, theta = 
             current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
             print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
             if current_theta <  theta or current_epsilon < epsilon:
-                print(current_theta)
-                print(current_epsilon)
-                print(theta)
-                print(epsilon)
+#                print(current_theta)
+#                print(current_epsilon)
+#                print(theta)
+#                print(epsilon)
                 p_lower.terminate()
                 p_upper.terminate()
                 break

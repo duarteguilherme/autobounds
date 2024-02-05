@@ -6,6 +6,13 @@ from copy import deepcopy
 
 
 
+def lsconcat(a,b):  # A concatenation function to replace empty lists
+    if not (len(a) > 0 and len(a[0]) > 0):
+        return b
+    elif not (len(b) > 0 and len(b[0]) > 0):
+        return a
+    else:
+        return a + b
 
 def find_vs(v,dag):
     ch = dag.find_children(v)
@@ -152,81 +159,125 @@ class Parser():
             for k in self.canModel.parameters if list(c)[0] in k ] 
             for c in self.canModel.c_comp ] )
         
-    def parse_expr(self, world, expr):
+    def translate(self, main_expr, do_expr, ancestors):
+        """ Output (all_paths): a list of tuples, where each tuple represents a path that satisfies the quantity in main_var.
+         
+         In particular, each tuple (a path) will have two entries: the first one is a list with the path for 
+         the original model, and the second one the path for the canonical model. In other words, the original 
+         expression and the translated version.
+        
+         In the first list, the parameters are represented also as lists with two entries: first is the name of the variable and second is the value
+         In the second list, you have the list of principal strata/response variables.
+          
+         The algorithm for translation is a BFS one.
+         It starts with all the root ancestors ( layer 1 ).
+         
+         The number of canonical parameters of the root ancestor
+         is identical to the number of values their variable can assume 
+         in the original model
+         
+         For every descendent variable (layers - 2, 3, ...), the parameters 
+          will depend to the value of their parents in the original model
+        
+         Consider this example: Let the model Z -> X, Z -> Y, X -> Y,
+         This model has only root Z, with two values: Z0 and Z1
+        
+         Now consider X, if X = 0, you have to consider two cases:
+         a) If Z = 1, then X will include the canonical parameters X00 (X[Z=0]=0,X[Z=1]=0) and X10 (X[Z=0]=1,X[Z=1]=0),
+         b) If Z = 0, then X will include the canonical parameters X00 (X[Z=0]=0,X[Z=1]=0) and X01 (X[Z=0]=0,X[Z=1]=1),
+         
+         For considering cases of Y, then the same is done, but now using values of Z and X in the original model
+        
+         An important detail of this step is that data for get_functions must be forced 
+         to include variables and values of do.
+        
+         the tuples in can_prob will include also the 
+         As I noticed, maybe it's better to store every search
+         """
+        main_var = list(main_expr.keys())
+        do_var = [ i[0] for i in do_expr ]
+        all_paths = [ ([[]], [[]] ) ] # It starts with an empty path
+        for var in ancestors: # In other words, each ancestor has to be considered in topological order
+            if var in main_var: # If var was referred in the main_expr, so one does not need to consider all possibilities (all_poss)
+                all_poss = [ int(main_expr[var]) ]
+            else: # If is not referred, then it needs to consider all possitibilities
+                all_poss = range(self.canModel.number_values[var])
+            all_paths_new = [] # Before second loop
+            # Each instance of poss will become a path in all_paths,
+            # so at the end use all_paths = all_paths_new
+            for path in all_paths:
+                for poss in all_poss:
+                    all_paths_new.append( 
+                        (
+                        lsconcat(path[0], [[var, poss ]]),
+                        lsconcat(path[1],  [ self.canModel.get_functions( [var, poss ], 
+                                lsconcat(path[0], do_expr) ) ] ) 
+                        )
+                    )
+            all_paths = all_paths_new # After the second loop
+        return all_paths
+
+        
+    def parse_expr(self, world, expr, complete = False):
         """
-        It gets a whole expression in terms of a world and returns 
-        the equivalence in terms of a canonical model
+        Input: a probability expression for only one world  
+        Output: the equivalent term in parameters of the canonical model
+
+        world argument indicates possible interventions
+        expr indicates the expression to be evaluated
+        complete indicates if one wants to cover only parameters that ancestors to the relevant variables, 
+            or every parameter that is not a descendent of the relevant variables. 
+            The first case is the default (complete = False)
 
         Step 1) If there is intervention, original model must be truncated.
         For instance, a graph with Z -> X -> Y, with do(X = 1), 
-        we must have a DAG with X forced to be 1. 
+        we must have a DAG with X forced to be 1, i.e. Z   X1 -> Y
         
         Step 2) From the expression, select all relevant variables. 
         Model will have to include all those variables, as well as 
         their ancestors. 
-        For instance, for a graphg Z -> X -> Y, if we query P(X = 1),
+        For instance, for a graph Z -> X -> Y, if we query P(X = 1),
         we will have to select X and Z. Y can be discarded.
         They have to be put in topological order.
         
-        Step 3) 
+        Step 3) Use the translation algorithm defined above in method .translate
+
+        Step 4) Return the parameters in terms of c-components
+        For instance, if X <-> Y, then X0 would not be a parameter, but X0Y00
         """
         dag = deepcopy(self.dag)
         # STEP 1 -- truncate and remove do vars from main
         do_expr = [ i.split('=') for i in world.split(',') ]
         if do_expr != [['']]: # Clean do_expr 
-            do_expr = [ [i[0], int(i[1]) ]for i in do_expr ]
+            do_expr = [ [ i[0], int(i[1])]   for i in do_expr ]
         else:
-            do_expr = list()
-        do_var = [ i[0]  for i in do_expr ] 
-        main_expr = [ i.split('=') for i in expr if i[0] not in do_var ]
-        main_var = [ i[0] for i in main_expr ] 
+            do_expr = [ ]
+        do_var = [ i[0] for i in do_expr ]
+        main_expr = [ i.split('=') 
+            for i in expr if i[0] not in do_var ]
+        main_var = [ i[0] for i in main_expr ]
         if  len(main_var) > len(set(main_var)): # Check if one is querying intersection such as Y = 1 and Y = 0
-                return [] 
+            return [] 
+        main_expr = dict(main_expr)
+        main_expr = { k: int(val) for k, val in main_expr.items() }
         dag.truncate(','.join([ x[0] for x in do_expr ]))
+        # main_var indicates the variables we want to identify
+        
         # STEP 2 --- Get variable and its ancestors in topological order
+        # Ancestors include the variables
+        # To find complete paths -- rather than find_ancestors, one has to use -- NOT SURE if valid
         ancestors = list(dag.find_ancestors(main_var, no_v = False))
-        all_var = [ i for i in dag.get_top_order() if i in ancestors ]
-        
+        ancestors = [ i for i in dag.get_top_order() if i in ancestors ] # Put them in order
+
         # STEP 3 -- Translate from prob to can_prob
-        # can_prob will be list of tuples. The first element of the tuple 
-        # is a list with data including all the values of variables before.
-        # For instance, for Z -> X -> Y,
-        # if we are getting the functions from X to Y, we need to remember to include 
-        # data for each piece of Z (1 or 0, if binary).
-        # The second element is the list of parameters until that moment.
-        #
-        # An important detail of this step is that data for get_functions must be forced 
-        # to include variables and values of do.
-        can_prob = [ ([], [] ) ]
-        for i in all_var:
-            can_prob_next = [ ]
-            if i in main_var:
-                var_entry = [ b for b in main_expr if b[0] == i ][0]
-                var_entry[1] = int(var_entry[1])
-                for j in can_prob:
-                    can_prob_next.append(
-                            (
-                            j[0] + [ var_entry ],
-                            j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0] + do_expr) ]
-                            ))
-                can_prob = can_prob_next
-            else:
-                for m in range(self.canModel.number_values[i]):
-                    for j in can_prob:
-                        var_entry = [i, m ]
-                        can_prob_next.append(
-                                (
-                                j[0] + [ var_entry],
-                                j[1] + [ self.canModel.get_functions(var_entry.copy(), j[0] + do_expr) ]
-                                ))
-                can_prob = can_prob_next
+        all_paths = self.translate(main_expr, do_expr, ancestors)      
+
+        # Change the structure of all_paths
+        all_paths = [ list(product(*x[1])) for x in all_paths ] 
+        all_paths = [ j for i in all_paths for j in i ]  
         
-        # STEP 3.5 -- Get complete list of parameters
-        can_param = [ list(product(*x[1])) for x in can_prob ] 
-        can_param = [ j for i in can_param for j in i ]  
-        
-        # STEP 4 --- From parameters get c-components
-        funcs = [ a for k in can_param for a in get_c_component(list(k), self.c_parameters) ]
+        # STEP 4 --- Get parameters in terms of  c-components parameters
+        funcs = [ a for k in all_paths for a in get_c_component(list(k), self.c_parameters) ]
         return funcs
     
     def collect_worlds(self, expr):
