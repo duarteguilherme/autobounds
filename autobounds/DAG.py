@@ -1,15 +1,9 @@
 from functools import reduce
 from math import pi
-#<<<<<<< HEAD
 
 import networkx as nx
 import matplotlib.pyplot as plt
 
-
-#======
-#import networkx as nx
-#import matplotlib.pyplot as plt
-#>>>>>>> main
 
 class DAG:
     """ It defines a semi-Markovian DAG
@@ -84,6 +78,7 @@ class DAG:
         nx.draw_networkx_edges(G, pos, ax=ax, edgelist=list(curved_edges), connectionstyle=f'arc3, rad = {arc_rad}')
         fig.tight_layout()
         plt.show()
+
     def from_structure(self, edges, unob = ''):
         """
         get string and absorves the data 
@@ -105,7 +100,7 @@ class DAG:
             unob = unob.split(',')
             for i in unob:
                 self.set_u(i.strip())
-        self.get_top_order_with_u()
+        self.get_top_order()
 
     def plot(self):
         """
@@ -341,24 +336,6 @@ class DAG:
         v = self.V.copy()
         ch = set([ i[1] for i in self.E if i[0] not in self.U ])
         return v.difference(ch) # First nodes cannot be children
-    
-    def get_top_order_with_u(self):
-        self.order = []
-        first_nodes = self.find_first_nodes()
-        v = self.V.copy()
-        self.order.append(self.U) # Us are order 0
-        if len(v) == 0:
-            return None
-        level = first_nodes.union(
-                [ k for j in self.U for k in self.find_children(j) ])
-        v = v.difference(level)
-        # Set  level 1 (without U)
-        self.order.append(level)
-        while len(v) > 0:
-            level = set([ k for j in level for k in self.find_children(j) 
-                    if k in v])
-            v = v.difference(level)
-            self.order.append(level)
     
     def get_top_order(self):
         """ DFS algorithm 
