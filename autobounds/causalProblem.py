@@ -99,7 +99,7 @@ def simplify_first_nodes(problem, dag, datam, cond):
     if any([k for k in data_count == 1]): # Important, if data has selection, for instance all elements of X are 1, then return None
         return None
     first_nodes = [ k for k in dag.find_first_nodes() 
-            if len(dag.find_u_linked(k)) == 0 and k in complete_data ]
+            if len(dag.find_u_linked(k)) == 1 and k in complete_data ]
     # Need to check if data is complete
     for k in first_nodes:
         problem.unconf_first_nodes += [ (k + str(i), 
@@ -235,6 +235,7 @@ class causalProblem:
         Check all constraints 
         and replace values for unconf_first_nodes
         """
+        print(self.unconf_first_nodes)
         self.constraints = [ [ replace_first_nodes(self.unconf_first_nodes, y) 
             for y in x ]  
                 for x in self.constraints ] 

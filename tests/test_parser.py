@@ -54,3 +54,17 @@ def test_parse_irreducible():
             ('X10.Y11',), ('X01.Y10',), ('X00.Y10',)] 
     assert set(x.parse_expr('Z=0',['Y=1'])) == set(part2)
 
+
+def test_translate():
+    # Testing translate
+    y = DAG()
+    y.from_structure("Z -> X, U -> X, X -> Y, U -> Y", unob = "U")
+    x = Parser(y, {'X': 2})
+    main_expr1 = {'Y': 1}
+    do_expr1 = [['X', 1]]
+    ancestors1 = ['Z','Y']
+    translation = x.translate(main_expr = main_expr1, do_expr = do_expr1, ancestors = ancestors1)
+    assert 'Y01' in translation[1][1][1]
+    assert 'Z0' in translation[0][1][0]
+    assert 'Y11' in translation[1][1][1]
+

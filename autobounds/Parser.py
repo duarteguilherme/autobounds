@@ -47,6 +47,13 @@ def intersect_tuple_parameters(par1, par2):
     return tuple(par)
 
 
+def factor_by_c_component(path, c_comp_base, c_parameters):
+    classification = { }
+#    for c in c_comp_base:
+#        path_result = [ 
+#            for i in path if i[0] in c
+#        ]
+
 
 def add2dict(dict2):
     def func_dict(dict1):
@@ -158,7 +165,8 @@ class Parser():
         self.c_parameters = deepcopy([ [ k 
             for k in self.canModel.parameters if list(c)[0] in k ] 
             for c in self.canModel.c_comp ] )
-        
+        # c-parameters must be in topological order 
+
     def translate(self, main_expr, do_expr, ancestors):
         """ Output (all_paths): a list of tuples, where each tuple represents a path that satisfies the quantity in main_var.
          
@@ -270,7 +278,14 @@ class Parser():
         ancestors = [ i for i in dag.get_top_order() if i in ancestors ] # Put them in order
 
         # STEP 3 -- Translate from prob to can_prob
-        all_paths = self.translate(main_expr, do_expr, ancestors)      
+        all_paths = self.translate(main_expr, do_expr, ancestors)     
+
+        if complete:
+            c_comp_base = [  set([j for i in c for j in i.split('.') ]) for c in self.c_parameters]
+            print( [ factor_by_c_component(path[1], c_comp_base, self.c_parameters)
+                    for path in all_paths ] )
+            print(c_comp_base)
+
 
         # Change the structure of all_paths
         all_paths = [ list(product(*x[1])) for x in all_paths ] 
@@ -305,7 +320,7 @@ class Parser():
         return dict_expr
 
 
-    def parse(self, expr):
+    def parse(self, expr, complete = False):
         """
         Input: complete expression, for example P(Y(x=1, W=0)=1&X(Z = 1)=0)
         Output: a list of canonical expressions, representing this expr 
@@ -320,7 +335,9 @@ class Parser():
         expr = expr.replace('P (', '', 1)[:-1] if expr.startswith('P (') else expr
         expr = expr.replace(' ','')
         exprs = self.collect_worlds(expr)
-        exprs = [ self.parse_expr(i,j) for i,j in exprs.items() ]
+        exprs = [ self.parse_expr(i,j, complete) for i,j in exprs.items() ]
+        if complete:
+            return exprs
         exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
         exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
         return sorted(exprs)

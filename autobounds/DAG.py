@@ -289,10 +289,11 @@ class DAG:
         """ 
         find all the Vs linked to a specific v through 
         U variables
+        Notice that V is linked to itself
         """
         pa = self.find_parents(v)
         u_pa = pa.intersection(self.U)
-        return set().union(*[self.find_children(i)  for i in u_pa ]) 
+        return set().union(*[self.find_children(i)  for i in u_pa ]).union([v])
     
     def find_roots(self):
         """ 
@@ -312,18 +313,13 @@ class DAG:
         self.E = self.E.difference(e_to_remove)
     
     def find_c_components(self):
-        c_comp = set()
-        for v in self.V:
-            cset = [ c for c in c_comp if v in c ]
-            if len(cset) > 1:
-                cset2 = [frozenset([ j for i in cset for j in i ]) ]
-                for c in cset:
-                    c_comp.discard(c)
-                cset = cset2
-            if len(cset) == 0:
-                cset = [ frozenset([v]) ]
-            c_comp.discard(cset[0])
-            c_comp.add(cset[0].union(self.find_u_linked(v)))
+        order = self.order.copy()
+        c_comp = [ ] 
+        while len(order) > 0:
+            vars = self.find_u_linked(order[0])
+            for k in vars:
+                order.remove(k)
+            c_comp.append(vars)
         return c_comp
     
     def find_first_nodes(self):

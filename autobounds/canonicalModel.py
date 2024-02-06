@@ -4,7 +4,6 @@ from itertools import product
 import math
 
 
-
 numbers = '0123456789abcdefghijklmnopqrstuvxwyz'
 
 def convert_to_system(number, system):
@@ -70,7 +69,7 @@ class canonicalModel():
         """
         The purpose of this method is very simple.
         Suppose you want to know all the functions causing V = 1,
-        and you have some data about some of X's parents, 
+        and you have some data about some of V's parents, 
         for instance, Y=1, X=0. This method will return all the functions 
         allowing this transformation.
 
@@ -86,7 +85,7 @@ class canonicalModel():
         return all values of v that satisfy those rules
         """
         params = self.iso_params[v[0]] # STEP 1
-        total = len(params[0].replace(v[0], ''))
+        total = len(params[0].replace(v[0], '')) # total of entries in the canonical notation, for instance, Y000000 has 6
         parents = list(self.dag.find_parents_no_u(v[0]))
         if len(parents) == 0: # If there are no parents, so v returns v
             v[1] = str(v[1])
@@ -128,7 +127,7 @@ class canonicalModel():
         self.set_number_parents()
         self.number_values = number_values # number_values refers to 
         # the number of values of the variable in the original model,
-        # not the number of canonical values, which depends on the 
+        # rather than the number of canonical values, which depends on the 
         # number of parents
         for v in self.dag.V:
             if v not in number_values.keys():
