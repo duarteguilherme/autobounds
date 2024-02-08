@@ -1,6 +1,46 @@
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.Parser import *
 
+def test_parse_irreducible():
+    # Testing parse_expr
+    y = DAG()
+    y.from_structure("Z -> X, U -> X, X -> Y, U -> Y", unob = "U")
+    x = Parser(y, {'X': 2})
+    x.parse_expr('X=0', ['Y=1'])
+    part1 = [('X00.Y11',), ('X01.Y11',), ('X10.Y11',), ('X11.Y11',), ('X00.Y10',), 
+            ('X01.Y10',), ('X10.Y10',), ('X11.Y10',)]
+    assert set(part1) == set(x.parse_expr('X=0', ['Y=1']))
+    part2 = [('X11.Y01',), ('X10.Y01',), ('X01.Y11',), ('X00.Y11',), ('X11.Y11',), 
+            ('X10.Y11',), ('X01.Y10',), ('X00.Y10',)] 
+    assert set(x.parse_expr('Z=0',['Y=1'])) == set(part2)
+
+
+def test_parse_complete():
+    dag = DAG()
+#    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    dag.from_structure("Z -> X, X -> Y")
+    parser = Parser(dag)
+    print(parser.parse('Y=1&X(Z=0)=0'))
+    print(parser.parse('Y=1&X(Z=0)=0', complete = True))
+    print(parser.parse('X(Z=0)=0', complete = True))
+    print(parser.parse('Y=1', complete = True))
+
+
+
+
+def test_factor_by_ccomponent():
+    dag = DAG()
+    dag.from_structure("V -> Z, Z -> X, U -> X", unob = "U")
+    test_p = Parser(dag)
+    ancestors = list(dag.find_ancestors(['V','Z'], no_v = False))
+    ancestors = [ i for i in dag.get_top_order() if i in ancestors ] # Put them in order
+    all_paths = test_p.translate({'V': 1, 'Z': 0 }, [], ancestors)
+    c_comp_base = [  set([j for i in c for j in i.split('.') ]) 
+        for c in test_p.c_parameters]
+    res_factor = factor_by_c_component(all_paths[0][1], c_comp_base, test_p.c_parameters) 
+    assert res_factor[0] == ['V1']
+    assert res_factor[1][1] == 'Z10'
+    assert res_factor[2][3] == 'X11'
 
 
 def test_collect_worlds():
@@ -28,6 +68,7 @@ def test_parse_iv_graph():
     y = DAG()
     y.from_structure("Z -> X, U -> X, X -> Y, U -> Y", unob = "U , Uy")
     x = Parser(y, {'X': 2})
+    x.parse('Y(X=0)=1')
     assert set(x.parse('Y=1&X=0')) == set([('X00.Y10', 'Z0'), ('X00.Y10', 'Z1'), 
             ('X00.Y11', 'Z0'), ('X00.Y11', 'Z1'), ('X01.Y10', 'Z0'), 
             ('X01.Y11', 'Z0'), ('X10.Y10', 'Z1'), ('X10.Y11', 'Z1')])
@@ -42,17 +83,6 @@ def test_parse_iv_graph():
             ('X1.Y0111', 'Z1'), ('X1.Y1001', 'Z1'), ('X1.Y1010', 'Z0'), ('X1.Y1011', 'Z0'),
             ('X1.Y1011', 'Z1'), ('X1.Y1101', 'Z1'), ('X1.Y1110', 'Z0'), ('X1.Y1111', 'Z0'), ('X1.Y1111', 'Z1')] 
 
-def test_parse_irreducible():
-    # Testing parse_expr
-    y = DAG()
-    y.from_structure("Z -> X, U -> X, X -> Y, U -> Y", unob = "U , Uy")
-    x = Parser(y, {'X': 2})
-    part1 = [('X00.Y11',), ('X01.Y11',), ('X10.Y11',), ('X11.Y11',), ('X00.Y10',), 
-            ('X01.Y10',), ('X10.Y10',), ('X11.Y10',)]
-    assert set(part1) == set(x.parse_expr('X=0', ['Y=1']))
-    part2 = [('X11.Y01',), ('X10.Y01',), ('X01.Y11',), ('X00.Y11',), ('X11.Y11',), 
-            ('X10.Y11',), ('X01.Y10',), ('X00.Y10',)] 
-    assert set(x.parse_expr('Z=0',['Y=1'])) == set(part2)
 
 
 def test_translate():

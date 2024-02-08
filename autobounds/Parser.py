@@ -48,11 +48,23 @@ def intersect_tuple_parameters(par1, par2):
 
 
 def factor_by_c_component(path, c_comp_base, c_parameters):
-    classification = { }
-#    for c in c_comp_base:
-#        path_result = [ 
-#            for i in path if i[0] in c
-#        ]
+    """
+    The input will be a path in terms of simple strata,
+    but we need the same path in terms of multiplication of c-component strata.
+
+    For instance, 
+    if the input is [[Z0, Z1], [X00, X01], [Y00, Y01]]
+    We need the out put [[Z0,Z1], [X00.Y00, ...]
+    """
+    c_copy = c_parameters.copy()
+    for p in path:
+        for index, base in enumerate(c_comp_base):
+            if p[0] in base:
+                c_copy[index] = [ k 
+                        for k in c_copy[index] 
+                        for j in p if j in k ]
+    return tuple(c_copy)
+
 
 
 def add2dict(dict2):
@@ -279,18 +291,19 @@ class Parser():
 
         # STEP 3 -- Translate from prob to can_prob
         all_paths = self.translate(main_expr, do_expr, ancestors)     
-
         if complete:
-            c_comp_base = [  set([j for i in c for j in i.split('.') ]) for c in self.c_parameters]
-            print( [ factor_by_c_component(path[1], c_comp_base, self.c_parameters)
-                    for path in all_paths ] )
-            print(c_comp_base)
-
+            # If complete is True, it returns factors in terms of paths
+            # Eventually this will become default
+            c_comp_base = [  set([j for i in c for j in i.split('.') ]) 
+                for c in self.c_parameters]
+            all_paths = [ factor_by_c_component(path[1], c_comp_base, self.c_parameters)
+                    for path in all_paths ] 
+            return all_paths
 
         # Change the structure of all_paths
         all_paths = [ list(product(*x[1])) for x in all_paths ] 
         all_paths = [ j for i in all_paths for j in i ]  
-        
+
         # STEP 4 --- Get parameters in terms of  c-components parameters
         funcs = [ a for k in all_paths for a in get_c_component(list(k), self.c_parameters) ]
         return funcs
@@ -337,6 +350,15 @@ class Parser():
         exprs = self.collect_worlds(expr)
         exprs = [ self.parse_expr(i,j, complete) for i,j in exprs.items() ]
         if complete:
+            # Now it suffices to do the intersection of each expr by factor
+            # Check if every path has the same path
+            if len(set([ len(i) for k in exprs for i in k])) != 1:
+                raise Exception("Paths with different lengths!")
+            exprs = reduce(lambda path1, path2: [ tuple( list(set(p1[i]) & set(p2[i]) ) 
+                                                for i in range(len(p1)))
+                for p1 in path1 for p2 in path2 ],
+                   exprs) 
+            exprs = [ i for i in exprs if not any([ len(k) == 0 for k in i ]) ]
             return exprs
         exprs = reduce(lambda a,b: intersect_expr(a,b, self.c_parameters), exprs)
         exprs = [ tuple(sorted([i for i in x if i != '' ]))  for x in exprs ] # Remove empty ''
