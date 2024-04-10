@@ -157,15 +157,20 @@ def test_monotonicity_symmetric():
     problem.set_estimand(problem.get_symmetric(problem.query('X(Z=0)=1&X(Z=1)=0')))
     problem.find_solutions()
 
-#
-#def test_factorial():
-#    dag = DAG()
-#    dag.from_structure("A -> Y, B -> Y, U -> A, U -> B, U -> Y", unob = 'U')
-#    problem = closedProblem(dag)
-#    problem.load_data('Y', 'A=0,B=0')
-#    problem.load_data('Y', 'A=0,B=1')
-#    problem.load_data('Y', 'A=1,B=0')
-#    problem.load_data('Y', 'A=0,B=1')
-#    problem.load_data('A,B,Y')
-##    problem.set_estimand(problem.query('Y(A=1)=1&B(A=1)'))
-#    problem.find_solutions()
+
+def test_factorial():
+    dag = DAG()
+    dag.from_structure("A -> Y, B -> Y, U -> A, U -> B, U -> Y", unob = 'U')
+    problem = closedProblem(dag)
+    problem.load_data('Y', 'A=0,B=0')
+    problem.load_data('Y', 'A=0,B=1')
+    problem.load_data('Y', 'A=1,B=0')
+    problem.load_data('Y', 'A=0,B=1')
+    problem.load_data('A,B,Y')
+    estimand = tuple([problem.query('Y(A=1)=1&B(A=1)=0')[0] + problem.query('Y(A=1)=1&B(A=1)=1')[0]])
+    print(estimand)
+    problem.set_estimand(estimand)
+#    print(  problem.query('Y(A=1)=1&B(A=1)=1') + problem.query('Y(A=1)=1&B(A=1)=0'))
+
+#    problem.set_estimand(problem.query('Y(A=1)=1&B(A=1)=1') + problem.query('Y(A=1)=1&B(A=1)=0'))
+    problem.find_solutions()

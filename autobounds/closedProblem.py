@@ -261,9 +261,12 @@ class closedProblem:
 
         Step 1: Eliminate all parts that sum to 1
 
-        Step 2: Find cover through sums, then through subtractions
+        Step 2: If estimand is a sum, but only one c-component is not complete, consider that estimand as only one sum
+        Otherwise, raise Exception
 
-        Step 3: Check which sums of strata cover the estimand
+
+        Step 3: Find cover through sums, then through subtractions
+
 
         """
         # Step 1
@@ -319,7 +322,11 @@ class closedProblem:
         self.c_parameters = self.get_symmetric(query)
 
     def set_estimand(self, estimand):
+        """ Load estimand,
+        and also its symmetric quantity
+        """
         self.estimand = estimand
+        self.sym_estimand = self.get_symmetric(estimand)
 
     def load_data(self, data, do = None):
         # data comes in the format X,Y,Z
