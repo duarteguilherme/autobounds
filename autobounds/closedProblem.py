@@ -220,7 +220,8 @@ class closedProblem:
         self.top_order = self.dag.get_top_order()
         self.c_parameters = [ Counter(i)
                              for i in self.Parser.c_parameters ] 
-        self.solution = [None for i in range(len(self.c_parameters))]
+        self.ub = [None for i in range(len(self.c_parameters))]
+        self.lb = [None for i in range(len(self.c_parameters))]
 
     def query(self, expr, gset = True) -> tuple[Counter]:
         # Must have only one path. In other words, datasets such as P(X=1) will not work, as 
@@ -248,7 +249,7 @@ class closedProblem:
             raise Exception('Estimand is empty!')
         if len(self.data) == 0:
             raise Exception('Data is empty!')
-        for index, part in enumerate(self.estimand):
+        for index, part in enumerate(self.estimand): #  No need to duplicate -- solve_covering solves for estimand and its symmetric
             self.solve_covering(index)
         self.read_solution()
 
@@ -271,9 +272,12 @@ class closedProblem:
         """
         # Step 1
         estimand = self.estimand[c_n].copy()
+        sym_estimand = self.sym_estimand[c_n].copy()
         for k in self.c_parameters: # c_parameters include all the strata in a c-component
             if not bool(k - estimand): # if the part of the estimand is equal to the whole c-component
-                self.solution[c_n] = 1
+                self.ub[c_n] = 1
+                self.lb[c_n] = 1 # Notice that it will work for sym_estimand as well
+                # i.e. if the c-component part is 1 for the estimand, it will be 1 for sym_estimand as well
                 return None
         # Step 2 -- prepare data
         data = { index: self.to_gset(value[c_n], self.c_parameters[c_n]) 
@@ -282,17 +286,20 @@ class closedProblem:
         data_input = Gset(list(data.values()))
         # Transform estimand to gset too
         estimand = self.to_gset(estimand, self.c_parameters[c_n])
+        sym_estimand = self.to_gset(sym_estimand, self.c_parameters[c_n])
         # Step 3
         # Two lists for control and control_keys rather than only one dictionary for loop goals
         # Step 4, use get_cover_addition and get_cover_subtraction
         # You have to transform them first to Gsets
         output_add = get_cover_addition(estimand, data_input)
-        self.solution[c_n] = get_cover_subtraction(estimand, data_input, output_add) if subtract else output_add
+        sym_output_add = get_cover_addition(sym_estimand, data_input)
+        self.ub[c_n] = get_cover_subtraction(estimand, data_input, output_add) if subtract else output_add
+        self.lb[c_n] = get_cover_subtraction(sym_estimand, data_input, sym_output_add) if subtract else sym_output_add
 
     def read_solution(self):
         data = list(self.data.keys())
-        print(' \n Solutions: ')
-        for sol in self.solution:
+        print(' \n Upper bounds: ')
+        for sol in self.ub:
             if sol is None:
                 raise Exception('Solution is empty. Run the algorithm first to get a solution')
             if sol == 1:
@@ -303,6 +310,20 @@ class closedProblem:
                     end_sub =  ' - ' if len(i[1]) > 0  else '' 
                     print(' + '.join([ data[j] for j in i[0] ]), end = end_sub)
                     print(' - '.join([ data[j] for j in i[1] ]), end = '\n')
+        print(' \n Lower bounds: ')
+        for sol in self.lb:
+            if sol is None:
+                raise Exception('Solution is empty. Run the algorithm first to get a solution')
+            if sol == 1:
+                continue
+            else:
+                for index, i in enumerate(sol):
+                    print(str(index + 1), end = '. 1 - ')
+                    end_sub =  ' + ' if len(i[1]) > 0  else '' 
+                    print(' - '.join([ data[j] for j in i[0] ]), end = end_sub)
+                    print(' + '.join([ data[j] for j in i[1] ]), end = '\n')
+                    
+
 
     def to_gset(self, query: tuple[Counter], c_parameters: list[Counter]) -> Gset:
         """ Transform a query into a Gset

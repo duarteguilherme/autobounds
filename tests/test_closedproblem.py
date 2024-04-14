@@ -116,6 +116,53 @@ def test_find_solutions():
 
 
 
+def test_iv3():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
+    problem = closedProblem(dag, {'Z': 3})
+    problem.load_data('Y,X', 'Z=0')
+    problem.load_data('Y,X', 'Z=1')
+    problem.load_data('Y,X', 'Z=2')
+    problem.load_data('Z')
+    problem.set_estimand(problem.query('Y(X=1)=1'))
+    problem.find_solutions()
+
+
+
+
+
+
+def test_iv4():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
+    problem = closedProblem(dag, {'Z': 4})
+    problem.load_data('Y,X', 'Z=0')
+    problem.load_data('Y,X', 'Z=1')
+    problem.load_data('Y,X', 'Z=2')
+    problem.load_data('Y,X', 'Z=3')
+    problem.load_data('Z')
+    problem.set_estimand(problem.query('Y(X=1)=1'))
+    problem.find_solutions()
+
+
+
+
+
+
+def test_iv5():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
+    problem = closedProblem(dag, {'Z': 5})
+    problem.load_data('Y,X', 'Z=0')
+    problem.load_data('Y,X', 'Z=1')
+    problem.load_data('Y,X', 'Z=2')
+    problem.load_data('Y,X', 'Z=3')
+    problem.load_data('Y,X', 'Z=4')
+    problem.load_data('Z')
+    problem.set_estimand(problem.query('Y(X=1)=1'))
+    problem.find_solutions()
+
+
  
 def test_load_data():
     dag = DAG()
@@ -165,7 +212,7 @@ def test_factorial():
     problem.load_data('Y', 'A=0,B=0')
     problem.load_data('Y', 'A=0,B=1')
     problem.load_data('Y', 'A=1,B=0')
-    problem.load_data('Y', 'A=0,B=1')
+    problem.load_data('Y', 'A=1,B=1')
     problem.load_data('A,B,Y')
     estimand = tuple([problem.query('Y(A=1)=1&B(A=1)=0')[0] + problem.query('Y(A=1)=1&B(A=1)=1')[0]])
     print(estimand)
