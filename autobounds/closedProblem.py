@@ -7,7 +7,20 @@ from itertools import product
 from collections import Counter
 from numpy import array, asarray, ndarray, add, identity
 from functools import reduce
+from copy import deepcopy
+import sympy
+import numpy as np
 
+
+def remove_common(a,b):
+    """ Remove elements that repeat in two lists
+    """
+    a, b = a.copy(), b.copy()
+    for i in a.copy():
+        if i in b:
+            a.remove(i)
+            b.remove(i)
+    return [a,b]
 
 
 class Gset(ndarray):
@@ -40,10 +53,28 @@ class Gset(ndarray):
         return not any(super().__ne__(0))
     def __and__(self, other):
         return any(ndarray.__and__(self.neq0(), other.neq0()) )
+    def __add__(self, other):
+        if len(other) == 0:
+            if len(self) == 0:
+                raise Exception('Cannot add two empty Gsets')
+            return self
+        if len(self) == 0:
+            return other
+        return Gset(super().__add__(other))
+    def __sub__(self, other):
+        if len(other) == 0:
+            if len(self) == 0:
+                raise Exception('Cannot add two empty Gsets')
+            return self
+        if len(self) == 0:
+            return -1 * other
+        return Gset(super().__sub__(other))
 
 
 
 def sum_cover(cover: list[Gset]) -> Gset:
+    if len(cover) == 0:
+        return Gset([])
     return reduce(lambda a, b = None: a + b, cover)
 
 def is_inconclusive(x1: Counter, x2: Counter) -> bool: # If there is no order between x1 and x2 (we are dealing with partial orders)
@@ -204,6 +235,14 @@ def get_cover_subtraction(eset, subsets, ub):
     return final_output
 
 
+def get_subtraction_bounds(ub, lb, sub_ub, sub_lb, eset, subsets):
+    print(ub)
+    print(lb)
+    print(sub_ub)
+    print(sub_lb)
+    input("")
+
+
 
 class closedProblem:
     def __init__(self, dag, number_values = {}):
@@ -238,7 +277,7 @@ class closedProblem:
             raise Exception('More than one path for each query is not allowed')
         return tuple( Counter(k)   for path in query for k in path )
     
-    def find_solutions(self):
+    def find_solutions(self, read = True):
         """ Use solve_covering for each c_component 
 
         One implementation with multisets with negative elements will be implemented later
@@ -251,7 +290,8 @@ class closedProblem:
             raise Exception('Data is empty!')
         for index, part in enumerate(self.estimand): #  No need to duplicate -- solve_covering solves for estimand and its symmetric
             self.solve_covering(index)
-        self.read_solution()
+        if read:
+            self.read_solution()
 
     def solve_covering(self, c_n: int, subtract: bool = True) -> str:
         """ Implements the covering algorithm
@@ -296,7 +336,7 @@ class closedProblem:
         self.ub[c_n] = get_cover_subtraction(estimand, data_input, output_add) if subtract else output_add
         self.lb[c_n] = get_cover_subtraction(sym_estimand, data_input, sym_output_add) if subtract else sym_output_add
 
-    def read_solution(self):
+    def read_solution(self, sum_ub = '', sum_lb = '1 - '):
         data = list(self.data.keys())
         print(' \n Upper bounds: ')
         for sol in self.ub:
@@ -306,7 +346,7 @@ class closedProblem:
                 continue
             else:
                 for index, i in enumerate(sol):
-                    print(str(index + 1), end = '. ')
+                    print(str(index + 1), end = '. ' + sum_ub)
                     end_sub =  ' - ' if len(i[1]) > 0  else '' 
                     print(' + '.join([ data[j] for j in i[0] ]), end = end_sub)
                     print(' - '.join([ data[j] for j in i[1] ]), end = '\n')
@@ -318,11 +358,77 @@ class closedProblem:
                 continue
             else:
                 for index, i in enumerate(sol):
-                    print(str(index + 1), end = '. 1 - ')
+                    print(str(index + 1), end = '. ' + sum_lb)
                     end_sub =  ' + ' if len(i[1]) > 0  else '' 
                     print(' - '.join([ data[j] for j in i[0] ]), end = end_sub)
                     print(' + '.join([ data[j] for j in i[1] ]), end = '\n')
+
+    def read_solution_subtraction(self):
+        pass
                     
+    def find_bounds_subtraction(self, subestimand, solve_main = True):
+        """ Find solution for a subtracted estimand 
+
+        For cases like the ATE, where part of estimand is subtracted
+
+        The solution will be found by using the same algorithm as before
+
+        -- It only works for one c-component at a time 
+        """
+        subproblem = deepcopy(self)
+        subproblem.set_estimand(subestimand)
+        if solve_main:
+            self.find_solutions(read = False)
+        subproblem.find_solutions(read = False) 
+        ub = self.ub
+        lb = self.lb
+        subub = subproblem.ub
+        sublb = subproblem.lb
+        # The upper bound will be the upper bound of the positive estimand minus the lower bound of the negative estimand
+        # The lower bound will be the lower bound of the positive estimand minus the upper bound of the negative estimand
+        target_c = [ i for i, l in enumerate(ub) if isinstance(l, list) ]
+        if len(target_c) != 1:
+            raise Exception('Current implementation only works for one c-component')
+        target_c = target_c[0]
+        data = { index: self.to_gset(value[target_c], self.c_parameters[target_c]) 
+                                for index, value in self.data.items()  
+                        }
+        data_input = Gset(list(data.values()))
+        res_ub, res_lb =  [ ], [ ]
+        for i in ub[target_c]:
+            for j in sublb[target_c]:
+                p1 =  sum_cover(data_input[i[0]])
+                p2 =  sum_cover(data_input[i[1]]) 
+                p3 =  sum_cover(data_input[j[0]])
+                p4 =  sum_cover(data_input[j[1]]) 
+                p5 = Gset(np.ones(len(data_input[0])))
+                prov = p1 - p2 - p5 + p3 - p4  # LOWER BOUNDS ARE p5 (1) - p3 + p4, so ub - lb , this turns to - p5 + p3 - p4
+                for k in res_ub.copy():
+                    if k[1] <= prov:
+                        break
+                    if k[1] > prov:
+                        res_ub.remove(k)
+                else:
+                    res_ub.append([ [i[0] + j[0], i[1] + j[1] ],  prov] )
+        for i in lb[target_c]:
+            for j in subub[target_c]:
+                p1 =  sum_cover(data_input[i[0]])
+                p2 =  sum_cover(data_input[i[1]]) 
+                p3 =  sum_cover(data_input[j[0]])
+                p4 =  sum_cover(data_input[j[1]]) 
+                # Notice that the lower bound starts with one -- that's the design here
+                p5 = Gset(np.ones(len(data_input[0])))
+                prov = p5 - p1 + p2 - p3 + p4
+                for k in res_lb.copy():
+                    if k[1] >= prov:
+                        break
+                    if k[1] < prov:
+                        res_lb.remove(k)
+                else:
+                    res_lb.append([ [i[0] + j[0], i[1] + j[1] ],  prov] )
+        self.ub[target_c] = [ remove_common(*i[0]) for i in res_ub ]
+        self.lb[target_c] = [ remove_common(*i[0]) for i in res_lb ]
+        self.read_solution(sum_ub = "- 1 + ", sum_lb = "1 - ")
 
 
     def to_gset(self, query: tuple[Counter], c_parameters: list[Counter]) -> Gset:
