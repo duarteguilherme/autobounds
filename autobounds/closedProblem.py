@@ -455,6 +455,13 @@ class closedProblem:
         self.estimand = estimand
         self.sym_estimand = self.get_symmetric(estimand)
 
+    def add_sens_parameter(self, parameter_name, query):
+        '''
+        Add Sensitivity analysis parameters
+        '''
+        self.data = {**self.data, 
+                    **{ parameter_name: query } }
+
     def load_data(self, data, do = None):
         # data comes in the format X,Y,Z
 

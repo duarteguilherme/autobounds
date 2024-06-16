@@ -149,17 +149,17 @@ def test_find_solution_ate():
 
 
 
-# def test_iv4():
-#     dag = DAG()
-#     dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
-#     problem = closedProblem(dag, {'Z': 4})
-#     problem.load_data('Y,X', 'Z=0')
-#     problem.load_data('Y,X', 'Z=1')
-#     problem.load_data('Y,X', 'Z=2')
-#     problem.load_data('Y,X', 'Z=3')
-#     problem.load_data('Z')
-#     problem.set_estimand(problem.query('Y(X=1)=1'))
-#     problem.find_solutions()
+def test_iv4():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
+    problem = closedProblem(dag, {'Z': 4})
+    problem.load_data('Y,X', 'Z=0')
+    problem.load_data('Y,X', 'Z=1')
+    problem.load_data('Y,X', 'Z=2')
+    problem.load_data('Y,X', 'Z=3')
+    problem.load_data('Z')
+    problem.set_estimand(problem.query('Y(X=1)=1'))
+    problem.find_solutions()
 
 
 
@@ -238,3 +238,18 @@ def test_factorial():
 
 #    problem.set_estimand(problem.query('Y(A=1)=1&B(A=1)=1') + problem.query('Y(A=1)=1&B(A=1)=0'))
     problem.find_solutions()
+
+def test_sensitivity():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
+    problem = closedProblem(dag)
+    problem.load_data('Y,X', 'Z=0')
+    problem.load_data('Y,X', 'Z=1')
+    problem.load_data('Z')
+    problem.set_estimand(problem.query('X(Z=1)=1&X(Z=0)=0'))
+    problem.add_sens_parameter('mono', problem.query('X(Z=1)=0&X(Z=0)=1'))
+    print(problem.data)
+    problem.find_solutions()
+#    problem.find_bounds_subtraction(problem.query('Y(X=0)=1'))
+#    problem.read_solution()
+
