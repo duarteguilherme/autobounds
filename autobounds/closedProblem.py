@@ -293,8 +293,14 @@ class closedProblem:
         if read:
             self.read_solution()
 
+    def solve_covering2(self, c_n: int, subtract: bool = True) -> str:
+        """ Implements the complete covering algorithm
+
+        """
+        pass
+
     def solve_covering(self, c_n: int, subtract: bool = True) -> str:
-        """ Implements the covering algorithm
+        """ Implements the greedy covering algorithm
 
         Input: An index for a c_component (Integer)
 
