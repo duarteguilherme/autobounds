@@ -32,7 +32,7 @@ setuptools.setup(
         "numpy",
         "pandas",
         "plotnine",
-        "pyscipopt==4.4",
+        "pyscipopt",
         "sympy",
         "scipy"]
 )
