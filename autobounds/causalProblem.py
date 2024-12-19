@@ -152,8 +152,8 @@ def get_constraint_from_row(row_data, row_prob, program, cond = [ ], n = 0):
     if len(row_cond) > 0:
         query_cond = [ f'{row_cond.index[j]}={int(row_cond[j])}'
                     for j,k in enumerate(list(row_cond)) ]
-        return program.query('&'.join(query)) - Query(row_prob) * program.query('&'.join(query_cond))
-    return   program.query('&'.join(query)) - Query(row_prob)
+        return program.p('&'.join(query)) - Query(row_prob) * program.p('&'.join(query_cond))
+    return   program.p('&'.join(query)) - Query(row_prob)
 
 def get_query_data_do(row, cols, do, self):
     do_str = ','.join([
@@ -162,7 +162,7 @@ def get_query_data_do(row, cols, do, self):
     str_query = '&'.join([
         f'{i}({do_str})={int(row[i])}' 
         for i in cols ])
-    return self.query(str_query)
+    return self.p(str_query)
 
 
 class causalProblem:
@@ -189,12 +189,12 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
-    def query(self, expr, sign = 1):
+    def p(self, expr, sign = 1):
         """ 
         Important function:
         This function is exactly like parse in Parser class.
         However, here it returns a constraint structure.
-        So one can do causalProgram.query('Y(X=1)=1') in order 
+        So one can do causalProgram.p('Y(X=1)=1') in order 
         to get P(Y(X=1)=1) constraint.
         sign can be 1, if positive, or -1, if negative.
         """
@@ -203,9 +203,9 @@ class causalProblem:
     def set_ate(self, ind, dep, cond = ''):
         """ Recipe for declaring ATEs"""
         cond = '&' + cond if cond != '' else cond
-        query = self.query(f'{dep}({ind}=1)=1{cond}') + self.query(f'{dep}({ind}=0)=1{cond}', -1) 
+        query = self.p(f'{dep}({ind}=1)=1{cond}') + self.p(f'{dep}({ind}=0)=1{cond}', -1) 
         if cond != '':
-            self.set_estimand(query, div = self.query(cond[1:]))
+            self.set_estimand(query, div = self.p(cond[1:]))
         else:
             self.set_estimand(query)
     

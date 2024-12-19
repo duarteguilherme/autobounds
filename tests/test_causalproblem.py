@@ -75,10 +75,10 @@ def test_load_data_gaussian():
     x.load_data_gaussian(datafile, N = 1000)
     x.add_prob_constraints()
     p00_problem, p01_problem, p10_problem, p11_problem = [deepcopy(x) for i in range(4) ]
-    p00_problem.set_estimand(x.query('X=0&Y=0'))
-#    p01_problem.set_estimand(x.query('X=0&Y=1'))
-#    p10_problem.set_estimand(x.query('X=1&Y=0'))
-#    p11_problem.set_estimand(x.query('X=1&Y=1'))
+    p00_problem.set_estimand(x.p('X=0&Y=0'))
+#    p01_problem.set_estimand(x.p('X=0&Y=1'))
+#    p10_problem.set_estimand(x.p('X=1&Y=0'))
+#    p11_problem.set_estimand(x.p('X=1&Y=1'))
 #    p00 = p00_problem.write_program().run_couenne()
 #    p01 = p01_problem.write_program().run_couenne()
 #    p10 = p10_problem.write_program().run_couenne()
@@ -152,7 +152,7 @@ def test_set_ate():
     y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
     x = causalProblem(y, {'X': 2})
     z = Parser(y)
-    x.set_estimand(x.query('Y(X=1)=1&X=0') - x.query('Y(X=0)=1&X=0'), div = x.query('X=0'))
+    x.set_estimand(x.p('Y(X=1)=1&X=0') - x.p('Y(X=0)=1&X=0'), div = x.p('X=0'))
     x.set_ate('X','Y', cond = 'X=0')
     assert clean_query(x.constraints[-2]) == clean_query(x.constraints[-4])
 
@@ -161,8 +161,8 @@ def test_conditional_estimand():
     y.from_structure("X -> Y, U -> X, U -> Y", unob = "U")
     x = causalProblem(y, {'X': 2})
     z = Parser(y)
-    x.set_estimand(x.query('Y(X=1)=1') - x.query('Y(X=0)=1'), div = x.query('X=0'))
-    assert Query(clean_query(x.constraints[-1])) ==  Query('X0.Y01') + Query('X1.Y01') - Query('X0.Y10') - Query('X1.Y10') - ( x.query('X=0') * Query('objvar') ) + Query('==')
+    x.set_estimand(x.p('Y(X=1)=1') - x.p('Y(X=0)=1'), div = x.p('X=0'))
+    assert Query(clean_query(x.constraints[-1])) ==  Query('X0.Y01') + Query('X1.Y01') - Query('X0.Y10') - Query('X1.Y10') - ( x.p('X=0') * Query('objvar') ) + Query('==')
 
 
 def test_conditional_data():
@@ -179,7 +179,7 @@ def test_conditional_data():
     1,0,1,0.15
     1,1,0,0.2
     1,1,1,0.2''')
-    x.set_estimand(x.query('Y(X=1)=1') + x.query('Y(X=0)=1', -1))
+    x.set_estimand(x.p('Y(X=1)=1') + x.p('Y(X=0)=1', -1))
     x.load_data(datafile, cond = ['X'])
     x.add_prob_constraints()
     z = x.write_program()
@@ -204,7 +204,7 @@ def test_causalproblem():
     1,0,1,0.15
     1,1,0,0.2
     1,1,1,0.2''')
-    x.set_estimand(x.query('Y(X=1)=1') + x.query('Y(X=0)=1', -1))
+    x.set_estimand(x.p('Y(X=1)=1') + x.p('Y(X=0)=1', -1))
     x.load_data(datafile)
     x.add_prob_constraints()
     z = x.write_program()
@@ -262,9 +262,9 @@ def test_transform_constraint():
     model = DAG()
     model.from_structure("D -> Y, D -> M, M -> Y, U -> Y, U -> M", unob = "U")
     problem = causalProblem(model)
-#    problem.set_p_to_zero([ x[1][0] for x in problem.query('M(D=0)=1&M(D=1)=0') ])
-    problem.set_p_to_zero(problem.query('M(D=0)=1&M(D=1)=0'))
-    problem.set_estimand(problem.query('Y(D=1)=1') + problem.query('Y(D=0)=1', -1),div = problem.query('M=1'))
+#    problem.set_p_to_zero([ x[1][0] for x in problem.p('M(D=0)=1&M(D=1)=0') ])
+    problem.set_p_to_zero(problem.p('M(D=0)=1&M(D=1)=0'))
+    problem.set_estimand(problem.p('Y(D=1)=1') + problem.p('Y(D=0)=1', -1),div = problem.p('M=1'))
     problem.constraints[-1]
     program = problem.write_program()
     assert program.constraints[-1] == [['M00.Y0010'], ['M00.Y0011'], ['M00.Y0110'], ['M00.Y0111'], ['M01.Y0001'], ['M01.Y0011'], ['M01.Y0101'], ['M01.Y0111'], ['M11.Y0001'], ['M11.Y0011'], ['M11.Y1001'], ['M11.Y1011'], ['-1', 'M00.Y1000'], ['-1', 'M00.Y1001'], ['-1', 'M00.Y1100'], ['-1', 'M00.Y1101'], ['-1', 'M01.Y1000'], ['-1', 'M01.Y1010'], ['-1', 'M01.Y1100'], ['-1', 'M01.Y1110'], ['-1', 'M11.Y0100'], ['-1', 'M11.Y0110'], ['-1', 'M11.Y1100'], ['-1', 'M11.Y1110'], ['-1', 'D0', 'M11.Y0000', 'objvar'], ['-1', 'D0', 'M11.Y0001', 'objvar'], ['-1', 'D0','M11.Y0010', 'objvar'], ['-1', 'D0', 'M11.Y0011', 'objvar'], ['-1', 'D0', 'M11.Y0100', 'objvar'], ['-1', 'D0', 'M11.Y0101', 'objvar'], ['-1', 'D0', 'M11.Y0110', 'objvar'], ['-1', 'D0', 'M11.Y0111', 'objvar'], ['-1', 'D0', 'M11.Y1000', 'objvar'], ['-1', 'D0', 'M11.Y1001', 'objvar'], ['-1', 'D0', 'M11.Y1010', 'objvar'], ['-1', 'D0', 'M11.Y1011', 'objvar'], ['-1', 'D0', 'M11.Y1100', 'objvar'], ['-1', 'D0', 'M11.Y1101', 'objvar'], ['-1', 'D0', 'M11.Y1110', 'objvar'], ['-1', 'D0', 'M11.Y1111', 'objvar'], ['-1', 'D1', 'M01.Y0000', 'objvar'], ['-1', 'D1', 'M01.Y0001', 'objvar'], ['-1', 'D1', 'M01.Y0010', 'objvar'], ['-1', 'D1', 'M01.Y0011', 'objvar'], ['-1', 'D1', 'M01.Y0100', 'objvar'], ['-1', 'D1', 'M01.Y0101', 'objvar'], ['-1', 'D1', 'M01.Y0110', 'objvar'], ['-1', 'D1', 'M01.Y0111', 'objvar'], ['-1', 'D1', 'M01.Y1000', 'objvar'], ['-1', 'D1', 'M01.Y1001', 'objvar'], ['-1', 'D1', 'M01.Y1010', 'objvar'], ['-1', 'D1', 'M01.Y1011', 'objvar'], ['-1', 'D1', 'M01.Y1100', 'objvar'], ['-1', 'D1', 'M01.Y1101', 'objvar'], ['-1', 'D1', 'M01.Y1110', 'objvar'], ['-1', 'D1', 'M01.Y1111', 'objvar'], ['-1', 'D1', 'M11.Y0000', 'objvar'], ['-1', 'D1', 'M11.Y0001', 'objvar'], ['-1', 'D1', 'M11.Y0010', 'objvar'], ['-1', 'D1', 'M11.Y0011', 'objvar'], ['-1', 'D1', 'M11.Y0100', 'objvar'], ['-1', 'D1', 'M11.Y0101', 'objvar'], ['-1', 'D1', 'M11.Y0110', 'objvar'], ['-1', 'D1', 'M11.Y0111', 'objvar'], ['-1', 'D1', 'M11.Y1000', 'objvar'], ['-1', 'D1', 'M11.Y1001','objvar'], ['-1', 'D1', 'M11.Y1010', 'objvar'], ['-1', 'D1', 'M11.Y1011', 'objvar'], ['-1', 'D1', 'M11.Y1100', 'objvar'], ['-1', 'D1', 'M11.Y1101', 'objvar'], ['-1', 'D1', 'M11.Y1110', 'objvar'], ['-1', 'D1', 'M11.Y1111', 'objvar'], ['==']]

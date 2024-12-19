@@ -7,7 +7,7 @@ def test_query_more_letters():
     model1 = DAG()
     model1.from_structure('Dt -> Yt')
     problem1 = causalProblem(model1)
-    problem1.query('Yt=1')
+    problem1.p('Yt=1')
 
 
 def test_query():
@@ -16,10 +16,10 @@ def test_query():
     x = causalProblem(y, {'X': 2})
     z = Parser(y)
     # Test equality 
-    assert x.query('Y=1') == x.query('Y=1')
-    assert not (x.query('Y=1') == x.query('Y=0'))
+    assert x.p('Y=1') == x.p('Y=1')
+    assert not (x.p('Y=1') == x.p('Y=0'))
     # Test subtraction and addition
-    assert (x.query('Y=1') + x.query('Y=0', -1)) == (x.query('Y=1') - x.query('Y=0'))
+    assert (x.p('Y=1') + x.p('Y=0', -1)) == (x.p('Y=1') - x.p('Y=0'))
 
 
 def test_types():
