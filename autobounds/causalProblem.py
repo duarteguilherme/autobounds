@@ -419,6 +419,7 @@ class causalProblem:
 
         control is a numeric parameter to avoid numeric problem, such as division by 0
         """
+        self.add_prob_constraints()
         if div is None:
             div = Query(1)
         else:

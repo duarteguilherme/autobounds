@@ -16,7 +16,6 @@ def test_load_data():
     problem = causalProblem(dag)
     problem.load_data(df_y_do_x, do = ['X'])
     problem.set_ate('X','Y')
-    problem.add_prob_constraints()
     program = problem.write_program()
     program.to_pip('test_do.pip')
     res = program.run_scip()
@@ -53,7 +52,6 @@ def test_load_data():
     problem = causalProblem(dag)
     problem.load_data(df_y_do_x, do = ['X'])
     problem.set_ate('X','Y')
-    problem.add_prob_constraints()
     program = problem.write_program()
     program.to_pip('test_do.pip')
     res = program.run_scip()
@@ -73,7 +71,6 @@ def test_load_data_gaussian():
     y.from_structure("U -> X, U -> Y", unob = 'U')
     x = causalProblem(y, {'X': 2})
     x.load_data_gaussian(datafile, N = 1000)
-    x.add_prob_constraints()
     p00_problem, p01_problem, p10_problem, p11_problem = [deepcopy(x) for i in range(4) ]
     p00_problem.set_estimand(x.p('X=0&Y=0'))
 #    p01_problem.set_estimand(x.p('X=0&Y=1'))
@@ -143,7 +140,6 @@ def test_check_constraints():
     1,1,0,0.2
     1,1,1,0.2''')
     x.load_data(datafile)
-    x.add_prob_constraints()
     x.check_constraints()
     assert (0.5, ['X00.Y00', '1']) in x.constraints[0]
 
@@ -154,7 +150,7 @@ def test_set_ate():
     z = Parser(y)
     x.set_estimand(x.p('Y(X=1)=1&X=0') - x.p('Y(X=0)=1&X=0'), div = x.p('X=0'))
     x.set_ate('X','Y', cond = 'X=0')
-    assert clean_query(x.constraints[-2]) == clean_query(x.constraints[-4])
+    assert clean_query(x.constraints[-1]) == clean_query(x.constraints[-5]) # Comparing two ways of setting the ATE
 
 def test_conditional_estimand():
     y = DAG()
@@ -181,13 +177,12 @@ def test_conditional_data():
     1,1,1,0.2''')
     x.set_estimand(x.p('Y(X=1)=1') + x.p('Y(X=0)=1', -1))
     x.load_data(datafile, cond = ['X'])
-    x.add_prob_constraints()
     z = x.write_program()
     assert 'objvar' in z.parameters
     assert 'X00.Y00' in z.parameters
     assert 'Z0' in z.parameters
     assert len(z.constraints) == 11
-    assert z.constraints[1] ==  [['0.95', 'X00.Y00', 'Z0'], ['0.95', 'X00.Y01', 'Z0'], ['0.95', 'X01.Y00', 'Z0'], ['0.95', 'X01.Y01', 'Z0'], ['-0.05', 'X00.Y00', 'Z1'], ['-0.05', 'X00.Y01', 'Z1'], ['-0.05', 'X00.Y10', 'Z0'], ['-0.05', 'X00.Y10', 'Z1'], ['-0.05',   'X00.Y11', 'Z0'], ['-0.05', 'X00.Y11', 'Z1'], ['-0.05', 'X01.Y10', 'Z0'], ['-0.05', 'X01.Y11', 'Z0'], ['-0.05', 'X10.Y00', 'Z1'], ['-0.05', 'X10.Y01', 'Z1'], ['-0.05', 'X10.Y10', 'Z1'], ['-0.05', 'X10.Y11', 'Z1'], ['==']]
+    assert z.constraints[3] ==  [['0.95', 'X00.Y00', 'Z0'], ['0.95', 'X00.Y01', 'Z0'], ['0.95', 'X01.Y00', 'Z0'], ['0.95', 'X01.Y01', 'Z0'], ['-0.05', 'X00.Y00', 'Z1'], ['-0.05', 'X00.Y01', 'Z1'], ['-0.05', 'X00.Y10', 'Z0'], ['-0.05', 'X00.Y10', 'Z1'], ['-0.05',   'X00.Y11', 'Z0'], ['-0.05', 'X00.Y11', 'Z1'], ['-0.05', 'X01.Y10', 'Z0'], ['-0.05', 'X01.Y11', 'Z0'], ['-0.05', 'X10.Y00', 'Z1'], ['-0.05', 'X10.Y01', 'Z1'], ['-0.05', 'X10.Y10', 'Z1'], ['-0.05', 'X10.Y11', 'Z1'], ['==']]
 
 
 def test_causalproblem():
@@ -206,14 +201,13 @@ def test_causalproblem():
     1,1,1,0.2''')
     x.set_estimand(x.p('Y(X=1)=1') + x.p('Y(X=0)=1', -1))
     x.load_data(datafile)
-    x.add_prob_constraints()
     z = x.write_program()
     assert 'objvar' in z.parameters
     assert 'X00.Y00' in z.parameters
     assert len(z.constraints) == 10
 #[['0.05'], ['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['==']]
-    assert z.constraints[0] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'], ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar'], ['==']]
-    assert z.constraints[1] == [['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['-0.05'], ['==']]
+    assert z.constraints[1] == [['X00.Y01'], ['X01.Y01'], ['X10.Y01'], ['X11.Y01'], ['-1', 'X00.Y10'], ['-1', 'X01.Y10'], ['-1', 'X10.Y10'], ['-1', 'X11.Y10'], ['-1', 'objvar'], ['==']]
+    assert z.constraints[2] == [['0.5', 'X00.Y00'], ['0.5', 'X00.Y01'], ['0.5', 'X01.Y00'], ['0.5', 'X01.Y01'], ['-0.05'], ['==']]
 
 def test_replace_first_nodes():
     assert replace_first_nodes([('Z0', 0.5), ('Z1', 0.5)], 
@@ -235,7 +229,6 @@ def test_load_data():
     y.from_structure("Z -> Y, X -> Y, U -> X, U -> Y", unob = 'U')
     x = causalProblem(y, {'X': 2})
     x.load_data(datafile)
-    x.add_prob_constraints()
     x.constraints[3] == [(-1, ['0.25']), (1, ['X1.Y0001', 'Z1']), 
             (1, ['X1.Y0010', 'Z0']), (1, ['X1.Y0011', 'Z0']), 
             (1, ['X1.Y0011', 'Z1']), (1, ['X1.Y0101', 'Z1']), 
@@ -248,7 +241,6 @@ def test_load_data():
     y.from_structure("Z -> Y, U -> Z, X -> Y, U -> Y, U -> X", unob = "U")
     x = causalProblem(y, {'X': 2})
     x.load_data(datafile2)
-    x.add_prob_constraints()
     x.constraints[1] == [(-1, ['0.125']), (1, ['X0.Y0000.Z1']), 
             (1, ['X0.Y0001.Z1']), (1, ['X0.Y0010.Z1']), (1, ['X0.Y0011.Z1']), 
             (1, ['X0.Y1000.Z1']), (1, ['X0.Y1001.Z1']), (1, ['X0.Y1010.Z1']), (1, ['X0.Y1011.Z1'])] 
