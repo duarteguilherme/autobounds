@@ -372,7 +372,7 @@ class causalProblem:
     def set_p_to_zero(self, parameter_list):
         """
         For a particular list  of parameters
-        ['X0111', 'Z0'], set them to 0
+        ['X0111', 'Z0'], set them to 0 (This has to be improved)
         """
         if isinstance(parameter_list, Query):
             parameter_list = [ k[1][0] for k in parameter_list ]
@@ -388,7 +388,7 @@ class causalProblem:
         else:
             raise Exception('Type error - cannot set it to 0')
     
-    def add_constraint(self, constraint, symbol = '=='):
+    def add_constraint(self, constraint, symbol = '==', constraint2 = None):
         """
         Input: list of tuples with constant and 
         statemenets. For example [(-1, ['X1111', 'Z1']), (2, ['X1111'])]
@@ -397,6 +397,8 @@ class causalProblem:
         or inequality. The default parameter will be an equality
         """
         # Sorting constraint
+        if constraint2 is not None:
+            constraint += Query(-1) * constraint2
         constraint = [ [x[0], sorted1(x[1])] for x in constraint ] 
         expr_list = [ x[1]  # Removing duplicated
                 for n, x in enumerate(constraint) 

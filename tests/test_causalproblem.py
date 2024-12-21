@@ -5,6 +5,10 @@ import pandas as pd
 import io
 from copy import deepcopy
 
+
+def test_add_constraint2():
+    pass
+
 def test_load_data():
     df_y_do_x = pd.DataFrame({
         'X': [0,0,1,1],
