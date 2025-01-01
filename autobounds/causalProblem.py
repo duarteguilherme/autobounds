@@ -199,6 +199,26 @@ class causalProblem:
         sign can be 1, if positive, or -1, if negative.
         """
         return Query([ (sign, list(x)) for x in self.Parser.parse(expr) ])
+
+    def e(self, expr):
+        """ Wrapper to calculate expected values 
+        """
+        expr = expr.strip()
+        main_var = expr.split('(')[0]
+        second_part  = expr.split(')')[-1]
+        if ',' in main_var:
+            raise Error('Issue: more than one variable introduced')
+        if '=' in second_part:
+            raise Error('.e does not accept = terms. You mistakenly used .p?')
+        for i in range(self.number_values[main_var]):
+            if i == 0:
+                continue
+            try:
+                res = res + Query(i) * self.p(expr + '=' + str(i))
+            except:
+                res = self.p(expr + '=' + str(i))
+        return res
+
     
     def set_ate(self, ind, dep, cond = ''):
         """ Recipe for declaring ATEs"""

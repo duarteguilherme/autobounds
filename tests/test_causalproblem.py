@@ -6,6 +6,12 @@ import io
 from copy import deepcopy
 
 
+def test_e():
+    d = DAG()
+    d.from_structure('D -> Y')
+    problem = causalProblem(d, {'Y': 4})
+    assert (problem.e('Y(D=1)') == problem.p('Y(D=1)=1') + problem.p('Y(D=1)=2') * Query(2) + problem.p('Y(D=1)=3') * Query(3) )
+
 def test_add_constraint2():
     pass
 
