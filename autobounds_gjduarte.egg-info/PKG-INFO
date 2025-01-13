@@ -12,6 +12,18 @@ Classifier: Operating System :: OS Independent
 Requires-Python: >=3.6
 Description-Content-Type: text/markdown
 License-File: LICENSE
+Requires-Dist: tqdm
+Requires-Dist: setuptools
+Requires-Dist: pandas
+Requires-Dist: networkx
+Requires-Dist: matplotlib
+Requires-Dist: wheel
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: plotnine
+Requires-Dist: pyscipopt
+Requires-Dist: sympy
+Requires-Dist: scipy
 
 # AUTOBOUNDS
 
