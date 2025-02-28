@@ -13,8 +13,10 @@ class DAG:
     and E, representing edges from u in U to 
     v in V, or from V_i in V to V_j in V
     """
-    def __init__(self):
+    def __init__(self, edges = None, unob = ''):
         self.reset_dag()
+        if edges is not None:
+            self.from_structure(edges, unob) # No need to separately define structure
     
     def reset_dag(self):
         self.V = set()
