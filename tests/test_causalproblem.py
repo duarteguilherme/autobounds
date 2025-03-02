@@ -1,3 +1,4 @@
+import numpy as np
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.causalProblem import *
 from autobounds.autobounds.Query import Query, clean_query
@@ -5,6 +6,34 @@ import pandas as pd
 import io
 from copy import deepcopy
 
+
+def test_edge_active():
+    d1 = DAG('D -> Y, M -> Y, K -> Y')
+    d2 = DAG('D -> M, M -> Y, K -> Y')
+    d1.is_active('D -> Y')
+
+
+def test_solve():
+    d = DAG('D -> Y')
+    pro = causalProblem(d)
+    df =  pd.DataFrame({
+                'D': [0,0,1,0,1,0,1,1,1,0,1,0,0,1],
+                'Y': [0,1,1,0,0,0,1,0,1,1,0,0,1,1]
+            })           
+    pro.load_data(raw = df)
+    pro.set_ate('D','Y')
+    solution = pro.solve()
+    assert solution[0]['primal'] <= 0.143
+    assert solution[0]['primal'] >= 0.142
+
+def test_load_raw():
+    d = DAG('D -> Y')
+    pro = causalProblem(d)
+    df =  pd.DataFrame({
+                'D': np.random.randint(0, 2, size=10),
+                'Y': np.random.randint(0, 2, size=10)
+            })           
+    pro.load_data(raw = df)
 
 def test_e():
     d = DAG()
@@ -14,6 +43,10 @@ def test_e():
 
 def test_add_constraint2():
     pass
+
+
+
+
 
 def test_load_data():
     df_y_do_x = pd.DataFrame({

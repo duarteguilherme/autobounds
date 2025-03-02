@@ -15,6 +15,19 @@ import statsmodels.stats.proportion
 import string
 
 
+def get_summary_from_raw(datam):
+    """
+    Gets a data set and returns a summary
+    """
+    nrow = datam.shape[0]
+    cols = list(datam.columns)
+    datam['prob'] = 1/nrow
+    return (
+        datam.groupby(cols)
+        .sum()
+        .reset_index()
+    )
+
 def multiply_matrix_gaussian(q, mu, sigma_inv):
     if len(q) != len(mu):
         " Q and mu have different sizes"
@@ -189,6 +202,16 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
+    def is_active(self, expr):
+        """ This method collects all the strata with respect to a direct edge from X to Y"""
+        # Test if a direct edge exists
+
+    def solve(self):
+        """ Wrapper for causalProblem.write_program().solve()
+        """
+        program = self.write_program()
+        return program.run_scip()
+
     def p(self, expr, sign = 1):
         """ 
         Important function:
@@ -255,7 +278,6 @@ class causalProblem:
         Check all constraints 
         and replace values for unconf_first_nodes
         """
-        print(self.unconf_first_nodes)
         self.constraints = [ [ replace_first_nodes(self.unconf_first_nodes, y) 
             for y in x ]  
                 for x in self.constraints ] 
@@ -349,7 +371,7 @@ class causalProblem:
                                 Query(float(row['prob']))
                                 )
     
-    def load_data(self, data, cond = [ ], do = [ ] ,optimize = True):
+    def load_data(self, summary = None, raw = None, cond = [ ], do = [ ] ,optimize = True):
         """ It accepts a file 
         file must be csv. Columns will be added if they match parameters...
         Column prob must indicate probability.
@@ -368,7 +390,16 @@ class causalProblem:
         This method also implements one simplifier (first nodes simplifier).
         If data regarding first nodes is complete, then numeric values are added directly.
         """
-        datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data) 
+        if summary is not None:
+            data = summary
+            datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data) 
+        else:
+            if raw is not None:
+                data = raw
+                datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data)
+                datam = get_summary_from_raw(datam) 
+            else:
+                raise Exception("Data was not introduced!")
         if len(do) >= 1:
             if len(cond) >= 1:
                 raise Exception('Data with cond and do at the same are not implemented yet')
