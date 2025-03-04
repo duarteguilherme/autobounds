@@ -15,6 +15,7 @@ import statsmodels.stats.proportion
 import string
 
 
+
 def get_summary_from_raw(datam):
     """
     Gets a data set and returns a summary
@@ -202,9 +203,10 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
-    def is_active(self, expr):
-        """ This method collects all the strata with respect to a direct edge from X to Y"""
-        # Test if a direct edge exists
+    def is_active(self, expr = '', ind = '', dep = ''):
+        """ Call Parser.is_active()
+        """
+        return self.Parser.is_active(expr, ind, dep)
 
     def solve(self):
         """ Wrapper for causalProblem.write_program().solve()
@@ -214,14 +216,9 @@ class causalProblem:
 
     def p(self, expr, sign = 1):
         """ 
-        Important function:
-        This function is exactly like parse in Parser class.
-        However, here it returns a constraint structure.
-        So one can do causalProgram.p('Y(X=1)=1') in order 
-        to get P(Y(X=1)=1) constraint.
-        sign can be 1, if positive, or -1, if negative.
+        Wrapper for Parser.p
         """
-        return Query([ (sign, list(x)) for x in self.Parser.parse(expr) ])
+        return self.Parser.p(expr, sign)
 
     def e(self, expr):
         """ Wrapper to calculate expected values 
@@ -230,9 +227,9 @@ class causalProblem:
         main_var = expr.split('(')[0]
         second_part  = expr.split(')')[-1]
         if ',' in main_var:
-            raise Error('Issue: more than one variable introduced')
+            raise Exception('Issue: more than one variable introduced')
         if '=' in second_part:
-            raise Error('.e does not accept = terms. You mistakenly used .p?')
+            raise Exception('.e does not accept = terms. You mistakenly used .p?')
         for i in range(self.number_values[main_var]):
             if i == 0:
                 continue

@@ -8,9 +8,13 @@ from copy import deepcopy
 
 
 def test_edge_active():
-    d1 = DAG('D -> Y, M -> Y, K -> Y')
-    d2 = DAG('D -> M, M -> Y, K -> Y')
-    d1.is_active('D -> Y')
+    d0 = causalProblem(DAG('D -> Y'), {'Y':3})
+    d1 = causalProblem(DAG('D -> Y, A -> Y, B -> Y'))
+    d2 = causalProblem(DAG('D -> M, A -> Y, B -> Y'))
+    assert (len(d2.is_active('D -> Y')) == 0)
+#    print(d0.is_active('D -> Y'))
+    res2 = set(['Y0010', 'Y0011', 'Y0110', 'Y0111', 'Y0001', 'Y1001', 'Y1011', 'Y1000', 'Y1100', 'Y1101', 'Y0100', 'Y1110'])
+    assert (set(d2.is_active('A -> Y')) == res2)
 
 
 def test_solve():

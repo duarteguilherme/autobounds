@@ -1,4 +1,5 @@
 from .canonicalModel import canonicalModel
+from .Query import Query
 import numpy as np
 from itertools import product
 from functools import reduce
@@ -236,8 +237,55 @@ class Parser():
                     )
             all_paths = all_paths_new # After the second loop
         return all_paths
-
+    
+    def p(self, expr, sign = 1):
+        """ 
+        Important function:
+        This function is exactly like parse in Parser class.
+        However, here it returns a constraint structure.
+        So one can do causalProgram.p('Y(X=1)=1') in order 
+        to get P(Y(X=1)=1) constraint.
+        sign can be 1, if positive, or -1, if negative.
+        """
+        return Query([ (sign, list(x)) for x in self.parse(expr) ])
+    
+    def is_active(self, expr = '', ind = '', dep = ''):
+        """ This method collects all the strata with respect to a direct edge from ind to dep
         
+        Notice that one can introduce X -> Y as expr rather than separately ind = X and dep = Y
+
+        This method returns a List of strata in string. 
+        This is different from a Query with the same strata.
+        """
+        if expr != '':
+            ind, dep = [i.strip() for i in expr.split('->')]
+        parents = self.dag.find_parents_no_u(dep)
+        if ind not in parents:
+            return []
+        rest = [ i for i in parents if i != ind] 
+        edge_values = list( 
+            product(*( 
+                [ range(0,self.canModel.number_values[dep]) ]*self.canModel.number_values[ind]   
+                ) ) )
+        edge_values = [ i for i in edge_values if not all([j == i[0] for j in i])]
+        query = Query([])
+        if len(rest) == 0: # If ind is the only parent, then you 
+            for i in edge_values:
+                query += self.p('&'.join([ f'{dep}({ind}={index})={j}'
+                                 for index, j in enumerate(i)
+                                 ]) ) 
+            return [ i[1][-1] for i in query ]
+        rest_entries = list(product(*[ range(self.canModel.number_values[i]) for i in rest ]))
+        rest_entries = [ ','.join([  f'{j}={i[index]}' 
+                                   for index, j in enumerate(rest)]) 
+                        for i in rest_entries ]
+        for i in edge_values:
+            for k in rest_entries:
+                query += self.p('&'.join([ f'{dep}({ind}={index},{k})={j}'
+                                 for index, j in enumerate(i)
+                                 ]) )
+        return [ i[1][-1] for i in query ]
+    
     def parse_expr(self, world, expr, complete = False):
         """
         Input: a probability expression for only one world  

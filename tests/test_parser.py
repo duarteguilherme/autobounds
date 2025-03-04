@@ -15,6 +15,17 @@ def test_parse_irreducible():
     assert set(x.parse_expr('Z=0',['Y=1'])) == set(part2)
 
 
+def test_edge_active():
+    d0 = Parser(DAG('D -> Y'), {'Y':3})
+    d1 = Parser(DAG('D -> Y, A -> Y, B -> Y'))
+    d2 = Parser(DAG('D -> M, A -> Y, B -> Y'))
+    assert (len(d2.is_active('D -> Y')) == 0)
+#    print(d0.is_active('D -> Y'))
+    res2 = set(['Y0010', 'Y0011', 'Y0110', 'Y0111', 'Y0001', 'Y1001', 'Y1011', 'Y1000', 'Y1100', 'Y1101', 'Y0100', 'Y1110'])
+    assert (set(d2.is_active('A -> Y')) == res2)
+
+
+
 def test_parse_complete():
     dag = DAG()
 #    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
