@@ -220,7 +220,7 @@ class causalProblem:
         """
         return self.Parser.p(expr, sign)
 
-    def e(self, expr):
+    def E(self, expr):
         """ Wrapper to calculate expected values 
         """
         expr = expr.strip()

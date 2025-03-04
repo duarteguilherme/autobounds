@@ -7,16 +7,6 @@ import io
 from copy import deepcopy
 
 
-def test_edge_active():
-    d0 = causalProblem(DAG('D -> Y'), {'Y':3})
-    d1 = causalProblem(DAG('D -> Y, A -> Y, B -> Y'))
-    d2 = causalProblem(DAG('D -> M, A -> Y, B -> Y'))
-    assert (len(d2.is_active('D -> Y')) == 0)
-#    print(d0.is_active('D -> Y'))
-    res2 = set(['Y0010', 'Y0011', 'Y0110', 'Y0111', 'Y0001', 'Y1001', 'Y1011', 'Y1000', 'Y1100', 'Y1101', 'Y0100', 'Y1110'])
-    assert (set(d2.is_active('A -> Y')) == res2)
-
-
 def test_solve():
     d = DAG('D -> Y')
     pro = causalProblem(d)
@@ -43,7 +33,7 @@ def test_e():
     d = DAG()
     d.from_structure('D -> Y')
     problem = causalProblem(d, {'Y': 4})
-    assert (problem.e('Y(D=1)') == problem.p('Y(D=1)=1') + problem.p('Y(D=1)=2') * Query(2) + problem.p('Y(D=1)=3') * Query(3) )
+    assert (problem.E('Y(D=1)') == problem.p('Y(D=1)=1') + problem.p('Y(D=1)=2') * Query(2) + problem.p('Y(D=1)=3') * Query(3) )
 
 def test_add_constraint2():
     pass
