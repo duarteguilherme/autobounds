@@ -7,6 +7,8 @@ import io
 from copy import deepcopy
 
 
+
+
 def test_solve():
     d = DAG('D -> Y')
     pro = causalProblem(d)
@@ -35,8 +37,16 @@ def test_e():
     problem = causalProblem(d, {'Y': 4})
     assert (problem.E('Y(D=1)') == problem.p('Y(D=1)=1') + problem.p('Y(D=1)=2') * Query(2) + problem.p('Y(D=1)=3') * Query(3) )
 
-def test_add_constraint2():
-    pass
+
+def test_p_external():
+    d = DAG('D -> Y')
+    problem = causalProblem(d)
+    problem.add_assumption(p('Y(D=1)=0&Y(D=0)=1'), '==', 0.0)
+
+def test_add_assumption():
+    d = DAG('D -> Y')
+    problem = causalProblem(d)
+    problem.add_assumption(problem.p('Y(D=1)=0&Y(D=0)=1'), '==', 0.0)
 
 
 

@@ -16,6 +16,13 @@ import string
 
 
 
+
+
+
+def p(expr):
+    self.p(expr)
+    print('worked')
+
 def get_summary_from_raw(datam):
     """
     Gets a data set and returns a summary
@@ -435,6 +442,12 @@ class causalProblem:
                             for x in parameter_list ]
         else:
             raise Exception('Type error - cannot set it to 0')
+
+    def add_assumption(self, constraint, symbol = "==", constraint2 = None):
+        if constraint2 is not None:
+            if not isinstance(constraint2, Query): # Do type checking
+                constraint2 = Query(constraint2) 
+        self.add_constraint(constraint, symbol, constraint2)
     
     def add_constraint(self, constraint, symbol = '==', constraint2 = None):
         """
