@@ -1,10 +1,15 @@
 from functools import reduce
 import io 
+import random
 from copy import deepcopy, copy
 from multiprocessing import Process,Pool,Manager
 import time
 import sys
 from .ProgramUtils import *
+import os
+
+
+alphanum = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 class Program:
     """ This class
@@ -23,8 +28,14 @@ class Program:
         self.parameters = [ ]
         self.constraints = [ tuple() ]
         self.res_scip = None
-        self.scip_lower_filename = '.lower.log'
-        self.scip_upper_filename = '.upper.log'
+        self.scip_lower_filename = ''.join(random.choices(alphanum, k = 16)) + '.log2n'
+        self.scip_upper_filename = ''.join(random.choices(alphanum, k = 16)) + '.log2n'
+
+    def __del__(self):
+        if os.path.exists(self.scip_lower_filename):
+            os.remove(self.scip_lower_filename)
+        if os.path.exists(self.scip_upper_filename):
+            os.remove(self.scip_upper_filename)
 
     def simplify_linear(self):
         """ Firstly, it divides constraints in linear and nonlinear
@@ -90,9 +101,12 @@ class Program:
                     )
         self.constraints = constraints2
     
-    def run_scip(self, verbose = True, filename = None, epsilon = -10, theta = 0.01, maxtime = None):
+    def run_scip(self, verbose = True, epsilon = -10, theta = 0.01, maxtime = None, debug = False):
         """ We won't be using to_pip here,
         because we need the function to save into a .cip file
+
+
+        debug = True won't remove files
         """
         from pyscipopt import Model
         self.M_upper = Model()
@@ -116,11 +130,17 @@ class Program:
                     )
         self.M_upper.setObjective(par_dict_upper['objvar'], sense = 'maximize')
         self.M_lower.setObjective(par_dict_lower['objvar'], sense = 'minimize')
-        p_lower = Process(target=lambda k: solve_scip(k, 'lower'), args=[self.M_lower])
-        p_upper = Process(target=lambda k: solve_scip(k, 'upper'), args=[self.M_upper])
+        if debug:
+            self.scip_lower_filename = '.lower.log'
+            self.scip_upper_filename = '.upper.log'
+        p_lower = Process(target=lambda k: solve_scip(k, filename = self.scip_lower_filename), args=[self.M_lower])
+        p_upper = Process(target=lambda k: solve_scip(k, filename = self.scip_upper_filename), args=[self.M_upper])
         p_lower.start()
         p_upper.start()
-        optim_data = parse_bounds_scip(p_lower, p_upper, epsilon = epsilon, theta = theta, maxtime = maxtime)
+        optim_data = parse_bounds_scip(p_lower, p_upper,
+                        filelower = self.scip_lower_filename,
+                        fileupper = self.scip_upper_filename, 
+                                       epsilon = epsilon, theta = theta, maxtime = maxtime)
         return optim_data
     
     def get_bounds_scip(self):
