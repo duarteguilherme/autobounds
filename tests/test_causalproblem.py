@@ -7,6 +7,17 @@ import io
 from copy import deepcopy
 
 
+def test_respect_to():
+    d = DAG('D -> Y')
+    pro = causalProblem(d)
+    with respect_to(pro):
+        add_assumption(p('Y(D=1)=0&Y(D=0)=1'), '==', 0.0)
+        set_estimand(E('Y(D=1)') - E('Y(D=0)'))
+        load_data(raw =  pd.DataFrame({
+                'D': [0,0,1,0,1,0,1,1,1,0,1,0,0,1],
+                'Y': [0,1,1,0,0,0,1,0,1,1,0,0,1,1]
+            })           )
+        print(solve())
 
 
 def test_solve():
@@ -38,10 +49,6 @@ def test_e():
     assert (problem.E('Y(D=1)') == problem.p('Y(D=1)=1') + problem.p('Y(D=1)=2') * Query(2) + problem.p('Y(D=1)=3') * Query(3) )
 
 
-def test_p_external():
-    d = DAG('D -> Y')
-    problem = causalProblem(d)
-    problem.add_assumption(p('Y(D=1)=0&Y(D=0)=1'), '==', 0.0)
 
 def test_add_assumption():
     d = DAG('D -> Y')

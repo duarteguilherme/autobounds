@@ -12,16 +12,39 @@ from scipy.optimize import newton
 import scipy
 from numpy import log
 import statsmodels.stats.proportion
+import inspect
 import string
 
 
 
 
 
+class respect_to:
+    """ Class to be used as a context manager 
+    to respect to a causal Problem 
+    """
+    def __init__(self, problem):
+        self.problem = problem
+        self.globals = inspect.currentframe().f_back.f_globals
 
-def p(expr):
-    self.p(expr)
-    print('worked')
+    def __enter__(self):
+        self.globals['p'] = self.problem.p
+        self.globals['E'] = self.problem.E
+        self.globals['add_assumption'] = self.problem.add_assumption
+        self.globals['set_estimand'] = self.problem.set_estimand
+        self.globals['set_ate'] = self.problem.set_ate
+        self.globals['solve'] = self.problem.solve
+        self.globals['load_data'] = self.problem.load_data
+
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        del self.globals['p']
+        del self.globals['E']
+        del self.globals['add_assumption']
+        del self.globals['set_estimand']
+        del self.globals['set_ate']
+        del self.globals['solve']
+        del self.globals['load_data']
 
 def get_summary_from_raw(datam):
     """
