@@ -233,6 +233,18 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
+    def read_data(self, summary = None, raw = None, cond = [ ], do = [ ] ,optimize = True, covariates = None):
+        """ This is the new method for loading data in place of 
+        self.load_data, which will be outdated as a low version
+
+        The idea is that load_data is not immediately executed, 
+        but it is only evaluated at the time of writing program
+        """
+        pass
+
+    def calculate_ci(self):
+        pass
+
     def is_active(self, expr = '', ind = '', dep = ''):
         """ Call Parser.is_active()
         """
