@@ -112,10 +112,7 @@ def test_program_scip():
     res = z.run_scip()
     assert res[0]['dual'] < 0.12
     assert res[1]['dual'] > 0.49
-#    print(z.M_lower.getDualbound())
-#    print(z.get_bounds_scip())
-#    pot.writeProblem('/home/beta/pot.cip')
-#
+
 
 def test_program_pip_conf():
     dag = DAG()

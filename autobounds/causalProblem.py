@@ -308,8 +308,6 @@ class causalProblem:
         self.constraints = [ [ replace_first_nodes(self.unconf_first_nodes, y) 
             for y in x ]  
                 for x in self.constraints ] 
-        # Remove tautologies now
-   #     self.constraints = [ j for j in self.constraints if all([ l[-1] == ['1'] for l in j[:-1] ])] 
     
     def add_prob_constraints(self):
         """
@@ -398,7 +396,7 @@ class causalProblem:
                                 Query(float(row['prob']))
                                 )
     
-    def load_data(self, summary = None, raw = None, cond = [ ], do = [ ] ,optimize = True):
+    def load_data(self, summary = None, raw = None, cond = [ ], do = [ ] ,optimize = True, covariates = None):
         """ It accepts a file 
         file must be csv. Columns will be added if they match parameters...
         Column prob must indicate probability.

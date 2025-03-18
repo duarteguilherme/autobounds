@@ -91,10 +91,10 @@ def solve1(solver, model, sensetype, verbose):
     sys.stdout = open('.' + sensetype + '.log', 'w', buffering = 1)
     solver.solve(model, tee = verbose)
 
-def solve_scip(model, sensetype, verbose = False):
+def solve_scip(model, filename, verbose = False):
     """ To be used with scip """
     model.redirectOutput()
-    sys.stdout = open('.' + sensetype + '.log', 'w', buffering = 1)
+    sys.stdout = open(filename, 'w', buffering = 1)
     model.optimize()
     
 
@@ -261,6 +261,8 @@ def get_final_bound_scip(filename):
     return result
 
 def get_final_bound(filename):
+    print(filename)
+    input('')
     with open(filename,'r') as f: 
         data = f.readlines()
     sign = 1 if filename == ".lower.log" else -1
@@ -315,34 +317,37 @@ def change_constraint_parameter_value(constraint, parameter, value):
     return const
 
 
-def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = -10, theta = 0.01, maxtime = None, verbose = True):
+def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, output = None, epsilon = -10, theta = 0.01, maxtime = None, verbose = True):
+    """
+    
+    """
     time.sleep(0.5)
     init_time = time.time()
     total_lower, total_upper = [ ], []
     n_lower, n_upper = 0, 0
     current_theta, current_epsilon = 9999, 9999
-    if filename is not None:
-        with open(filename, 'w') as f:
+    if output is not None:
+        with open(output, 'w') as f:
             f.write(f"bound,primal,dual,time\n")
     while True:
-        n_lower, partial_lower = parse_particular_bound_scip('.lower.log', n_lower)
-        n_upper, partial_upper = parse_particular_bound_scip('.upper.log', n_upper)
+        n_lower, partial_lower = parse_particular_bound_scip(filelower, n_lower)
+        n_upper, partial_upper = parse_particular_bound_scip(fileupper, n_upper)
         total_lower += partial_lower
         total_upper += partial_upper
         if len(partial_lower) > 0:
             for i in partial_lower:
                 print(f"LOWER BOUND: # -- Primal: {i['primal']} / Dual: {i['dual']} / Time: {i['time']} ##")
-                if filename is not None:
-                    with open(filename, 'a') as f:
+                if output is not None:
+                    with open(output, 'a') as f:
                         f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
         if len(partial_upper) > 0:
             for j in partial_upper:
                 print(f"UPPER BOUND: # -- Primal: {j['primal']} / Dual: {j['dual']} / Time: {j['time']} ##")
-                if filename is not None:
-                    with open(filename, 'a') as f:
+                if output is not None:
+                    with open(output, 'a') as f:
                         f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
-        end_lower = check_process_end_scip(p_lower, '.lower.log')
-        end_upper = check_process_end_scip(p_upper, '.upper.log')
+        end_lower = check_process_end_scip(p_lower, filelower)
+        end_upper = check_process_end_scip(p_upper, fileupper)
         if len(total_lower) > 0 and len(total_upper) > 0:
             total_upper[-1]['dual'] = 1 if pd.isna(total_upper[-1]['dual']) else total_upper[-1]['dual'] # Fixing the problem with nan inside dual
             total_lower[-1]['dual'] = -1 if pd.isna(total_lower[-1]['dual']) else total_lower[-1]['dual']
@@ -351,10 +356,6 @@ def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = -10, theta = 
             current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
             print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
             if current_theta <  theta or current_epsilon < epsilon:
-#                print(current_theta)
-#                print(current_epsilon)
-#                print(theta)
-#                print(epsilon)
                 p_lower.terminate()
                 p_upper.terminate()
                 break
@@ -367,9 +368,9 @@ def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = -10, theta = 
     # Checking bounds if problem is finished
     if end_lower == 1 or end_upper == 1: 
         if end_lower == 1:
-            i = get_final_bound_scip('.lower.log')
+            i = get_final_bound_scip(filelower)
         if end_upper == 1:
-            j = get_final_bound_scip('.upper.log')
+            j = get_final_bound_scip(fileupper)
         current_theta = j['dual'] - i['dual']
         gamma = abs(j['primal'] - i['primal'])
         current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
@@ -378,16 +379,16 @@ def parse_bounds_scip(p_lower, p_upper, filename = None, epsilon = -10, theta = 
             i, j, current_theta, current_epsilon = {}, {},-1,-1
     i['end'] = end_lower
     j['end'] = end_upper
-    if filename is not None:
-        with open(filename, 'a') as f:
+    if output is not None:
+        with open(output, 'a') as f:
             f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
             f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
     return (i, j, current_theta, current_epsilon)
 
 def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01):
     """ 
-    For couenne
-    Read files ".lower.log" and ".upper.log" each 1000 miliseconds 
+    For COUENNE
+    Read log files each 1000 miliseconds 
     and retrieve data on dual and primal bounds.
     Also, it returns sucessful or not
     - Input: two multiprocessing processes, and thresholds for epsilon and theta
