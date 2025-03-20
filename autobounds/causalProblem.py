@@ -13,10 +13,27 @@ import scipy
 from numpy import log
 import statsmodels.stats.proportion
 import inspect
-import string
+import statsmodels.api as sm
 
 
 
+def generate_mn_sample(result, X, randomize_beta = True):
+        if len(X.shape) == 1:
+            X = X.reshape(1, -1)
+        coef_mean = result.params  # Shape: (num_predictors, num_classes-1)
+        coef_cov = result.cov_params()
+        if randomize_beta:
+            coef_sampled = np.random.multivariate_normal(coef_mean.flatten(), coef_cov).reshape(coef_mean.shape)
+        else:
+            coef_sampled = coef_mean.reshape(coef_mean.shape)
+        # Compute new predicted probabilities using sampled coefficients
+        logits_sampled = X @ coef_sampled  # Compute logits
+        probs_sampled = np.exp(logits_sampled)
+        probs_sampled /= (1 + probs_sampled.sum(axis=1, keepdims=True))  # Normalize to probabilities
+        # Add probability for reference category (first category as baseline)
+        probs_sampled = np.column_stack([1 - probs_sampled.sum(axis=1), probs_sampled])
+        return probs_sampled.reshape(-1)
+        # Sample new coefficients from multivariate normal distribution
 
 
 class respect_to:
@@ -233,28 +250,85 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
-    def read_data(self, summary = None, raw = None, cond = [ ], do = [ ] ,optimize = True, covariates = None):
+    def read_data(self, raw = None, optimize = True, covariates = None, n_samples = 1000):
         """ This is the new method for loading data in place of 
         self.load_data, which will be outdated as a low version
 
         The idea is that load_data is not immediately executed, 
         but it is only evaluated at the time of writing program
-        """
-        pass
 
-    def calculate_ci(self):
-        pass
+        Notice that read_data only accepts raw data
+        """
+        self.covariates = covariates
+        # Running regression
+        if raw is not None:
+            data = raw
+            datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data)
+        else:
+            raise Exception("Data was not introduced!")
+        self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))
+        self.X = sm.add_constant(self.X)
+        self.y_columns = [ k for k in datam.columns if k not in covariates ]
+        self.y = datam.drop(columns = covariates).astype(str).agg("_".join, axis=1)
+        self.y, category_mapping = pd.factorize(self.y)
+        self.category_decoder = dict(enumerate(category_mapping))
+        model = sm.MNLogit(self.y, self.X)
+        self.main_model = model.fit()
+
+    def calc_bounds_sample(self, prob):
+        """
+        This method exists to solve the bounds problem
+        for not hardcoded causalProblem
+
+        This will require a copy of self
+        """
+        newproblem = deepcopy(self)
+        datam = pd.DataFrame([ k.split('_') for k in newproblem.category_decoder.values() ], 
+                                            columns = newproblem.y_columns)
+        datam['prob'] = prob 
+        newproblem.load_data(datam)
+        newprogram = newproblem.write_program()
+        return newprogram.run_scip()
+
+    def calculate_ci(self, nx = 1000, ncoef = 5, randomize_beta = True):
+        if self.X.shape[0] > nx:
+            newX =  self.X[
+                np.random.choice(self.X.shape[0], size = nx, replace = True), :]
+        else:
+            newX = self.X.copy()
+        self.probs = np.array([ 
+            [ generate_mn_sample(self.main_model, x)
+            for b in range(ncoef) ]
+            for x in newX
+            ])
+        self.lower_samples = np.full(self.probs.shape[0:2], np.nan)
+        self.upper_samples = np.full(self.probs.shape[0:2], np.nan)
+        for i in range(self.probs.shape[0]):
+            for j in range(ncoef):
+                print(i*ncoef + j)
+                self.lower_samples[i,j], self.upper_samples[i,j] = (
+                    (lambda k: (k[0]['dual'], k[1]['dual']) )(
+                        self.calc_bounds_sample(self.probs[i,j]))
+                )
+        self.lower_samples = self.lower_samples.mean(axis = 1)
+        self.upper_samples = self.upper_samples.mean(axis = 1)
+        return (np.quantile(self.lower_samples, 0.025), np.quantile(self.upper_samples, 0.975))    
+        # I have to simulate X and then calculate the probabilities
 
     def is_active(self, expr = '', ind = '', dep = ''):
         """ Call Parser.is_active()
         """
         return self.Parser.is_active(expr, ind, dep)
 
-    def solve(self):
+    def solve(self, ci = False):
         """ Wrapper for causalProblem.write_program().solve()
         """
-        program = self.write_program()
-        return program.run_scip()
+        bounds = self.calculate_ci(nx = 1000, ncoef = 1, randomize_beta = False)
+        print(bounds)
+        if not ci:
+            return bounds
+        if ci:
+            cibounds = self.calculate_ci(nx = 1000, ncoef = 1000)
 
     def p(self, expr, sign = 1):
         """ 
