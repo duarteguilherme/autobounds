@@ -42,16 +42,17 @@ def test_program_calculate_ci():
 
 def test_program_solve():
     dag = DAG("D -> Y, U -> D, U -> Y", unob = "U")
-    # problem = causalProblem(dag)
-    # with respect_to(problem):
-    #     set_estimand(p('Y(D=1)=1') + p('Y(D=0)=1', -1))
-    #     add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Query(0))
-    # df = pd.DataFrame({
-    #     'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],
-    #     'D': [0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,1,0,1,1,1,1,0],
-    #     'Y': [1,1,0,0,1,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1]
-    # })
-    # problem.read_data(df, covariates = ['X'])
+    problem = causalProblem(dag)
+    with respect_to(problem):
+        set_estimand(p('Y(D=1)=1') + p('Y(D=0)=1', -1))
+        add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Query(0))
+    df = pd.DataFrame({
+        'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],
+        'D': [0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,1,0,1,1,1,1,0],
+        'Y': [1,1,0,0,1,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1]
+    })
+    problem.read_data(df, covariates = ['X'])
+    print(problem.solve())
     # np.random.seed(19103)
     # res = problem.calculate_ci(ncoef = 2)
     # assert res[0] > -0.73 and res[0] < -0.72
