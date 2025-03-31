@@ -272,14 +272,17 @@ class causalProblem:
             datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data)
         else:
             raise Exception("Data was not introduced!")
-        self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))
-        self.X = sm.add_constant(self.X)
-        self.y_columns = [ k for k in datam.columns if k not in covariates ]
-        self.y = datam.drop(columns = covariates).astype(str).agg("_".join, axis=1)
-        self.y, category_mapping = pd.factorize(self.y)
-        self.category_decoder = dict(enumerate(category_mapping))
-        model = sm.MNLogit(self.y, self.X)
-        self.main_model = model.fit()
+        if covariates is None: # Not the best way now but it works
+            self.load_data(datam) 
+        else:
+            self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))
+            self.X = sm.add_constant(self.X)
+            self.y_columns = [ k for k in datam.columns if k not in covariates ]
+            self.y = datam.drop(columns = covariates).astype(str).agg("_".join, axis=1)
+            self.y, category_mapping = pd.factorize(self.y)
+            self.category_decoder = dict(enumerate(category_mapping))
+            model = sm.MNLogit(self.y, self.X)
+            self.main_model = model.fit()
 
     def calc_bounds_sample(self, prob):
         """
@@ -318,7 +321,6 @@ class causalProblem:
                         self.calc_bounds_sample(self.probs[nx,nb]))
                 )
         self.lower_samples = self.lower_samples.mean(axis = 1)
-        print(self.lower_samples)
         self.upper_samples = self.upper_samples.mean(axis = 1)
         return (np.quantile(self.lower_samples, 0.025), np.quantile(self.upper_samples, 0.975))    
         # I have to simulate X and then calculate the probabilities
@@ -331,6 +333,9 @@ class causalProblem:
     def solve(self, ci = False):
         """ Wrapper for causalProblem.write_program().solve()
         """
+        if self.covariates is None:
+            newprogram = self.write_program()
+            return newprogram.run_scip()
         bounds = self.calculate_ci(nx = 1000, ncoef = 1, randomize = True)
         print(bounds)
         if not ci:
