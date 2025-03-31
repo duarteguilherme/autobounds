@@ -36,7 +36,7 @@ def test_program_calculate_ci():
     problem.read_data(df, covariates = ['X'])
     np.random.seed(19103)
     res = problem.calculate_ci(ncoef = 2)
-    assert res[0] > -0.73 and res[0] < -0.72
+    assert res[0] > -0.55 and res[0] < -0.54
     assert res[1] < 0.001
 
 

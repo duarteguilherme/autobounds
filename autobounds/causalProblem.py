@@ -17,23 +17,29 @@ import statsmodels.api as sm
 
 
 
-def generate_mn_sample(result, X, randomize_beta = True):
+
+def generate_posterior_beta(result, randomize = True):
+    """
+    Given a result from a regression, 
+    generate a posterior beta
+    """
+    coef_mean = result.params
+    coef_cov = result.cov_params()
+    if randomize:
+        coef_sampled = np.random.multivariate_normal(coef_mean.flatten(), coef_cov).reshape(coef_mean.shape)
+    else:
+        coef_sampled = coef_mean.reshape(coef_mean.shape)
+    return coef_sampled
+
+def generate_mn_sample(coef_sampled, X):
         if len(X.shape) == 1:
             X = X.reshape(1, -1)
-        coef_mean = result.params  # Shape: (num_predictors, num_classes-1)
-        coef_cov = result.cov_params()
-        if randomize_beta:
-            coef_sampled = np.random.multivariate_normal(coef_mean.flatten(), coef_cov).reshape(coef_mean.shape)
-        else:
-            coef_sampled = coef_mean.reshape(coef_mean.shape)
-        # Compute new predicted probabilities using sampled coefficients
         logits_sampled = X @ coef_sampled  # Compute logits
         probs_sampled = np.exp(logits_sampled)
         probs_sampled /= (1 + probs_sampled.sum(axis=1, keepdims=True))  # Normalize to probabilities
         # Add probability for reference category (first category as baseline)
         probs_sampled = np.column_stack([1 - probs_sampled.sum(axis=1), probs_sampled])
         return probs_sampled.reshape(-1)
-        # Sample new coefficients from multivariate normal distribution
 
 
 class respect_to:
@@ -290,27 +296,29 @@ class causalProblem:
         newprogram = newproblem.write_program()
         return newprogram.run_scip()
 
-    def calculate_ci(self, nx = 1000, ncoef = 5, randomize_beta = True):
+    def calculate_ci(self, nx = 1000, ncoef = 5, randomize = True):
         if self.X.shape[0] > nx:
             newX =  self.X[
                 np.random.choice(self.X.shape[0], size = nx, replace = True), :]
         else:
             newX = self.X.copy()
+        self.betas = np.array([ generate_posterior_beta(self.main_model, randomize) for i in range(ncoef) ])
         self.probs = np.array([ 
-            [ generate_mn_sample(self.main_model, x)
-            for b in range(ncoef) ]
-            for x in newX
+            [ generate_mn_sample(b, x)
+            for b in self.betas ]
+            for x in newX 
             ])
         self.lower_samples = np.full(self.probs.shape[0:2], np.nan)
         self.upper_samples = np.full(self.probs.shape[0:2], np.nan)
-        for i in range(self.probs.shape[0]):
-            for j in range(ncoef):
-                print(i*ncoef + j)
-                self.lower_samples[i,j], self.upper_samples[i,j] = (
+        for nx in range(self.probs.shape[0]):
+            for nb in range(ncoef):
+                print(nx*ncoef + nb)
+                self.lower_samples[nx,nb], self.upper_samples[nx,nb] = (
                     (lambda k: (k[0]['dual'], k[1]['dual']) )(
-                        self.calc_bounds_sample(self.probs[i,j]))
+                        self.calc_bounds_sample(self.probs[nx,nb]))
                 )
         self.lower_samples = self.lower_samples.mean(axis = 1)
+        print(self.lower_samples)
         self.upper_samples = self.upper_samples.mean(axis = 1)
         return (np.quantile(self.lower_samples, 0.025), np.quantile(self.upper_samples, 0.975))    
         # I have to simulate X and then calculate the probabilities
@@ -323,7 +331,7 @@ class causalProblem:
     def solve(self, ci = False):
         """ Wrapper for causalProblem.write_program().solve()
         """
-        bounds = self.calculate_ci(nx = 1000, ncoef = 1, randomize_beta = False)
+        bounds = self.calculate_ci(nx = 1000, ncoef = 1, randomize = True)
         print(bounds)
         if not ci:
             return bounds
