@@ -253,6 +253,7 @@ class causalProblem:
             self.number_values[i] = number_values[i] if i in number_values.keys() else 2
         self.parameters = [ (1, x) for x in self.canModel.parameters ]
         self.estimand = [ ]
+        self.covariates = None
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
