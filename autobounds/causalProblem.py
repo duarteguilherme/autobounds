@@ -58,6 +58,7 @@ class respect_to:
         self.globals['set_ate'] = self.problem.set_ate
         self.globals['solve'] = self.problem.solve
         self.globals['load_data'] = self.problem.load_data
+        self.globals['read_data'] = self.problem.read_data
 
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -68,6 +69,7 @@ class respect_to:
         del self.globals['set_ate']
         del self.globals['solve']
         del self.globals['load_data']
+        del self.globals['read_data']
 
 def get_summary_from_raw(datam):
     """
@@ -257,7 +259,7 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
-    def read_data(self, raw = None, optimize = True, covariates = None, n_samples = 1000):
+    def read_data(self, raw = None, optimize = True, covariates = None, inference = False):
         """ This is the new method for loading data in place of 
         self.load_data, which will be outdated as a low version
 
@@ -273,17 +275,24 @@ class causalProblem:
             datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data)
         else:
             raise Exception("Data was not introduced!")
-        if covariates is None: # Not the best way now but it works
-            self.load_data(datam) 
-        else:
+        if covariates is None:
+            # If covariates do not exist, but there is no inference, just run the standard bounds and return
+            if not inference: 
+                self.load_data(raw = datam) 
+                return None 
+            else: # if covariates do not exist, but there is inference
+                covariates = [ ] # set covariates to 0
+                self.X = np.ones((datam.shape[0], 1))
+        else: # If covariates exist, they become X
             self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))
             self.X = sm.add_constant(self.X)
-            self.y_columns = [ k for k in datam.columns if k not in covariates ]
-            self.y = datam.drop(columns = covariates).astype(str).agg("_".join, axis=1)
-            self.y, category_mapping = pd.factorize(self.y)
-            self.category_decoder = dict(enumerate(category_mapping))
-            model = sm.MNLogit(self.y, self.X)
-            self.main_model = model.fit()
+        # load no-covariate data ( y )
+        self.y_columns = [ k for k in datam.columns if k not in covariates ]
+        self.y = datam.drop(columns = covariates).astype(str).agg("_".join, axis=1)
+        self.y, category_mapping = pd.factorize(self.y)
+        self.category_decoder = dict(enumerate(category_mapping))
+        model = sm.MNLogit(self.y, self.X) # Run multinomial logistic model -- in the future, this will allow for other models
+        self.main_model = model.fit()
 
     def calc_bounds_sample(self, prob):
         """
@@ -328,21 +337,24 @@ class causalProblem:
 
     def is_active(self, expr = '', ind = '', dep = ''):
         """ Call Parser.is_active()
+        
+        This is not just a wrapper -- it also returns a list of parameters into a query where each happens one time
         """
-        return self.Parser.is_active(expr, ind, dep)
+        params = [ Query(i) for i in self.Parser.is_active(expr, ind, dep) ]
+        return reduce(lambda a,b : a + b, params)
 
-    def solve(self, ci = False):
+    def solve(self, ci = False, nx = 10, nsamples = 10):
         """ Wrapper for causalProblem.write_program().solve()
         """
-        if self.covariates is None:
+        if self.covariates is None and not ci:
             newprogram = self.write_program()
             return newprogram.run_scip()
-        bounds = self.calculate_ci(nx = 1000, ncoef = 1, randomize = True)
+        bounds = self.calculate_ci(nx = nx, ncoef = 1, randomize = True)
         print(bounds)
         if not ci:
             return bounds
         if ci:
-            cibounds = self.calculate_ci(nx = 1000, ncoef = 1000)
+            cibounds = self.calculate_ci(nx = nx, ncoef = nsamples)
 
     def p(self, expr, sign = 1):
         """ 
