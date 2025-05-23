@@ -309,12 +309,16 @@ class causalProblem:
         newprogram = newproblem.write_program()
         return newprogram.run_scip()
 
-    def calculate_ci(self, nx = 1000, ncoef = 5, randomize = True):
-        if self.X.shape[0] > nx:
-            newX =  self.X[
-                np.random.choice(self.X.shape[0], size = nx, replace = True), :]
+    def calculate_ci(self, nx = 1000, ncoef = 5, categorical = True, randomize = True, debug = True):
+        if categorical:
+            newX = get_summary_data_from_raw(self.X)
+            pass
         else:
-            newX = self.X.copy()
+            if self.X.shape[0] > nx:
+                newX =  self.X[
+                    np.random.choice(self.X.shape[0], size = nx, replace = True), :]
+            else:
+                newX = self.X.copy()
         self.betas = np.array([ generate_posterior_beta(self.main_model, randomize) for i in range(ncoef) ])
         self.probs = np.array([ 
             [ generate_mn_sample(b, x)
@@ -330,6 +334,8 @@ class causalProblem:
                     (lambda k: (k[0]['dual'], k[1]['dual']) )(
                         self.calc_bounds_sample(self.probs[nx,nb]))
                 )
+        if debug: # Debug samples
+            return (self.lower_samples. self.upper_samples)
         self.lower_samples = self.lower_samples.mean(axis = 1)
         self.upper_samples = self.upper_samples.mean(axis = 1)
         return (np.quantile(self.lower_samples, 0.025), np.quantile(self.upper_samples, 0.975))    
@@ -355,6 +361,7 @@ class causalProblem:
             return bounds
         if ci:
             cibounds = self.calculate_ci(nx = nx, ncoef = nsamples)
+            return cibounds
 
     def p(self, expr, sign = 1):
         """ 
