@@ -30,25 +30,33 @@ def sorted1(list1):
     return list1
 
 class Query():
-    def __init__(self, lst):
+    def __init__(self, lst, lst2 = None): # lst2 indicates
+        self._lst = self.verify_list(lst)
+        self._lst2 = self.verify_list(lst2)
+
+    def verify_list(self, lst):
+        if lst is None:
+            return 
         if isinstance(lst, list):
-            self._lst = lst
+            _lst = lst
         elif isinstance(lst, str):
-            self._lst = [(1, [lst])]
+            _lst = [(1, [lst])]
         elif isinstance(lst, float):
-            self._lst = [(1 * lst, ['1'])]
+            _lst = [(1 * lst, ['1'])]
         elif isinstance(lst, int):
-            self._lst = [(1 * lst, ['1'])]
+            _lst = [(1 * lst, ['1'])]
         elif 'Query.Query' in str(type(lst)):
-            self._lst = lst._lst
+            _lst = lst._lst
         else:
             raise Exception('Verify argument')
-    
+        return _lst
+
     def __getitem__(self, item):
         return self._lst[item]
     
     def __eq__(self, query2):
-        if len(self.__sub__(query2)._lst) == 0:
+        sub = self.__sub__(query2)._lst
+        if len(sub._lst) == 0 and len(sub._lst2) == 0:
             return True
         else:
             return False
