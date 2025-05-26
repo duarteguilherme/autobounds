@@ -4,7 +4,7 @@
 def remove_one(part):
     """ To be used inside clean_query(lst)
     If the second part of a query is a list with more than 1 element 
-    and contains '1', this element must me removed
+    and contains '1', this element must be removed
     """
     if len(part) > 1:
         return [ k for k in part if k != '1' ]
@@ -14,7 +14,7 @@ def remove_one(part):
 def clean_query(lst):
     """ This method sorts and removes duplicated and zero parameters 
     """
-    lst = [ (x[0], sorted1(x[1])) for x in lst.copy() ] 
+    lst = [ (x[0], sort_and_return_list(x[1])) for x in lst.copy() ] 
     duplicated = [ x[1]  # Removing duplicated
             for n, x in enumerate(lst) 
             if x[1] not in [ i[1] for i in lst[:n] ] ]
@@ -25,14 +25,14 @@ def clean_query(lst):
     return lst
 
 
-def sorted1(list1):
-    list1.sort()
-    return list1
+def sort_and_return_list(x):
+    x.sort()
+    return x
 
 class Query():
-    def __init__(self, lst, lst2 = None): # lst2 indicates
-        self._lst = self.verify_list(lst)
-        self._lst2 = self.verify_list(lst2)
+    def __init__(self, event, cond = None):
+        self._event = self.verify_list(event)
+        self._cond = self.verify_list(cond)
 
     def verify_list(self, lst):
         if lst is None:
@@ -52,44 +52,44 @@ class Query():
         return _lst
 
     def __getitem__(self, item):
-        return self._lst[item]
+        return self._event[item]
     
     def __eq__(self, query2):
-        sub = self.__sub__(query2)._lst
-        if len(sub._lst) == 0 and len(sub._lst2) == 0:
+        sub = self.__sub__(query2)._event
+        if len(sub._event) == 0 and len(sub._cond) == 0:
             return True
         else:
             return False
     
     def __str__(self):
-        return f"{self._lst[:]}"
+        return f"{self._event[:]}"
     
     def __repr__(self):
-        return f"{self._lst[:]}"
+        return f"{self._event[:]}"
     
     def __add__(self, query2):
-        lst = self._lst + query2._lst
+        lst = self._event + query2._event
         return Query(clean_query(lst))
     
     def __sub__(self, query2):
-        lst2 = []
-        for i in query2._lst.copy():
-            lst2.append( (i[0] * -1, i[1]))
-        lst = self._lst + lst2
+        lst = []
+        for i in query2._event.copy():
+            lst.append( (i[0] * -1, i[1]))
+        lst = self._event + lst
         return Query(clean_query(lst))
     
     def __mul__(self, query2):
-        lst2 = [ ]
-        for i in query2._lst.copy():
-            for j in self._lst.copy():
-                lst2.append((i[0] * j[0], i[1] + j[1]))
-        return Query(clean_query(lst2))
+        cond = [ ]
+        for i in query2._event.copy():
+            for j in self._event.copy():
+                cond.append((i[0] * j[0], i[1] + j[1]))
+        return Query(clean_query(cond))
     
     def clean(self):
-        self._lst = clean_query(self._lst)
-#        lst2 = query2._lst.copy()
-#        for i in enumerate(lst2):
-#            lst2[i][0] *= -1
-#        lst = self._lst + lst2
+        self._event = clean_query(self._event)
+#        cond = query2._lst.copy()
+#        for i in enumerate(cond):
+#            cond[i][0] *= -1
+#        lst = self._lst + cond
 #        return clear_query(Query(lst))
 
