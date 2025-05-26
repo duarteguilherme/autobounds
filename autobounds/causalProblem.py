@@ -373,12 +373,17 @@ class causalProblem:
         """ Wrapper to calculate expected values 
         """
         expr = expr.strip()
-        main_var = expr.split('(')[0]
-        second_part  = expr.split(')')[-1]
+        # Example: E(expr = "Y(A=0)")
+        main_var = expr.split('(')[0]  # "Y" 
+        second_part  = expr.split(')')[-1]  # splits "Y(A=0)" -> "Y(A=0" and "",  "Y(A=0)=1" -> "Y(A=0" and "=1"
         if ',' in main_var:
             raise Exception('Issue: more than one variable introduced')
         if '=' in second_part:
-            raise Exception('.e does not accept = terms. You mistakenly used .p?')
+            raise Exception('.E does not accept = terms. Did you mean to use .p?')
+        elif '-' in second_part:
+            raise Exception('.E does not accept - terms. Construct expectations separately and then take the difference.')
+        elif len(second_part) > 0:
+            raise Exception('Unexpected input in .E')
         for i in range(self.number_values[main_var]):
             if i == 0:
                 continue
