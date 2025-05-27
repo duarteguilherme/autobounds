@@ -11,7 +11,7 @@ def test_program_read_data_covariates():
     dag = DAG("D -> Y")
     problem = causalProblem(dag)
     with respect_to(problem):
-        set_estimand(p('Y(D=1)=1') + p('Y(D=0)=1', -1))
+        set_estimand(p('Y(D=1)=1') - p('Y(D=0)=1'))
         add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Q(0))
     df = pd.DataFrame({
         'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],
@@ -26,7 +26,7 @@ def test_program_calculate_ci():
     dag = DAG("D -> Y, U -> D, U -> Y", unob = "U")
     problem = causalProblem(dag)
     with respect_to(problem):
-        set_estimand(p('Y(D=1)=1') + p('Y(D=0)=1', -1))
+        set_estimand(p('Y(D=1)=1') - p('Y(D=0)=1'))
         add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Q(0))
     df = pd.DataFrame({
         'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],
@@ -44,7 +44,7 @@ def test_program_solve():
     dag = DAG("D -> Y, U -> D, U -> Y", unob = "U")
     problem = causalProblem(dag)
     with respect_to(problem):
-        set_estimand(p('Y(D=1)=1') + p('Y(D=0)=1', -1))
+        set_estimand(p('Y(D=1)=1') - p('Y(D=0)=1'))
         add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Q(0))
     df = pd.DataFrame({
         'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],

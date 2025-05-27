@@ -148,9 +148,6 @@ def solve_kl_p(ns, K, o, alpha):
 
 
 
-def sorted1(list1):
-    list1.sort()
-    return list1
 
 # Simplifiers 
 ### 1) First nodes
@@ -254,6 +251,9 @@ class causalProblem:
         for i in dag.V:
             self.number_values[i] = number_values[i] if i in number_values.keys() else 2
         self.parameters = [ (1, x) for x in self.canModel.parameters ]
+        # self.parameters is exactly the same as self.canModel.parameters
+        # the difference is self.parameters will keep track if parameters will not be used
+        # this will be used to remove parameters that are not used in the final polynomial program
         self.estimand = [ ]
         self.covariates = None
         self.constraints = [ ]
@@ -311,7 +311,7 @@ class causalProblem:
 
     def calculate_ci(self, nx = 1000, ncoef = 5, categorical = True, randomize = True, debug = True):
         if categorical:
-            newX = get_summary_data_from_raw(self.X)
+            newX = get_summary_from_raw(self.X)
             pass
         else:
             if self.X.shape[0] > nx:
@@ -329,7 +329,7 @@ class causalProblem:
         self.upper_samples = np.full(self.probs.shape[0:2], np.nan)
         for nx in range(self.probs.shape[0]):
             for nb in range(ncoef):
-                print(nx*ncoef + nb)
+#                print(nx*ncoef + nb)
                 self.lower_samples[nx,nb], self.upper_samples[nx,nb] = (
                     (lambda k: (k[0]['dual'], k[1]['dual']) )(
                         self.calc_bounds_sample(self.probs[nx,nb]))
@@ -363,19 +363,19 @@ class causalProblem:
             cibounds = self.calculate_ci(nx = nx, ncoef = nsamples)
             return cibounds
 
-    def p(self, expr, sign = 1):
+    def p(self, event, cond = None, sign = 1):
         """ 
         Wrapper for Parser.p
         """
-        return self.Parser.p(expr, sign)
+        return self.Parser.p(event, cond, sign)
 
-    def E(self, expr):
+    def E(self, event, cond = None):
         """ Wrapper to calculate expected values 
         """
-        expr = expr.strip()
-        # Example: E(expr = "Y(A=0)")
-        main_var = expr.split('(')[0]  # "Y" 
-        second_part  = expr.split(')')[-1]  # splits "Y(A=0)" -> "Y(A=0" and "",  "Y(A=0)=1" -> "Y(A=0" and "=1"
+        event = event.strip()
+        # Example: E(event = "Y(A=0)")
+        main_var = event.split('(')[0]  # "Y" 
+        second_part  = event.split(')')[-1]  # splits "Y(A=0)" -> "Y(A=0" and "",  "Y(A=0)=1" -> "Y(A=0" and "=1"
         if ',' in main_var:
             raise Exception('Issue: more than one variable introduced')
         if '=' in second_part:
@@ -388,20 +388,19 @@ class causalProblem:
             if i == 0:
                 continue
             try:
-                res = res + Query(i) * self.p(expr + '=' + str(i))
+                res = res + Q(i) * self.p(event + '=' + str(i))
             except:
-                res = self.p(expr + '=' + str(i))
+                #  If this is the first evaluation, uses cond
+                # Then for the remaining evaluations (inside try)
+                # cond will be multiplied automatically (cond is None, or 1)
+                res = self.p(event + '=' + str(i), cond) #
         return res
 
     
-    def set_ate(self, ind, dep, cond = ''):
+    def set_ate(self, ind, dep, cond = None):
         """ Recipe for declaring ATEs"""
-        cond = '&' + cond if cond != '' else cond
-        query = self.p(f'{dep}({ind}=1)=1{cond}') + self.p(f'{dep}({ind}=0)=1{cond}', -1) 
-        if cond != '':
-            self.set_estimand(query, div = self.p(cond[1:]))
-        else:
-            self.set_estimand(query)
+        query = self.p(f'{dep}({ind}=1)=1', cond = cond) - self.p(f'{dep}({ind}=0)=1', cond = cond) 
+        self.set_estimand(query)
     
     def write_program(self):
         """ It returns an object Program
@@ -435,17 +434,23 @@ class causalProblem:
     
     def add_prob_constraints(self):
         """
+        This method is a default method to say that all the strata
+        in one c-component has to sum to 1 (Kolmogorov)
         """
+        # unconf_nodes is definitely important, because it 
+        # handles the simplification everytime the first ancestrals
+        # are not confounded (they are divided)
         unconf_nodes = [ x[0] for x in self.unconf_first_nodes ] 
         not_0_parameters = [ x[1] for x in self.parameters if x[0] != 0 ]
         for c in self.Parser.c_parameters:
+            # Iterative over c_components
             prob_constraints = [ (1, [ x ]) 
                         for x in c
                 if x in not_0_parameters 
                 and x not in unconf_nodes ] 
             if len(prob_constraints) > 0:
                 prob_constraints += [ (-1.0, ['1'])]
-                self.add_constraint(prob_constraints)
+                self.add_constraint(Q(prob_constraints))
     
     def load_data_gaussian(self, data, N = 0, alpha = 0.05, cond = [ ], optimize = True, data_name = 'qp'):
         """ It accepts a file 
@@ -574,8 +579,8 @@ class causalProblem:
         For a particular list  of parameters
         ['X0111', 'Z0'], set them to 0 (This has to be improved)
         """
-        if isinstance(parameter_list, Query):
-            parameter_list = [ k[1][0] for k in parameter_list ]
+        if isinstance(parameter_list, Q):
+            parameter_list = [ k[1][0] for k in parameter_list._event ]
             self.parameters = [ (x[0], x[1])
                     for x in self.parameters  
                     if x[1] not in parameter_list ] + [ (0, x) 
@@ -590,30 +595,30 @@ class causalProblem:
 
     def add_assumption(self, constraint, symbol = "==", constraint2 = None):
         if constraint2 is not None:
-            if not isinstance(constraint2, Query): # Do type checking
-                constraint2 = Query(constraint2) 
+            if not isinstance(constraint2, Q): # Do type checking
+                constraint2 = Q(constraint2) 
         self.add_constraint(constraint, symbol, constraint2)
     
-    def add_constraint(self, constraint, symbol = '==', constraint2 = None):
+    def add_constraint(self, constraint, symbol = '==', constraint2 = None, control = 0.0001):
         """
-        Input: list of tuples with constant and 
-        statemenets. For example [(-1, ['X1111', 'Z1']), (2, ['X1111'])]
+        Input: a Q statement. For example Q([(-1, ['X1111', 'Z1']), (2, ['X1111'])])
     
-        symbol argument indicates if constraint will be an equality 
+        Symbol argument indicates if constraint will be an equality 
         or inequality. The default parameter will be an equality
         """
-        # Sorting constraint
+        if not isinstance(constraint, Q):
+            raise TypeError('Constraint must be a Q object')
         if constraint2 is not None:
-            constraint += Query(-1) * constraint2
-        constraint = [ [x[0], sorted1(x[1])] for x in constraint ] 
-        expr_list = [ x[1]  # Removing duplicated
-                for n, x in enumerate(constraint) 
-                if x[1] not in [ i[1] for i in constraint[:n] ] ]
-        constraint = [ (sum([ i[0] 
-            for i in constraint if x == i[1] ]), x)
-                for x in expr_list ]
-        constraint = [ (x[0], x[1]) for x in constraint if x[0] != 0 ] + [ (1, [ symbol ] ) ]
-        self.constraints.append(constraint)
+            constraint -= constraint2 
+        # After right-hand side is 0, then the denominator can be ignored
+        self.constraints.append(constraint._event + [ (1, [ symbol ] )])
+        if constraint._cond is not None:
+            print('added here')
+            self.constraints.append(sub_list(constraint._cond, 
+                                             [(1 * control, ['1'])] 
+                                             )  + [ (1, [ '>=' ] )] )
+        # An alternative is to check all the parameters for cond, and make them >= 0.001, when setting up the problem
+        # Maybe the multiplicative constraint is already the best solution however
     
     def set_estimand(self,estimand, div = None, control = 0.0001):
         """

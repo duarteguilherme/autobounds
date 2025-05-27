@@ -104,7 +104,7 @@ def test_query():
     assert x.p('Y=1') == x.p('Y=1')
     assert not (x.p('Y=1') == x.p('Y=0'))
     # Test subtraction and addition
-    assert (x.p('Y=1') + x.p('Y=0', -1)) == (x.p('Y=1') - x.p('Y=0'))
+    assert (x.p('Y=1') + x.p('Y=0', sign = -1)) == (x.p('Y=1') - x.p('Y=0'))
 
 
 def test_types():

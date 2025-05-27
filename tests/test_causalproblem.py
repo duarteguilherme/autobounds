@@ -1,10 +1,59 @@
 import numpy as np
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.causalProblem import *
-from autobounds.autobounds.Q import Q, clean_list
+from autobounds.autobounds.Q import Q, clean_list, compare_lists
 import pandas as pd
 import io
 from copy import deepcopy
+
+
+
+
+def test_conditional_data():
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    z = Parser(y)
+    datafile = io.StringIO('''X,Y,Z,prob
+    0,0,0,0.05
+    0,0,1,0.05
+    0,1,0,0.1
+    0,1,1,0.1
+    1,0,0,0.15
+    1,0,1,0.15
+    1,1,0,0.2
+    1,1,1,0.2''')
+    x.set_estimand(x.p('Y(X=1)=1') - x.p('Y(X=0)=1'))
+    x.load_data(datafile, cond = ['X'])
+    z = x.write_program()
+    assert 'objvar' in z.parameters
+    assert 'X00.Y00' in z.parameters
+    assert 'Z0' in z.parameters
+    assert len(z.constraints) == 11
+    assert z.constraints[3] ==  [['0.95', 'X00.Y00', 'Z0'], ['0.95', 'X00.Y01', 'Z0'], ['0.95', 'X01.Y00', 'Z0'], ['0.95', 'X01.Y01', 'Z0'], ['-0.05', 'X00.Y00', 'Z1'], ['-0.05', 'X00.Y01', 'Z1'], ['-0.05', 'X00.Y10', 'Z0'], ['-0.05', 'X00.Y10', 'Z1'], ['-0.05',   'X00.Y11', 'Z0'], ['-0.05', 'X00.Y11', 'Z1'], ['-0.05', 'X01.Y10', 'Z0'], ['-0.05', 'X01.Y11', 'Z0'], ['-0.05', 'X10.Y00', 'Z1'], ['-0.05', 'X10.Y01', 'Z1'], ['-0.05', 'X10.Y10', 'Z1'], ['-0.05', 'X10.Y11', 'Z1'], ['==']]
+
+
+
+def test_set_ate():
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    x.set_estimand(x.p('Y(X=1)=1&X=0') - x.p('Y(X=0)=1&X=0'), div = x.p('X=0'))
+    x.set_ate('X','Y', cond = 'X=0')
+    assert compare_lists(x.constraints[-1], x.constraints[3]) # Comparing two ways of setting the ATE
+
+
+def test_add_constraints():
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    assert (1, 'Z0') in x.parameters
+    x.set_p_to_zero(['Z0'])
+    assert (0, 'Z0') in x.parameters
+    x.add_constraint(Q([(-0.15, ['1']), (-0.15, ['1']), (1, ['X1111']), (-1, ['X1111', 'Z1']), (2, ['X1111'])]))
+    assert [(-0.3, ['1']), (3, ['X1111']), (-1, ['X1111', 'Z1']), (1, ['=='])] in x.constraints
+    x.add_constraint(Q([(1, ['X1110']), (-1, ['X1110', 'Z1']), (-1, ['X1110'])]))
+    assert [(-1, ['X1110', 'Z1']), (1, ['=='])] in x.constraints
 
 
 def test_respect_to():
@@ -17,7 +66,7 @@ def test_respect_to():
                 'D': [0,0,1,0,1,0,1,1,1,0,1,0,0,1],
                 'Y': [0,1,1,0,0,0,1,0,1,1,0,0,1,1]
             })           )
-        print(solve())
+#        print(solve())
 
 
 def test_solve():
@@ -168,17 +217,6 @@ def test_load_data_kl():
 
 
 
-def test_add_constraints():
-    y = DAG()
-    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
-    x = causalProblem(y, {'X': 2})
-    assert (1, 'Z0') in x.parameters
-    x.set_p_to_zero(['Z0'])
-    assert (0, 'Z0') in x.parameters
-    x.add_constraint([(-0.15, ['1']), (-0.15, ['1']), (1, ['X1111']), (-1, ['X1111', 'Z1']), (2, ['X1111'])])
-    assert [(-0.3, ['1']), (3, ['X1111']), (-1, ['X1111', 'Z1']), (1, ['=='])] in x.constraints
-    x.add_constraint([(1, ['X1110']), (-1, ['X1110', 'Z1']), (-1, ['X1110'])])
-    assert [(-1, ['X1110', 'Z1']), (1, ['=='])] in x.constraints
 
 def test_check_constraints():
     y = DAG()
@@ -197,14 +235,6 @@ def test_check_constraints():
     x.check_constraints()
     assert (0.5, ['X00.Y00', '1']) in x.constraints[0]
 
-def test_set_ate():
-    y = DAG()
-    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
-    x = causalProblem(y, {'X': 2})
-    z = Parser(y)
-    x.set_estimand(x.p('Y(X=1)=1&X=0') - x.p('Y(X=0)=1&X=0'), div = x.p('X=0'))
-    x.set_ate('X','Y', cond = 'X=0')
-    assert x.constraints[-1] == x.constraints[-5] # Comparing two ways of setting the ATE
 
 def test_conditional_estimand():
     y = DAG()
@@ -213,30 +243,6 @@ def test_conditional_estimand():
     z = Parser(y)
     x.set_estimand(x.p('Y(X=1)=1') - x.p('Y(X=0)=1'), div = x.p('X=0'))
     assert Q(x.constraints[-1]) ==  Q('X0.Y01') + Q('X1.Y01') - Q('X0.Y10') - Q('X1.Y10') - ( x.p('X=0') * Q('objvar') ) + Q('==')
-
-
-def test_conditional_data():
-    y = DAG()
-    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
-    x = causalProblem(y, {'X': 2})
-    z = Parser(y)
-    datafile = io.StringIO('''X,Y,Z,prob
-    0,0,0,0.05
-    0,0,1,0.05
-    0,1,0,0.1
-    0,1,1,0.1
-    1,0,0,0.15
-    1,0,1,0.15
-    1,1,0,0.2
-    1,1,1,0.2''')
-    x.set_estimand(x.p('Y(X=1)=1') + x.p('Y(X=0)=1', -1))
-    x.load_data(datafile, cond = ['X'])
-    z = x.write_program()
-    assert 'objvar' in z.parameters
-    assert 'X00.Y00' in z.parameters
-    assert 'Z0' in z.parameters
-    assert len(z.constraints) == 11
-    assert z.constraints[3] ==  [['0.95', 'X00.Y00', 'Z0'], ['0.95', 'X00.Y01', 'Z0'], ['0.95', 'X01.Y00', 'Z0'], ['0.95', 'X01.Y01', 'Z0'], ['-0.05', 'X00.Y00', 'Z1'], ['-0.05', 'X00.Y01', 'Z1'], ['-0.05', 'X00.Y10', 'Z0'], ['-0.05', 'X00.Y10', 'Z1'], ['-0.05',   'X00.Y11', 'Z0'], ['-0.05', 'X00.Y11', 'Z1'], ['-0.05', 'X01.Y10', 'Z0'], ['-0.05', 'X01.Y11', 'Z0'], ['-0.05', 'X10.Y00', 'Z1'], ['-0.05', 'X10.Y01', 'Z1'], ['-0.05', 'X10.Y10', 'Z1'], ['-0.05', 'X10.Y11', 'Z1'], ['==']]
 
 
 def test_causalproblem():
@@ -253,7 +259,7 @@ def test_causalproblem():
     1,0,1,0.15
     1,1,0,0.2
     1,1,1,0.2''')
-    x.set_estimand(x.p('Y(X=1)=1') + x.p('Y(X=0)=1', -1))
+    x.set_estimand(x.p('Y(X=1)=1') - x.p('Y(X=0)=1'))
     x.load_data(datafile)
     z = x.write_program()
     assert 'objvar' in z.parameters
@@ -310,7 +316,7 @@ def test_transform_constraint():
     problem = causalProblem(model)
 #    problem.set_p_to_zero([ x[1][0] for x in problem.p('M(D=0)=1&M(D=1)=0') ])
     problem.set_p_to_zero(problem.p('M(D=0)=1&M(D=1)=0'))
-    problem.set_estimand(problem.p('Y(D=1)=1') + problem.p('Y(D=0)=1', -1),div = problem.p('M=1'))
+    problem.set_estimand(problem.p('Y(D=1)=1') - problem.p('Y(D=0)=1'),div = problem.p('M=1'))
     problem.constraints[-1]
     program = problem.write_program()
     assert program.constraints[-1] == [['M00.Y0010'], ['M00.Y0011'], ['M00.Y0110'], ['M00.Y0111'], ['M01.Y0001'], ['M01.Y0011'], ['M01.Y0101'], ['M01.Y0111'], ['M11.Y0001'], ['M11.Y0011'], ['M11.Y1001'], ['M11.Y1011'], ['-1', 'M00.Y1000'], ['-1', 'M00.Y1001'], ['-1', 'M00.Y1100'], ['-1', 'M00.Y1101'], ['-1', 'M01.Y1000'], ['-1', 'M01.Y1010'], ['-1', 'M01.Y1100'], ['-1', 'M01.Y1110'], ['-1', 'M11.Y0100'], ['-1', 'M11.Y0110'], ['-1', 'M11.Y1100'], ['-1', 'M11.Y1110'], ['-1', 'D0', 'M11.Y0000', 'objvar'], ['-1', 'D0', 'M11.Y0001', 'objvar'], ['-1', 'D0','M11.Y0010', 'objvar'], ['-1', 'D0', 'M11.Y0011', 'objvar'], ['-1', 'D0', 'M11.Y0100', 'objvar'], ['-1', 'D0', 'M11.Y0101', 'objvar'], ['-1', 'D0', 'M11.Y0110', 'objvar'], ['-1', 'D0', 'M11.Y0111', 'objvar'], ['-1', 'D0', 'M11.Y1000', 'objvar'], ['-1', 'D0', 'M11.Y1001', 'objvar'], ['-1', 'D0', 'M11.Y1010', 'objvar'], ['-1', 'D0', 'M11.Y1011', 'objvar'], ['-1', 'D0', 'M11.Y1100', 'objvar'], ['-1', 'D0', 'M11.Y1101', 'objvar'], ['-1', 'D0', 'M11.Y1110', 'objvar'], ['-1', 'D0', 'M11.Y1111', 'objvar'], ['-1', 'D1', 'M01.Y0000', 'objvar'], ['-1', 'D1', 'M01.Y0001', 'objvar'], ['-1', 'D1', 'M01.Y0010', 'objvar'], ['-1', 'D1', 'M01.Y0011', 'objvar'], ['-1', 'D1', 'M01.Y0100', 'objvar'], ['-1', 'D1', 'M01.Y0101', 'objvar'], ['-1', 'D1', 'M01.Y0110', 'objvar'], ['-1', 'D1', 'M01.Y0111', 'objvar'], ['-1', 'D1', 'M01.Y1000', 'objvar'], ['-1', 'D1', 'M01.Y1001', 'objvar'], ['-1', 'D1', 'M01.Y1010', 'objvar'], ['-1', 'D1', 'M01.Y1011', 'objvar'], ['-1', 'D1', 'M01.Y1100', 'objvar'], ['-1', 'D1', 'M01.Y1101', 'objvar'], ['-1', 'D1', 'M01.Y1110', 'objvar'], ['-1', 'D1', 'M01.Y1111', 'objvar'], ['-1', 'D1', 'M11.Y0000', 'objvar'], ['-1', 'D1', 'M11.Y0001', 'objvar'], ['-1', 'D1', 'M11.Y0010', 'objvar'], ['-1', 'D1', 'M11.Y0011', 'objvar'], ['-1', 'D1', 'M11.Y0100', 'objvar'], ['-1', 'D1', 'M11.Y0101', 'objvar'], ['-1', 'D1', 'M11.Y0110', 'objvar'], ['-1', 'D1', 'M11.Y0111', 'objvar'], ['-1', 'D1', 'M11.Y1000', 'objvar'], ['-1', 'D1', 'M11.Y1001','objvar'], ['-1', 'D1', 'M11.Y1010', 'objvar'], ['-1', 'D1', 'M11.Y1011', 'objvar'], ['-1', 'D1', 'M11.Y1100', 'objvar'], ['-1', 'D1', 'M11.Y1101', 'objvar'], ['-1', 'D1', 'M11.Y1110', 'objvar'], ['-1', 'D1', 'M11.Y1111', 'objvar'], ['==']]

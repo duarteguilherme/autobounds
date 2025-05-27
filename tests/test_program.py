@@ -40,7 +40,7 @@ def test_program_scip_infeasibility():
     dag = DAG()
     dag.from_structure("D -> Y")
     problem = causalProblem(dag)
-    problem.set_estimand(problem.p('Y(D=1)=1') + problem.p('Y(D=0)=1', -1))
+    problem.set_estimand(problem.p('Y(D=1)=1') - problem.p('Y(D=0)=1'))
     problem.add_prob_constraints()
     problem.add_constraint(problem.p('Y(D=0)=0&Y(D=1)=1') - Q(2))
     z = problem.write_program()
@@ -81,7 +81,7 @@ def test_program_scip_time():
     1,0,1,0.15
     1,1,0,0.2
     1,1,1,0.2''')
-    problem.set_estimand(problem.p('Y(X=1)=1') + problem.p('Y(X=0)=1', -1))
+    problem.set_estimand(problem.p('Y(X=1)=1') - problem.p('Y(X=0)=1'))
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
@@ -100,7 +100,7 @@ def test_program_scip():
     1,0,1,0.15
     1,1,0,0.2
     1,1,1,0.2''')
-    problem.set_estimand(problem.p('Y(X=1)=1') + problem.p('Y(X=0)=1', -1))
+    problem.set_estimand(problem.p('Y(X=1)=1') - problem.p('Y(X=0)=1'))
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
@@ -140,7 +140,7 @@ def test_program_parallel():
     1,0,1,0.15
     1,1,0,0.2
     1,1,1,0.2''')
-    problem.set_estimand(problem.p('Y(X=1)=1') + problem.p('Y(X=0)=1', -1))
+    problem.set_estimand(problem.p('Y(X=1)=1') - problem.p('Y(X=0)=1'))
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
@@ -223,7 +223,7 @@ def test_numeric_lines():
     problem.load_data(datafile2, optimize = True)
     problem.load_data(datafile3, optimize = True)
     problem.load_data(datafile4, optimize = True)
-    problem.set_estimand(problem.p('Y(X=1)=1') + problem.p('Y(X=0)=1', -1))
+    problem.set_estimand(problem.p('Y(X=1)=1') - problem.p('Y(X=0)=1'))
     problem.add_prob_constraints()
     program = problem.write_program()
 
@@ -241,7 +241,7 @@ def test_program_iv():
     1,0,1,0.15
     1,1,0,0.2
     1,1,1,0.2''')
-    problem.set_estimand(problem.p('Y(X=1)=1') + problem.p('Y(X=0)=1', -1))
+    problem.set_estimand(problem.p('Y(X=1)=1') + problem.p('Y(X=0)=1', sign = -1))
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()

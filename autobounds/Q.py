@@ -162,10 +162,10 @@ def get_str_q(qlst):
 
 class Q():
     def __init__(self, event, cond = None):
-        self._event = self.verify_list(event)
+        self._event = clean_list(self.verify_list(event))
         self._cond = cond
         if cond is not None:
-            self._cond = self.verify_list(cond)
+            self._cond = clean_list(self.verify_list(cond))
             if len(self._cond) == 0 or self._cond[0][0] == 0:
                 raise Exception("Condition cannot have probability zero")
 
@@ -226,6 +226,8 @@ class Q():
             if q2._cond is None:
                 return Q(add_list(self._event, mul_list(q2._event, self._cond)))
             else:
+                if compare_lists(self._cond, q2._cond):
+                    return Q(add_list(self._event, q2._event), self._cond)
                 return Q(add_list(mul_list(self._event, q2._cond), mul_list(q2._event, self._cond)))
     
     def __sub__(self, q2):
@@ -241,6 +243,8 @@ class Q():
             if q2._cond is None:
                 return Q(sub_list(self._event, mul_list(q2._event, self._cond)))
             else:
+                if compare_lists(self._cond, q2._cond):
+                    return Q(sub_list(self._event, q2._event), self._cond)
                 return Q(sub_list(mul_list(self._event, q2._cond), mul_list(q2._event, self._cond)))
             
     def __mul__(self, q2):

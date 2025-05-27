@@ -178,7 +178,9 @@ class Parser():
         self.c_parameters = deepcopy([ [ k 
             for k in self.canModel.parameters if list(c)[0] in k ] 
             for c in self.canModel.c_comp ] )
-        # c-parameters must be in topological order 
+        # c-parameters are list of the parameters of the canonical model
+        # they are separated according to c-components
+        # e.g., [ ['X0', 'X1'], ['Z0','Z1']] if {Z} and {X} are different c-components
 
     def translate(self, main_expr, do_expr, ancestors):
         """ Output (all_paths): a list of tuples, where each tuple represents a path that satisfies the quantity in main_var.
