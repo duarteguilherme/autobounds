@@ -1,5 +1,5 @@
 from .canonicalModel import canonicalModel
-from .Query import Query
+from .Q import Q, Query
 import numpy as np
 from itertools import product
 from functools import reduce
@@ -351,7 +351,6 @@ class Parser():
         # Change the structure of all_paths
         all_paths = [ list(product(*x[1])) for x in all_paths ] 
         all_paths = [ j for i in all_paths for j in i ]  
-
         # STEP 4 --- Get parameters in terms of  c-components parameters
         funcs = [ a for k in all_paths for a in get_c_component(list(k), self.c_parameters) ]
         return funcs
