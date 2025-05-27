@@ -1,5 +1,6 @@
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.Parser import *
+from autobounds.autobounds.Q import compare_lists
 
 def test_parse_irreducible():
     # Testing parse_expr
@@ -108,4 +109,11 @@ def test_translate():
     assert 'Y01' in translation[1][1][1]
     assert 'Z0' in translation[0][1][0]
     assert 'Y11' in translation[1][1][1]
+
+
+def test_parse_cond():
+    d0 = Parser(DAG('D -> Y, U -> D, U -> Y', unob = 'U'))
+    py0_d1 = d0.p('Y=0', 'D=1')
+    assert compare_lists(py0_d1._event,  [(1, ['D1.Y00']), (1, ['D1.Y10'])])
+    assert compare_lists(py0_d1._cond,  [(1, ['D1.Y00']), (1, ['D1.Y01']), (1, ['D1.Y10']), (1, ['D1.Y11'])])
 

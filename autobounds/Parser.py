@@ -238,7 +238,7 @@ class Parser():
             all_paths = all_paths_new # After the second loop
         return all_paths
     
-    def p(self, expr, sign = 1):
+    def p(self, event, cond = None, sign = 1):
         """ 
         Important function:
         This function is exactly like parse in Parser class.
@@ -247,7 +247,12 @@ class Parser():
         to get P(Y(X=1)=1) constraint.
         sign can be 1, if positive, or -1, if negative.
         """
-        return Query([ (sign, list(x)) for x in self.parse(expr) ])
+        if cond is None:
+            return Q([ (sign, list(x)) for x in self.parse(event) ])
+        return Q(event = [ (sign, list(x)) 
+                          for x in self.parse(event + '&' + cond) ],
+                cond = [ (sign, list(x)) for x in self.parse(cond) ])
+    
     
     def is_active(self, expr = '', ind = '', dep = ''):
         """ This method collects all the strata with respect to a direct edge from ind to dep

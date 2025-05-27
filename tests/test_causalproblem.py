@@ -1,7 +1,7 @@
 import numpy as np
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.causalProblem import *
-from autobounds.autobounds.Query import Query, clean_query
+from autobounds.autobounds.Q import Q, clean_list
 import pandas as pd
 import io
 from copy import deepcopy
@@ -46,7 +46,7 @@ def test_e():
     d = DAG()
     d.from_structure('D -> Y')
     problem = causalProblem(d, {'Y': 4})
-    assert (problem.E('Y(D=1)') == problem.p('Y(D=1)=1') + problem.p('Y(D=1)=2') * Query(2) + problem.p('Y(D=1)=3') * Query(3) )
+    assert (problem.E('Y(D=1)') == problem.p('Y(D=1)=1') + problem.p('Y(D=1)=2') * Q(2) + problem.p('Y(D=1)=3') * Q(3) )
 
 
 
@@ -204,7 +204,7 @@ def test_set_ate():
     z = Parser(y)
     x.set_estimand(x.p('Y(X=1)=1&X=0') - x.p('Y(X=0)=1&X=0'), div = x.p('X=0'))
     x.set_ate('X','Y', cond = 'X=0')
-    assert clean_query(x.constraints[-1]) == clean_query(x.constraints[-5]) # Comparing two ways of setting the ATE
+    assert x.constraints[-1] == x.constraints[-5] # Comparing two ways of setting the ATE
 
 def test_conditional_estimand():
     y = DAG()
@@ -212,7 +212,7 @@ def test_conditional_estimand():
     x = causalProblem(y, {'X': 2})
     z = Parser(y)
     x.set_estimand(x.p('Y(X=1)=1') - x.p('Y(X=0)=1'), div = x.p('X=0'))
-    assert Query(clean_query(x.constraints[-1])) ==  Query('X0.Y01') + Query('X1.Y01') - Query('X0.Y10') - Query('X1.Y10') - ( x.p('X=0') * Query('objvar') ) + Query('==')
+    assert Q(x.constraints[-1]) ==  Q('X0.Y01') + Q('X1.Y01') - Q('X0.Y10') - Q('X1.Y10') - ( x.p('X=0') * Q('objvar') ) + Q('==')
 
 
 def test_conditional_data():
