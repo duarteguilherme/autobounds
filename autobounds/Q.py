@@ -134,7 +134,7 @@ def compare_lists(lst1, lst2):
     cleaned_lst2 = clean_list(lst2)
     
     # Compare the cleaned lists
-    result = sub_list(lst1, lst2)
+    result = sub_list(cleaned_lst1, cleaned_lst2)
     
     # Check if the result is empty (all terms cancel out)
     return all(abs(scalar) < 1e-9 for scalar, _ in result)
@@ -210,8 +210,11 @@ class Q():
     
     def __repr__(self):
         if self._cond is None:
-            return f"Event: {self._event[:]}"
-        return f"Event: {self._event[:]} \n Condition: {self._cond[:]}"
+            return f"Event: {get_str_q(self._event)}"
+        return f"Event: {get_str_q(self._event)} \nCondition: {get_str_q(self._cond)}"
+        # if self._cond is None:
+        #     return f"Event: {self._event[:]}"
+        # return f"Event: {self._event[:]} \n Condition: {self._cond[:]}"
      
     def __add__(self, q2):
         """ Add two queries together
