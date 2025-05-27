@@ -96,6 +96,7 @@ def test_e():
     d.from_structure('D -> Y')
     problem = causalProblem(d, {'Y': 4})
     assert (problem.E('Y(D=1)') == problem.p('Y(D=1)=1') + problem.p('Y(D=1)=2') * Q(2) + problem.p('Y(D=1)=3') * Q(3) )
+    assert (problem.E('Y') == problem.p('Y=1') + problem.p('Y=2') * 2 + problem.p('Y=3') * 3 )
 
 
 

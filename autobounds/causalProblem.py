@@ -375,15 +375,16 @@ class causalProblem:
         event = event.strip()
         # Example: E(event = "Y(A=0)")
         main_var = event.split('(')[0]  # "Y" 
-        second_part  = event.split(')')[-1]  # splits "Y(A=0)" -> "Y(A=0" and "",  "Y(A=0)=1" -> "Y(A=0" and "=1"
+        second_part  = event.split(')')  # splits "Y(A=0)" -> "Y(A=0" and "",  "Y(A=0)=1" -> "Y(A=0" and "=1"
         if ',' in main_var:
             raise Exception('Issue: more than one variable introduced')
-        if '=' in second_part:
-            raise Exception('.E does not accept = terms. Did you mean to use .p?')
-        elif '-' in second_part:
+        if '-' in event:
             raise Exception('.E does not accept - terms. Construct expectations separately and then take the difference.')
-        elif len(second_part) > 0:
-            raise Exception('Unexpected input in .E')
+        if len(second_part) > 1:
+            if '=' in second_part[-1]:
+                raise Exception('.E does not accept = terms. Did you mean to use .p?')
+            elif len(second_part[-1]) > 0:
+                raise Exception('Unexpected input in .E')
         for i in range(self.number_values[main_var]):
             if i == 0:
                 continue

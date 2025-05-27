@@ -114,7 +114,7 @@ def test_types():
 
 
 def test_mul():
-    assert (Q('X0.Y00') * Q('X1.Y11') * Q(0.29)) == Q([(0.29, ['X0.Y00', 'X1.Y11'])])
+    assert (Q('X0.Y00') * Q('X1.Y11') * 0.29) == Q([(0.29, ['X0.Y00', 'X1.Y11'])])
 
 def test_clean_list():
     duplicated_query = clean_list([(1, ['X00.Y10', 'Z0']), (1, ['X00.Y10', 'Z0']) ] ) 

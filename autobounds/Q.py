@@ -216,7 +216,7 @@ class Q():
     def __add__(self, q2):
         """ Add two queries together
         """
-        ensure_q_instance(q2)
+        q2 = ensure_q_instance(q2)
         if self._cond is None:
             if q2._cond is None:
                 return Q(add_list(self._event, q2._event))
@@ -233,7 +233,7 @@ class Q():
     def __sub__(self, q2):
         """ Subtract q from self
         """
-        ensure_q_instance(q2)
+        q2 = ensure_q_instance(q2)
         if self._cond is None:
             if q2._cond is None:
                 return Q(sub_list(self._event, q2._event))
@@ -250,7 +250,7 @@ class Q():
     def __mul__(self, q2):
         """ Multiply two queries together
         """
-        ensure_q_instance(q2)
+        q2 = ensure_q_instance(q2)
         if self._cond is None:
             if q2._cond is None:
                 return Q(mul_list(self._event, q2._event))
