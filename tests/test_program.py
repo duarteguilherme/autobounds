@@ -1,16 +1,11 @@
 from autobounds.autobounds.causalProblem import causalProblem
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.Program import change_constraint_parameter_value
-from autobounds.autobounds.Query import Query
+from autobounds.autobounds.Q import Q
 import io
 import time
 import pandas as pd
 
-
-#from autobounds.causalProblem import causalProblem
-#from autobounds.DAG import DAG
-#from autobounds.Program import change_constraint_parameter_value
-#from autobounds.Query import Query
 
 #def test_program_parse_whole_file():
 #    df = pd.DataFrame(
@@ -25,7 +20,7 @@ import pandas as pd
 #    pro.load_data(df)
 #    pro.add_prob_constraints()
 #    pro.set_ate('X','Y', cond = 'X(Z=1)=1&X(Z=0)=0')
-#    pro.add_constraint(pro.p('X(Z=1)=1&X(Z=0)=0') - Query(0.0001), '>=')
+#    pro.add_constraint(pro.p('X(Z=1)=1&X(Z=0)=0') - Q(0.0001), '>=')
 #    program = pro.write_program()
 #    program.run_scip()
 #    program.res_scip
@@ -47,7 +42,7 @@ def test_program_scip_infeasibility():
     problem = causalProblem(dag)
     problem.set_estimand(problem.p('Y(D=1)=1') + problem.p('Y(D=0)=1', -1))
     problem.add_prob_constraints()
-    problem.add_constraint(problem.p('Y(D=0)=0&Y(D=1)=1') - Query(2))
+    problem.add_constraint(problem.p('Y(D=0)=0&Y(D=1)=1') - Q(2))
     z = problem.write_program()
     z.optimize_remove_numeric_lines()
     res = z.run_scip(maxtime = 5)
@@ -67,7 +62,7 @@ def test_program_scip_infeasibility2():
     pro.load_data(df)
     pro.add_prob_constraints()
     pro.set_ate('X','Y', cond = 'X(Z=1)=1&X(Z=0)=0')
-    pro.add_constraint(pro.p('X(Z=1)=1&X(Z=0)=0') - Query(0.0001), '>=')
+    pro.add_constraint(pro.p('X(Z=1)=1&X(Z=0)=0') - Q(0.0001), '>=')
     program = pro.write_program()
     program.run_scip()
 

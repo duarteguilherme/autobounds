@@ -254,37 +254,42 @@ class Parser():
         
         Notice that one can introduce X -> Y as expr rather than separately ind = X and dep = Y
 
-        This method returns a List of strata in string. 
-        This is different from a Query with the same strata.
+        This method returns a list (not a Q) of strata in string. 
+
+        Right now this method seems very inefficient, it requires refactoring
         """
         if expr != '':
             ind, dep = [i.strip() for i in expr.split('->')]
         parents = self.dag.find_parents_no_u(dep)
         if ind not in parents:
             return []
-        rest = [ i for i in parents if i != ind] 
+        rest = [ i for i in parents if i != ind] # every parent of dep with exception of ind
         edge_values = list( 
-            product(*( 
-                [ range(0,self.canModel.number_values[dep]) ]*self.canModel.number_values[ind]   
-                ) ) )
-        edge_values = [ i for i in edge_values if not all([j == i[0] for j in i])]
-        query = Query([])
+            product(*
+                ( [ range(0,self.canModel.number_values[dep]) ]*self.canModel.number_values[ind]  ) 
+            ) 
+        ) # This is the list of all possible values of dep, given ind
+        edge_values = [ i for i in edge_values 
+                        if not all([j == i[0] for j in i])
+        ] # Filter only those where different values for ind change dep
+        # For instance (0, 1) but not (0, 0)     
+        q = Q([])
         if len(rest) == 0: # If ind is the only parent, then you 
             for i in edge_values:
-                query += self.p('&'.join([ f'{dep}({ind}={index})={j}'
+                q += self.p('&'.join([ f'{dep}({ind}={index})={j}'
                                  for index, j in enumerate(i)
                                  ]) ) 
-            return [ i[1][-1] for i in query ]
+            return [ i[1][-1] for i in q._event ]
         rest_entries = list(product(*[ range(self.canModel.number_values[i]) for i in rest ]))
         rest_entries = [ ','.join([  f'{j}={i[index]}' 
                                    for index, j in enumerate(rest)]) 
                         for i in rest_entries ]
         for i in edge_values:
             for k in rest_entries:
-                query += self.p('&'.join([ f'{dep}({ind}={index},{k})={j}'
+                q += self.p('&'.join([ f'{dep}({ind}={index},{k})={j}'
                                  for index, j in enumerate(i)
                                  ]) )
-        return [ i[1][-1] for i in query ]
+        return [ i[1][-1] for i in q._event ]
     
     def parse_expr(self, world, expr, complete = False):
         """

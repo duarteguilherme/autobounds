@@ -2,7 +2,7 @@ from autobounds.autobounds.causalProblem import causalProblem
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.Program import change_constraint_parameter_value
 from autobounds.autobounds.ProgramUtils import is_linear
-from autobounds.autobounds.Query import Query
+from autobounds.autobounds.Q import Q
 import io
 import time
 import pandas as pd
@@ -34,10 +34,10 @@ def test_is_linear():
 #    dag = DAG()
 #    dag.from_structure('U -> Z, Z -> W, U -> Y, W -> Y')
 #    pro = causalProblem(dag)
-#    pro.add_constraint(pro.p('Z(U=0)=0') - Query(0.43))
-#    pro.add_constraint(pro.p('Z(U=0)=1') - Query(0.25))
-#    pro.add_constraint(pro.p('Z(U=1)=0') - Query(0.35))
-#    pro.add_constraint(pro.p('Z(U=1)=1') - Query(0.15))
+#    pro.add_constraint(pro.p('Z(U=0)=0') - Q(0.43))
+#    pro.add_constraint(pro.p('Z(U=0)=1') - Q(0.25))
+#    pro.add_constraint(pro.p('Z(U=1)=0') - Q(0.35))
+#    pro.add_constraint(pro.p('Z(U=1)=1') - Q(0.15))
 #    pro.load_data(df)
 #    pro.set_ate('W','Y')
 #    pro.add_prob_constraints()
@@ -135,10 +135,10 @@ def test_is_linear():
 #     problem.load_data(p_zwy)
 #     # Explictly setting the remaining stratum to 0
 #     # This step is not necessary, but it might make sense to get a faster solution
-# #    problem.add_constraint(problem.p('W(Z=0)=0&W(Z=1)=0&W(Z=2)=1&W(Z=3)=1') - Query(1))
+# #    problem.add_constraint(problem.p('W(Z=0)=0&W(Z=1)=0&W(Z=2)=1&W(Z=3)=1') - Q(1))
 # #    for u in range(2):
 # #        for z in range(4):
-# #            problem.add_constraint(problem.p(f'Z(U={u})={z}') - Query(p_z_cond_u.loc[lambda i: (i.U == u) & (i.Z == z)].iloc[0]['prob_z_cond_u']))
+# #            problem.add_constraint(problem.p(f'Z(U={u})={z}') - Q(p_z_cond_u.loc[lambda i: (i.U == u) & (i.Z == z)].iloc[0]['prob_z_cond_u']))
 # #    problem.add_constraint(problem.p('W(Z=0)=1'))  # prob of this expression == 0
 # #    problem.add_constraint(problem.p('W(Z=1)=1'))  # prob of this expression == 0
 # #    problem.add_constraint(problem.p('W(Z=2)=0'))  # prob of this expression == 0

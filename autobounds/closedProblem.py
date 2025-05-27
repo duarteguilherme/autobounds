@@ -1,5 +1,5 @@
 from .canonicalModel import canonicalModel
-from .Query import Q, Query
+from .Q import Q, Query
 from .Program import Program
 from .DAG import DAG
 from .Parser import Parser

@@ -1,6 +1,6 @@
 from autobounds.autobounds.causalProblem import causalProblem, respect_to
 from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.Query import Query
+from autobounds.autobounds.Q import Q
 import pandas as pd
 import numpy as np
 
@@ -12,7 +12,7 @@ def test_program_read_data_covariates():
     problem = causalProblem(dag)
     with respect_to(problem):
         set_estimand(p('Y(D=1)=1') + p('Y(D=0)=1', -1))
-        add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Query(0))
+        add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Q(0))
     df = pd.DataFrame({
         'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],
         'D': [0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,1,0,1,1,1,1,0],
@@ -27,7 +27,7 @@ def test_program_calculate_ci():
     problem = causalProblem(dag)
     with respect_to(problem):
         set_estimand(p('Y(D=1)=1') + p('Y(D=0)=1', -1))
-        add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Query(0))
+        add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Q(0))
     df = pd.DataFrame({
         'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],
         'D': [0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,1,0,1,1,1,1,0],
@@ -45,7 +45,7 @@ def test_program_solve():
     problem = causalProblem(dag)
     with respect_to(problem):
         set_estimand(p('Y(D=1)=1') + p('Y(D=0)=1', -1))
-        add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Query(0))
+        add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Q(0))
     df = pd.DataFrame({
         'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],
         'D': [0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,1,0,1,1,1,1,0],
