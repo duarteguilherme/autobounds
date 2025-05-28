@@ -309,9 +309,11 @@ class causalProblem:
         newprogram = newproblem.write_program()
         return newprogram.run_scip()
 
-    def calculate_ci(self, nx = 1000, ncoef = 5, categorical = True, randomize = True, debug = True):
+    def calculate_ci(self, nx = 1000, ncoef = 5, categorical = False, randomize = True, debug = False):
         if categorical:
-            newX = get_summary_from_raw(self.X)
+            newX = get_summary_from_raw(pd.DataFrame(self.X))
+            print(newX)
+            input('')
             pass
         else:
             if self.X.shape[0] > nx:

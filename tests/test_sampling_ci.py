@@ -4,8 +4,23 @@ from autobounds.autobounds.Q import Q
 import pandas as pd
 import numpy as np
 
+
+dag = DAG("D -> Y")
+df = pd.DataFrame({
+    'X': [0,1,0,1,0,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1],
+    'D': [0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,1,0,1,1,1,1,0],
+    'Y': [1,1,0,0,1,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1]
+})
+
 def test_program_read_data_no_covariates():
-    pass
+    problem = causalProblem(dag)
+    with respect_to(problem):
+        set_estimand(p('Y(D=1)=1') - p('Y(D=0)=1'))
+        add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Q(0))
+        read_data(df[['D','Y']])
+    res = problem.calculate_ci(categorical = True)
+    input('')
+
 
 def test_program_read_data_covariates():
     dag = DAG("D -> Y")
@@ -35,7 +50,7 @@ def test_program_calculate_ci():
     })
     problem.read_data(df, covariates = ['X'])
     np.random.seed(19103)
-    res = problem.calculate_ci(ncoef = 2)
+    res = problem.calculate_ci(categorical = False, ncoef = 2)
     assert res[0] > -0.55 and res[0] < -0.54
     assert res[1] < 0.001
 
