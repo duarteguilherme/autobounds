@@ -17,9 +17,8 @@ def test_program_read_data_no_covariates():
     with respect_to(problem):
         set_estimand(p('Y(D=1)=1') - p('Y(D=0)=1'))
         add_assumption(p('Y(D=0)=0&Y(D=1)=1') - Q(0))
-        read_data(df[['D','Y']])
+        read_data(df, covariates = ['X'])
     res = problem.calculate_ci(categorical = True)
-    input('')
 
 
 def test_program_read_data_covariates():
@@ -34,8 +33,7 @@ def test_program_read_data_covariates():
         'Y': [1,1,0,0,1,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1]
     })
     problem.read_data(df, covariates = ['X'])
- #   z = problem.write_program()
- #   res = z.run_scip(maxtime = 5)
+
 
 def test_program_calculate_ci():
     dag = DAG("D -> Y, U -> D, U -> Y", unob = "U")
@@ -50,7 +48,8 @@ def test_program_calculate_ci():
     })
     problem.read_data(df, covariates = ['X'])
     np.random.seed(19103)
-    res = problem.calculate_ci(categorical = False, ncoef = 2)
+    res0 = problem.calculate_ci(categorical = False, nsamples = 2)
+    res = ( np.quantile(res0[0], 0.025), np.quantile(res0[1], 0.975) )
     assert res[0] > -0.55 and res[0] < -0.54
     assert res[1] < 0.001
 
@@ -68,7 +67,3 @@ def test_program_solve():
     })
     problem.read_data(df, covariates = ['X'])
     print(problem.solve())
-    # np.random.seed(19103)
-    # res = problem.calculate_ci(ncoef = 2)
-    # assert res[0] > -0.73 and res[0] < -0.72
-    # assert res[1] < 0.001

@@ -146,8 +146,27 @@ def solve_kl_p(ns, K, o, alpha):
         res[1] = 1
     return res
 
+def get_dirichlet_sample(backbone, all_data, row, covariates):
+    """
+    Generate Dirichlet samples based on the provided data.
 
+    Args:
+    - backbone: DataFrame containing the backbone data
+    - all_data: DataFrame containing all data
+    - row: Current row data
+    - covariates: List of covariates to match the data
+    - n: Number of times to calculate the Dirichlet samples (default = 1000)
 
+    Returns:
+    - dirichlet_samples: Dirichlet samples generated from the matched data
+    """
+    prov = backbone.merge(
+        all_data[
+        (all_data[covariates].values == row[covariates].values).all(axis=1)
+        ]).fillna(0)
+    counts = prov['count'].values + 1
+    dirichlet_samples = np.random.dirichlet(counts)
+    return dirichlet_samples
 
 # Simplifiers 
 ### 1) First nodes
@@ -259,7 +278,7 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         
-    def read_data(self, raw = None, optimize = True, covariates = None, inference = False):
+    def read_data(self, raw = None, covariates = None, inference = False, model = None):
         """ This is the new method for loading data in place of 
         self.load_data, which will be outdated as a low version
 
@@ -271,10 +290,11 @@ class causalProblem:
         self.covariates = covariates
         # Running regression
         if raw is not None:
-            data = raw
+            data = deepcopy(raw)
             datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data)
         else:
             raise Exception("Data was not introduced!")
+        self.datam = datam
         if covariates is None:
             # If covariates do not exist, but there is no inference, just run the standard bounds and return
             if not inference: 
@@ -286,13 +306,18 @@ class causalProblem:
         else: # If covariates exist, they become X
             self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))
             self.X = sm.add_constant(self.X)
+        self.covariates = covariates
         # load no-covariate data ( y )
         self.y_columns = [ k for k in datam.columns if k not in covariates ]
         self.y = datam.drop(columns = covariates).astype(str).agg("_".join, axis=1)
         self.y, category_mapping = pd.factorize(self.y)
         self.category_decoder = dict(enumerate(category_mapping))
-        model = sm.MNLogit(self.y, self.X) # Run multinomial logistic model -- in the future, this will allow for other models
-        self.main_model = model.fit()
+        if not inference:
+            if model is None:
+                model = sm.MNLogit(self.y, self.X) # Run multinomial logistic model -- in the future, this will allow for other models
+                self.main_model = model.fit()
+            else:
+                self.main_model = model
 
     def calc_bounds_sample(self, prob):
         """
@@ -307,40 +332,71 @@ class causalProblem:
         datam['prob'] = prob 
         newproblem.load_data(datam)
         newprogram = newproblem.write_program()
-        return newprogram.run_scip()
+        bounds = newprogram.run_scip()
+        try:
+            return (bounds[0]['dual'], bounds[1]['dual'])
+        except:
+            return (np.nan, np.nan)
 
-    def calculate_ci(self, nx = 1000, ncoef = 5, categorical = False, randomize = True, debug = False):
+    def calculate_ci(self, nx = 1000, nsamples = 5, categorical = False, randomize = True, debug = False):
+        """
+        Calculate confidence intervals for the causal estimand.
+
+        Parameters:
+        - nx: Number of samples to generate for the X matrix (default = 1000)
+        - nsamples: Number of coefficients to sample (default = 5)
+        - categorical: If True, uses categorical data (default = False)
+        """
         if categorical:
-            newX = get_summary_from_raw(pd.DataFrame(self.X))
-            print(newX)
-            input('')
-            pass
+            covariates_data = (get_summary_from_raw(self.datam[self.covariates])
+                               .rename({'prob': 'prob_x'}, axis = 1))
+            all_data = self.datam.value_counts().reset_index()
+            all_data.rename(columns={all_data.columns[-1]: 'count'}, inplace=True)
+            all_values = {col: np.arange(self.number_values[col]) for col in self.y_columns}
+            backbone_dataset = pd.DataFrame(list(product(*all_values.values())), columns=all_values.keys())
+            self.lower_samples = np.full((covariates_data.shape[0], nsamples), np.nan)
+            self.upper_samples = np.full((covariates_data.shape[0], nsamples), np.nan)
+            for index, row in covariates_data.iterrows():
+                print(index)
+                for j in range(nsamples):                    
+                    self.lower_samples[index, j], self.upper_samples[index, j] = (
+                        self.calc_bounds_sample(
+                            get_dirichlet_sample(
+                                backbone_dataset, all_data, row, self.covariates)
+                            )
+                    )
+                    self.lower_samples[index, j] *= row['prob_x'] 
+                    self.upper_samples[index, j] *= row['prob_x']
+            if debug: # Debug samples
+                return (self.lower_samples. self.upper_samples)
+            self.lower_samples = self.lower_samples.sum(axis = 1)
+            self.upper_samples = self.upper_samples.sum(axis = 1)
         else:
             if self.X.shape[0] > nx:
                 newX =  self.X[
                     np.random.choice(self.X.shape[0], size = nx, replace = True), :]
             else:
                 newX = self.X.copy()
-        self.betas = np.array([ generate_posterior_beta(self.main_model, randomize) for i in range(ncoef) ])
-        self.probs = np.array([ 
-            [ generate_mn_sample(b, x)
-            for b in self.betas ]
-            for x in newX 
-            ])
-        self.lower_samples = np.full(self.probs.shape[0:2], np.nan)
-        self.upper_samples = np.full(self.probs.shape[0:2], np.nan)
-        for nx in range(self.probs.shape[0]):
-            for nb in range(ncoef):
-#                print(nx*ncoef + nb)
-                self.lower_samples[nx,nb], self.upper_samples[nx,nb] = (
-                    (lambda k: (k[0]['dual'], k[1]['dual']) )(
-                        self.calc_bounds_sample(self.probs[nx,nb]))
-                )
-        if debug: # Debug samples
-            return (self.lower_samples. self.upper_samples)
-        self.lower_samples = self.lower_samples.mean(axis = 1)
-        self.upper_samples = self.upper_samples.mean(axis = 1)
-        return (np.quantile(self.lower_samples, 0.025), np.quantile(self.upper_samples, 0.975))    
+            self.betas = np.array([ generate_posterior_beta(self.main_model, randomize) for i in range(nsamples) ])
+            self.probs = np.array([ 
+                [ generate_mn_sample(b, x)
+                for b in self.betas ]
+                for x in newX 
+                ])
+            self.lower_samples = np.full(self.probs.shape[0:2], np.nan)
+            self.upper_samples = np.full(self.probs.shape[0:2], np.nan)
+            for nx in range(self.probs.shape[0]):
+                for nb in range(nsamples):
+    #                print(nx*nsamples + nb)
+                    self.lower_samples[nx,nb], self.upper_samples[nx,nb] = (
+                        (
+                            self.calc_bounds_sample(self.probs[nx,nb]))
+                    )
+            if debug: # Debug samples
+                return (self.lower_samples. self.upper_samples)
+            self.lower_samples = self.lower_samples.mean(axis = 1)
+            self.upper_samples = self.upper_samples.mean(axis = 1)
+        return (self.lower_samples, self.upper_samples)    
         # I have to simulate X and then calculate the probabilities
 
     def is_active(self, expr = '', ind = '', dep = ''):
@@ -357,12 +413,12 @@ class causalProblem:
         if self.covariates is None and not ci:
             newprogram = self.write_program()
             return newprogram.run_scip()
-        bounds = self.calculate_ci(nx = nx, ncoef = 1, randomize = True)
+        bounds = self.calculate_ci(nx = nx, nsamples = 1, randomize = True)
         print(bounds)
         if not ci:
             return bounds
         if ci:
-            cibounds = self.calculate_ci(nx = nx, ncoef = nsamples)
+            cibounds = self.calculate_ci(nx = nx, nsamples = nsamples)
             return cibounds
 
     def p(self, event, cond = None, sign = 1):
