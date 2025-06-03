@@ -59,6 +59,8 @@ class respect_to:
         self.globals['solve'] = self.problem.solve
         self.globals['load_data'] = self.problem.load_data
         self.globals['read_data'] = self.problem.read_data
+        self.globals['generate_samples'] = self.problem.generate_samples
+        self.globals['calculate_ci'] = self.problem.calculate_ci
 
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -70,6 +72,8 @@ class respect_to:
         del self.globals['solve']
         del self.globals['load_data']
         del self.globals['read_data']
+        del self.globals['generate_samples']
+        del self.globals['calculate_ci']
 
 def get_summary_from_raw(datam):
     """
@@ -77,6 +81,7 @@ def get_summary_from_raw(datam):
     """
     nrow = datam.shape[0]
     cols = list(datam.columns)
+    datam = deepcopy(datam)
     datam['prob'] = 1/nrow
     return (
         datam.groupby(cols)
@@ -160,10 +165,13 @@ def get_dirichlet_sample(backbone, all_data, row, covariates):
     Returns:
     - dirichlet_samples: Dirichlet samples generated from the matched data
     """
-    prov = backbone.merge(
-        all_data[
-        (all_data[covariates].values == row[covariates].values).all(axis=1)
-        ]).fillna(0)
+    if covariates is None:
+        prov = backbone.merge(all_data).fillna(0)
+    else:
+        prov = backbone.merge(
+            all_data[
+            (all_data[covariates].values == row[covariates].values).all(axis=1)
+            ]).fillna(0)
     counts = prov['count'].values + 1
     dirichlet_samples = np.random.dirichlet(counts)
     return dirichlet_samples
@@ -277,8 +285,9 @@ class causalProblem:
         self.covariates = None
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
+        self.samples = None
         
-    def read_data(self, raw = None, covariates = None, inference = False, model = None):
+    def read_data(self, raw = None, covariates = None, inference = False, categorical = True, model = None, nsamples = 1000):
         """ This is the new method for loading data in place of 
         self.load_data, which will be outdated as a low version
 
@@ -287,23 +296,30 @@ class causalProblem:
 
         Notice that read_data only accepts raw data
         """
+        self.categorical = categorical
         self.covariates = covariates
-        # Running regression
         if raw is not None:
-            data = deepcopy(raw)
-            datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data)
+            data = raw
+            datam = deepcopy(data) if isinstance(data, pd.DataFrame) else pd.read_csv(data)
         else:
             raise Exception("Data was not introduced!")
         self.datam = datam
         if covariates is None:
             # If covariates do not exist, but there is no inference, just run the standard bounds and return
+            self.covariates_data = pd.DataFrame({'X': [int(1)], 'prob_x': [1]})
+            self.y_columns = list(self.datam.columns)
+            self.y = self.datam.astype(str).agg("_".join, axis=1)
+            self.y, category_mapping = pd.factorize(self.y)
+            self.category_decoder = dict(enumerate(category_mapping))
             if not inference: 
                 self.load_data(raw = datam) 
                 return None 
             else: # if covariates do not exist, but there is inference
-                covariates = [ ] # set covariates to 0
-                self.X = np.ones((datam.shape[0], 1))
+#                print(f"Generating {nsamples} samples for inference...")
+                return None
         else: # If covariates exist, they become X
+            self.covariates_data = (get_summary_from_raw(self.datam[self.covariates])
+                    .rename({'prob': 'prob_x'}, axis = 1))
             self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))
             self.X = sm.add_constant(self.X)
         self.covariates = covariates
@@ -312,7 +328,7 @@ class causalProblem:
         self.y = datam.drop(columns = covariates).astype(str).agg("_".join, axis=1)
         self.y, category_mapping = pd.factorize(self.y)
         self.category_decoder = dict(enumerate(category_mapping))
-        if not inference:
+        if not self.categorical: # If categorical is False, then we run a regression
             if model is None:
                 model = sm.MNLogit(self.y, self.X) # Run multinomial logistic model -- in the future, this will allow for other models
                 self.main_model = model.fit()
@@ -327,8 +343,11 @@ class causalProblem:
         This will require a copy of self
         """
         newproblem = deepcopy(self)
-        datam = pd.DataFrame([ k.split('_') for k in newproblem.category_decoder.values() ], 
+        if self.covariates is not None:
+            datam = pd.DataFrame([ k.split('_') for k in newproblem.category_decoder.values() ], 
                                             columns = newproblem.y_columns)
+        else:
+            datam = get_summary_from_raw(self.datam)
         datam['prob'] = prob 
         newproblem.load_data(datam)
         newprogram = newproblem.write_program()
@@ -338,39 +357,62 @@ class causalProblem:
         except:
             return (np.nan, np.nan)
 
-    def calculate_ci(self, nx = 1000, nsamples = 5, categorical = False, randomize = True, debug = False):
+    def generate_samples(self, n = 1000, randomize = True):
+        """
+        Generate samples from the posterior distribution of the coefficients
+        of the main model.
+
+        Parameters:
+        - n: Number of samples to generate (default = 1000)
+        - randomize: If True, randomizes the coefficients (default = True)
+        """
+        all_data = self.datam.value_counts().reset_index()
+        all_data.rename(columns={all_data.columns[-1]: 'count'}, inplace=True)
+        all_values = {col: np.arange(self.number_values[col]) for col in self.y_columns}
+        backbone_dataset = pd.DataFrame(list(product(*all_values.values())), columns=all_values.keys())
+        self.samples = np.full((self.covariates_data.shape[0], n, backbone_dataset.shape[0]), np.nan)
+        self.nsamples = n
+        # Generate samples for each row in covariates_data
+        # The dimensions of self.samples is 
+        # (number of covariates, n, number of backbone dataset rows (prob))
+        print("Generating samples:")
+        for index, row in self.covariates_data.iterrows():
+            if self.covariates_data.shape[0] > 1:
+                print(f'\n{index + 1} of {self.covariates_data.shape[0]}')
+            for j in range(n):                    
+                print(f'{j}', end = ',')
+                self.samples[index, j, :] = (
+                        get_dirichlet_sample(
+                            backbone_dataset, all_data, row, self.covariates)
+                )
+            print('')
+        
+    def calculate_ci(self, nx = 1000, randomize = True, debug = False):
         """
         Calculate confidence intervals for the causal estimand.
 
         Parameters:
         - nx: Number of samples to generate for the X matrix (default = 1000)
-        - nsamples: Number of coefficients to sample (default = 5)
         - categorical: If True, uses categorical data (default = False)
         """
-        if categorical:
-            covariates_data = (get_summary_from_raw(self.datam[self.covariates])
-                               .rename({'prob': 'prob_x'}, axis = 1))
-            all_data = self.datam.value_counts().reset_index()
-            all_data.rename(columns={all_data.columns[-1]: 'count'}, inplace=True)
-            all_values = {col: np.arange(self.number_values[col]) for col in self.y_columns}
-            backbone_dataset = pd.DataFrame(list(product(*all_values.values())), columns=all_values.keys())
-            self.lower_samples = np.full((covariates_data.shape[0], nsamples), np.nan)
-            self.upper_samples = np.full((covariates_data.shape[0], nsamples), np.nan)
-            for index, row in covariates_data.iterrows():
+        if self.samples is None:
+            raise Exception("Samples have not been generated yet. Please call generate_samples() first.")
+        nsamples = self.nsamples
+        if self.categorical:
+            self.lower_samples = np.full((self.covariates_data.shape[0], nsamples), np.nan)
+            self.upper_samples = np.full((self.covariates_data.shape[0], nsamples), np.nan)
+            for index, row in self.covariates_data.iterrows():
                 print(index)
-                for j in range(nsamples):                    
-                    self.lower_samples[index, j], self.upper_samples[index, j] = (
-                        self.calc_bounds_sample(
-                            get_dirichlet_sample(
-                                backbone_dataset, all_data, row, self.covariates)
-                            )
-                    )
+                for j in range(nsamples):   
+                    self.lower_samples[index, j], self.upper_samples[index, j] = self.calc_bounds_sample(
+                            self.samples[index, j, :].reshape(-1)
+                        )
                     self.lower_samples[index, j] *= row['prob_x'] 
                     self.upper_samples[index, j] *= row['prob_x']
+            self.lower_samples = self.lower_samples.sum(axis = 0)
+            self.upper_samples = self.upper_samples.sum(axis = 0)
             if debug: # Debug samples
                 return (self.lower_samples. self.upper_samples)
-            self.lower_samples = self.lower_samples.sum(axis = 1)
-            self.upper_samples = self.upper_samples.sum(axis = 1)
         else:
             if self.X.shape[0] > nx:
                 newX =  self.X[
@@ -387,7 +429,6 @@ class causalProblem:
             self.upper_samples = np.full(self.probs.shape[0:2], np.nan)
             for nx in range(self.probs.shape[0]):
                 for nb in range(nsamples):
-    #                print(nx*nsamples + nb)
                     self.lower_samples[nx,nb], self.upper_samples[nx,nb] = (
                         (
                             self.calc_bounds_sample(self.probs[nx,nb]))
@@ -407,19 +448,66 @@ class causalProblem:
         params = [ Query(i) for i in self.Parser.is_active(expr, ind, dep) ]
         return reduce(lambda a,b : a + b, params)
 
-    def solve(self, ci = False, nx = 10, nsamples = 10):
+    def solve(self, ci = False, nsamples = 10, maxtime = None, theta = 0.01):
         """ Wrapper for causalProblem.write_program().solve()
         """
-        if self.covariates is None and not ci:
-            newprogram = self.write_program()
-            return newprogram.run_scip()
-        bounds = self.calculate_ci(nx = nx, nsamples = 1, randomize = True)
-        print(bounds)
+        print("Solving for point estimate bounds...")
+        if self.covariates is None:
+            newproblem = deepcopy(self)
+            input_data = self.datam if 'prob' in self.datam.columns else get_summary_from_raw(self.datam)
+            newproblem.load_data(input_data)
+            point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta)
+            try:
+                self.point_lb_dual = point_bounds[0]['dual']
+                self.point_ub_dual = point_bounds[1]['dual']
+                self.point_lb_primal = point_bounds[0]['primal']
+                self.point_ub_primal = point_bounds[1]['primal']
+            except:
+                self.point_lb_dual, self.point_ub_dual = np.nan, np.nan
+                self.point_lb_primal, self.point_ub_primal = np.nan, np.nan
+        else:
+            self.point_lb_dual = 0
+            self.point_ub_dual = 0
+            self.point_lb_primal = 0
+            self.point_ub_primal = 0
+            for index, row in self.covariates_data.iterrows():
+                newproblem = deepcopy(self)
+                newproblem.load_data(
+                    # We load data from all the values where the covariate iteration
+                    # is equal to the current row covariates
+                    get_summary_from_raw(
+                        self.datam.loc[
+                                    self.datam[self.covariates]
+                                    .eq(row[self.covariates].values).all(axis=1)
+                                ].drop(self.covariates, axis = 1)
+                                         )
+                )
+                point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta)    
+                try:
+                    self.point_lb_dual += point_bounds[0]['dual'] * row['prob_x'] 
+                    self.point_ub_dual += point_bounds[1]['dual'] * row['prob_x'] 
+                    self.point_lb_primal += point_bounds[0]['primal'] * row['prob_x'] 
+                    self.point_ub_primal += point_bounds[1]['primal'] * row['prob_x'] 
+                except:
+                    self.point_lb_dual, self.point_ub_dual = np.nan, np.nan
+                    self.point_lb_primal, self.point_ub_primal = np.nan, np.nan
+        print(f"Point estimates\n")
+        print(f"Dual: [{self.point_lb_dual}, {self.point_ub_dual}]")
+        print(f"Primal: [{self.point_lb_primal}, {self.point_ub_primal}]")
         if not ci:
-            return bounds
+            return point_bounds
         if ci:
-            cibounds = self.calculate_ci(nx = nx, nsamples = nsamples)
-            return cibounds
+            self.generate_samples(n = nsamples)
+            self.ci_lb_bounds, self.ci_ub_bounds = self.calculate_ci()
+            print(self.ci_lb_bounds)
+            print(self.ci_ub_bounds)
+            self.ci_lb_bounds = np.quantile(self.ci_lb_bounds, 0.025)
+            self.ci_ub_bounds = np.quantile(self.ci_ub_bounds, 0.975)
+            print(f"Point estimates\n")
+            print(f"Dual: [{self.point_lb_dual}, {self.point_ub_dual}]")
+            print(f"Primal: [{self.point_lb_primal}, {self.point_ub_primal}]")
+            print(f"Confidence intervals. Lower: {self.ci_lb_bounds},  Upper: {self.ci_ub_bounds}")
+    
 
     def p(self, event, cond = None, sign = 1):
         """ 
@@ -672,7 +760,6 @@ class causalProblem:
         # After right-hand side is 0, then the denominator can be ignored
         self.constraints.append(constraint._event + [ (1, [ symbol ] )])
         if constraint._cond is not None:
-            print('added here')
             self.constraints.append(sub_list(constraint._cond, 
                                              [(1 * control, ['1'])] 
                                              )  + [ (1, [ '>=' ] )] )
