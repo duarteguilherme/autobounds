@@ -298,6 +298,7 @@ class causalProblem:
         """
         self.categorical = categorical
         self.covariates = covariates
+        self.inference = inference
         if raw is not None:
             data = raw
             datam = deepcopy(data) if isinstance(data, pd.DataFrame) else pd.read_csv(data)
@@ -454,8 +455,11 @@ class causalProblem:
         print("Solving for point estimate bounds...")
         if self.covariates is None:
             newproblem = deepcopy(self)
-            input_data = self.datam if 'prob' in self.datam.columns else get_summary_from_raw(self.datam)
-            newproblem.load_data(input_data)
+            try:
+                input_data = self.datam if 'prob' in self.datam.columns else get_summary_from_raw(self.datam)
+                newproblem.load_data(input_data)
+            except:
+                pass
             point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta)
             try:
                 self.point_lb_dual = point_bounds[0]['dual']
@@ -495,19 +499,32 @@ class causalProblem:
         print(f"Dual: [{self.point_lb_dual}, {self.point_ub_dual}]")
         print(f"Primal: [{self.point_lb_primal}, {self.point_ub_primal}]")
         if not ci:
-            return point_bounds
+            return {
+                "point lb dual": self.point_lb_dual,
+                "point ub dual": self.point_ub_dual,
+                "point lb primal": self.point_lb_primal,
+                "point ub primal": self.point_ub_primal
+            }
         if ci:
+            if not self.inference:
+                raise Exception("Confidence intervals can only be calculated if inference is True in read_data()")
             self.generate_samples(n = nsamples)
             self.ci_lb_bounds, self.ci_ub_bounds = self.calculate_ci()
             print(self.ci_lb_bounds)
             print(self.ci_ub_bounds)
             self.ci_lb_bounds = np.quantile(self.ci_lb_bounds, 0.025)
             self.ci_ub_bounds = np.quantile(self.ci_ub_bounds, 0.975)
-            print(f"Point estimates\n")
-            print(f"Dual: [{self.point_lb_dual}, {self.point_ub_dual}]")
-            print(f"Primal: [{self.point_lb_primal}, {self.point_ub_primal}]")
-            print(f"Confidence intervals. Lower: {self.ci_lb_bounds},  Upper: {self.ci_ub_bounds}")
-    
+            print(f"95% Confidence intervals. Lower: {self.ci_lb_bounds},  Upper: {self.ci_ub_bounds}")
+            return {
+                "point lb dual": self.point_lb_dual,
+                "point ub dual": self.point_ub_dual,
+                "point lb primal": self.point_lb_primal,
+                "point ub primal": self.point_ub_primal,
+                "2.75% lb bounds": self.ci_lb_bounds,
+                "9.75% ub bounds": self.ci_ub_bounds,
+                "1% lb bounds": np.quantile(self.ci_lb_bounds, 0.01),
+                "99% ub bounds": np.quantile(self.ci_ub_bounds, 0.99)
+            }
 
     def p(self, event, cond = None, sign = 1):
         """ 

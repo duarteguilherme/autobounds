@@ -7,27 +7,6 @@ import time
 import pandas as pd
 
 
-#def test_program_parse_whole_file():
-#    df = pd.DataFrame(
-#            {'Z': [0,0,0,0,1,1,1,1],
-#             'X': [0,0,1,1,0,0,1,1],
-#             'Y': [0,1,0,1,0,1,0,1],
-#          'prob': [0.066, 0.031, 0.377, 0.176, 0.063, 0.198, 0.021, 0.068 ]
-#             })
-#    dag = DAG()
-#    dag.from_structure('Z -> X, X -> Y, U -> X, U -> Y', unob = 'U')
-#    pro = causalProblem(dag)
-#    pro.load_data(df)
-#    pro.add_prob_constraints()
-#    pro.set_ate('X','Y', cond = 'X(Z=1)=1&X(Z=0)=0')
-#    pro.add_constraint(pro.p('X(Z=1)=1&X(Z=0)=0') - Q(0.0001), '>=')
-#    program = pro.write_program()
-#    program.run_scip()
-#    program.res_scip
-#    program.track_result_scip()
-#    from autobounds.Program import get_final_bound_scip
-#    get_final_bound_scip('.lower.log')
-#    print(program.res_scip)
 #
 
 def test_optimizers():
@@ -67,7 +46,7 @@ def test_program_scip_infeasibility2():
     program.run_scip()
 
 
-
+### ISSUE: running with max time does not exit
 def test_program_scip_time():
     dag = DAG()
     dag.from_structure("Z -> Y, X -> Y, U -> X, U -> Z", unob = "U")
@@ -85,7 +64,10 @@ def test_program_scip_time():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-    res = z.run_scip(maxtime = 5)
+#    res = z.run_scip(maxtime = 5)
+
+
+
 #
 def test_program_scip():
     dag = DAG()
@@ -126,7 +108,7 @@ def test_program_pip_conf():
     res = z.run_scip()
 
 
-#
+# #
 def test_program_parallel():
     dag = DAG()
     dag.from_structure("W -> X, W -> Y, W -> P, X -> Y", unob = "U")

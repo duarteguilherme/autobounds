@@ -79,8 +79,8 @@ def test_solve():
     pro.load_data(raw = df)
     pro.set_ate('D','Y')
     solution = pro.solve()
-    assert solution[0]['primal'] <= 0.143
-    assert solution[0]['primal'] >= 0.142
+    assert solution['point lb primal'] <= 0.143
+    assert solution['point lb primal'] >= 0.142
 
 def test_load_raw():
     d = DAG('D -> Y')
