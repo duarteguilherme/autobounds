@@ -408,20 +408,19 @@ class causalProblem:
             raise Exception("Samples have not been generated yet. Please call generate_samples() first.")
         nsamples = self.nsamples
         if self.categorical:
-            self.lower_samples = np.full((self.covariates_data.shape[0], nsamples), np.nan)
-            self.upper_samples = np.full((self.covariates_data.shape[0], nsamples), np.nan)
+            self.lb_samples = np.full((self.covariates_data.shape[0], nsamples), np.nan)
+            self.ub_samples = np.full((self.covariates_data.shape[0], nsamples), np.nan)
             for index, row in self.covariates_data.iterrows():
                 print(index)
                 for j in range(nsamples):   
-                    self.lower_samples[index, j], self.upper_samples[index, j] = self.calc_bounds_sample(
+                    self.lb_samples[index, j], self.ub_samples[index, j] = self.calc_bounds_sample(
                             self.samples[index, j, :].reshape(-1)
                         )
-                    self.lower_samples[index, j] *= row['prob_x'] 
-                    self.upper_samples[index, j] *= row['prob_x']
-            self.lower_samples = self.lower_samples.sum(axis = 0)
-            self.upper_samples = self.upper_samples.sum(axis = 0)
-            if debug: # Debug samples
-                return (self.lower_samples. self.upper_samples)
+                    self.lb_samples[index, j] *= row['prob_x'] 
+                    self.ub_samples[index, j] *= row['prob_x']
+            #self.lower_samples = self.lower_samples.sum(axis = 0)
+            #self.upper_samples = self.upper_samples.sum(axis = 0)
+            return (self.lb_samples.sum(axis = 0), self.ub_samples.sum(axis = 0))
         else:
             if self.X.shape[0] > nx:
                 newX =  self.X[
@@ -434,20 +433,15 @@ class causalProblem:
                 for b in self.betas ]
                 for x in newX 
                 ])
-            self.lower_samples = np.full(self.probs.shape[0:2], np.nan)
-            self.upper_samples = np.full(self.probs.shape[0:2], np.nan)
+            self.lb_samples = np.full(self.probs.shape[0:2], np.nan)
+            self.ub_samples = np.full(self.probs.shape[0:2], np.nan)
             for nx in range(self.probs.shape[0]):
                 for nb in range(nsamples):
-                    self.lower_samples[nx,nb], self.upper_samples[nx,nb] = (
+                    self.lb_samples[nx,nb], self.ub_samples[nx,nb] = (
                         (
                             self.calc_bounds_sample(self.probs[nx,nb]))
                     )
-            if debug: # Debug samples
-                return (self.lower_samples. self.upper_samples)
-            self.lower_samples = self.lower_samples.mean(axis = 1)
-            self.upper_samples = self.upper_samples.mean(axis = 1)
-        return (self.lower_samples, self.upper_samples)    
-        # I have to simulate X and then calculate the probabilities
+            return (self.lb_samples.mean(axis = 1), self.ub_samples.mean(axis = 1))
 
     def is_active(self, expr = '', ind = '', dep = ''):
         """ Call Parser.is_active()
@@ -517,21 +511,19 @@ class causalProblem:
             if not self.inference:
                 raise Exception("Confidence intervals can only be calculated if inference is True in read_data()")
             self.generate_samples(n = nsamples)
-            self.ci_lb_bounds, self.ci_ub_bounds = self.calculate_ci()
-            print(self.ci_lb_bounds)
-            print(self.ci_ub_bounds)
-            self.ci_lb_bounds = np.quantile(self.ci_lb_bounds, 0.025)
-            self.ci_ub_bounds = np.quantile(self.ci_ub_bounds, 0.975)
-            print(f"95% Confidence intervals. Lower: {self.ci_lb_bounds},  Upper: {self.ci_ub_bounds}")
+            ci_lb_bounds, ci_ub_bounds = self.calculate_ci()
+            275_lb = np.quantile(ci_lb_bounds, 0.0275)
+            975_ub = np.quantile(ci_ub_bounds, 0.975)
+            print(f"95% Confidence intervals. Lower: {275_lb},  Upper: {975_ub}")
             return {
                 "point lb dual": self.point_lb_dual,
                 "point ub dual": self.point_ub_dual,
                 "point lb primal": self.point_lb_primal,
                 "point ub primal": self.point_ub_primal,
-                "2.75% lb bounds": self.ci_lb_bounds,
-                "9.75% ub bounds": self.ci_ub_bounds,
-                "1% lb bounds": np.quantile(self.ci_lb_bounds, 0.01),
-                "99% ub bounds": np.quantile(self.ci_ub_bounds, 0.99)
+                "2.75% lb bounds": 275_lb,
+                "9.75% ub bounds": 975_ub,
+                "1% lb bounds": np.quantile(ci_lb_bounds, 0.01),
+                "99% ub bounds": np.quantile(ci_ub_bounds, 0.99)
             }
 
     def p(self, event, cond = None, sign = 1):
