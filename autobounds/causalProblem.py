@@ -171,7 +171,7 @@ def get_dirichlet_sample(backbone, all_data, row, covariates):
         prov = backbone.merge(
             all_data[
             (all_data[covariates].values == row[covariates].values).all(axis=1)
-            ]).fillna(0)
+            ], how = 'left').fillna(0)
     counts = prov['count'].values + 1
     dirichlet_samples = np.random.dirichlet(counts)
     return dirichlet_samples
@@ -287,7 +287,8 @@ class causalProblem:
         self.unconf_first_nodes = [ ]
         self.samples = None
         
-    def read_data(self, raw = None, covariates = None, inference = False, categorical = True, model = None, nsamples = 1000):
+    def read_data(self, raw = None, covariates = None, inference = False, cond = [ ],
+                  categorical = True, model = None, nsamples = 1000):
         """ This is the new method for loading data in place of 
         self.load_data, which will be outdated as a low version
 
@@ -295,6 +296,11 @@ class causalProblem:
         but it is only evaluated at the time of writing program
 
         Notice that read_data only accepts raw data
+
+        * cond must be a list of  variables that are used to condition the data
+        For instance, if we have a dataset with X and Y, and we want to condition on X,
+        we can introduce cond = ['X'] and the data will be conditioned on X.
+        This options is useful when there is selection
         """
         self.categorical = categorical
         self.covariates = covariates
@@ -313,12 +319,14 @@ class causalProblem:
             self.y, category_mapping = pd.factorize(self.y)
             self.category_decoder = dict(enumerate(category_mapping))
             if not inference: 
-                self.load_data(raw = datam) 
+                self.load_data(raw = datam, cond = cond) 
                 return None 
             else: # if covariates do not exist, but there is inference
 #                print(f"Generating {nsamples} samples for inference...")
                 return None
         else: # If covariates exist, they become X
+            if len(cond) > 0:
+                raise Exception("Conditional data is not supported in read_data method if covariates are introduced. Please remove cond argument.")
             self.covariates_data = (get_summary_from_raw(self.datam[self.covariates])
                     .rename({'prob': 'prob_x'}, axis = 1))
             self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))
@@ -729,6 +737,9 @@ class causalProblem:
         column_rest = [x for x in columns if x!= 'prob']
         grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
         for i, row in grouped_data.iterrows():
+            #  ISSUE: need to add constraints for numeric tolerance
+            # For instance if P(Y=1,X=0|M=1),
+            # then P(M=1) >= 0.0001 for numeric stability
             self.add_constraint(
                     get_constraint_from_row(row[column_rest], 
                                             row['prob'], 
@@ -742,6 +753,9 @@ class causalProblem:
         """
         For a particular list  of parameters
         ['X0111', 'Z0'], set them to 0 (This has to be improved)
+
+        This method is pretty useful for efficient programs
+        because it allows to remove not only parameters, but also constraints
         """
         if isinstance(parameter_list, Q):
             parameter_list = [ k[1][0] for k in parameter_list._event ]

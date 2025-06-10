@@ -17,6 +17,16 @@ df = pd.DataFrame({
     'Y': [1,1,0,0,1,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1]
 })
 
+def test_standard_solve():
+    dag = DAG("D -> Y, U -> D, U -> Y", unob = "U")
+    problem = causalProblem(dag)
+    with respect_to(problem):
+        set_estimand(p('Y(D=1)=1') - p('Y(D=0)=1'))
+    problem.read_data(df, covariates = ['X'])
+#    print(problem.solve())
+    print(problem.solve())
+
+
 # def test_generate_samples():
 #     dag = DAG("D -> Y")
 #     problem = causalProblem(dag)
