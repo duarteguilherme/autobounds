@@ -344,7 +344,7 @@ class causalProblem:
             else:
                 self.main_model = model
 
-    def calc_bounds_sample(self, prob):
+    def calc_bounds_sample(self, prob, verbose = False):
         """
         This method exists to solve the bounds problem
         for not hardcoded causalProblem
@@ -352,15 +352,16 @@ class causalProblem:
         This will require a copy of self
         """
         newproblem = deepcopy(self)
-        if self.covariates is not None:
-            datam = pd.DataFrame([ k.split('_') for k in newproblem.category_decoder.values() ], 
-                                            columns = newproblem.y_columns)
-        else:
-            datam = get_summary_from_raw(self.datam)
+#        if self.covariates is not None:
+#            datam = pd.DataFrame([ k.split('_') for k in newproblem.category_decoder.values() ], 
+#                                            columns = newproblem.y_columns)
+#        else:
+#            datam = get_summary_from_raw(self.datam)
+        datam = deepcopy(self.backbone_dataset)
         datam['prob'] = prob 
         newproblem.load_data(datam)
         newprogram = newproblem.write_program()
-        bounds = newprogram.run_scip()
+        bounds = newprogram.run_scip(verbose)
         try:
             return (bounds[0]['dual'], bounds[1]['dual'])
         except:
@@ -378,8 +379,8 @@ class causalProblem:
         all_data = self.datam.value_counts().reset_index()
         all_data.rename(columns={all_data.columns[-1]: 'count'}, inplace=True)
         all_values = {col: np.arange(self.number_values[col]) for col in self.y_columns}
-        backbone_dataset = pd.DataFrame(list(product(*all_values.values())), columns=all_values.keys())
-        self.samples = np.full((self.covariates_data.shape[0], n, backbone_dataset.shape[0]), np.nan)
+        self.backbone_dataset = pd.DataFrame(list(product(*all_values.values())), columns=all_values.keys())
+        self.samples = np.full((self.covariates_data.shape[0], n, self.backbone_dataset.shape[0]), np.nan)
         self.nsamples = n
         # Generate samples for each row in covariates_data
         # The dimensions of self.samples is 
@@ -392,11 +393,11 @@ class causalProblem:
                 print(f'{j}', end = ',')
                 self.samples[index, j, :] = (
                         get_dirichlet_sample(
-                            backbone_dataset, all_data, row, self.covariates)
+                            self.backbone_dataset, all_data, row, self.covariates)
                 )
             print('')
         
-    def calculate_ci(self, nx = 1000, randomize = True, debug = False):
+    def calculate_ci(self, nx = 1000, randomize = True, debug = False, verbose_optimizer = False):
         """
         Calculate confidence intervals for the causal estimand.
 
@@ -413,8 +414,9 @@ class causalProblem:
             for index, row in self.covariates_data.iterrows():
                 print(index)
                 for j in range(nsamples):   
+#                    breakpoint()
                     self.lb_samples[index, j], self.ub_samples[index, j] = self.calc_bounds_sample(
-                            self.samples[index, j, :].reshape(-1)
+                            self.samples[index, j, :].reshape(-1), verbose = verbose_optimizer
                         )
                     self.lb_samples[index, j] *= row['prob_x'] 
                     self.ub_samples[index, j] *= row['prob_x']
@@ -439,7 +441,7 @@ class causalProblem:
                 for nb in range(nsamples):
                     self.lb_samples[nx,nb], self.ub_samples[nx,nb] = (
                         (
-                            self.calc_bounds_sample(self.probs[nx,nb]))
+                            self.calc_bounds_sample(self.probs[nx,nb],  verbose = verbose_optimizer))
                     )
             return (self.lb_samples.mean(axis = 1), self.ub_samples.mean(axis = 1))
 
@@ -451,7 +453,7 @@ class causalProblem:
         params = [ Query(i) for i in self.Parser.is_active(expr, ind, dep) ]
         return reduce(lambda a,b : a + b, params)
 
-    def solve(self, ci = False, nsamples = 10, maxtime = None, theta = 0.01):
+    def solve(self, ci = False, nsamples = 10, maxtime = None, theta = 0.01, verbose_optimizer = False, verbose_result = True):
         """ Wrapper for causalProblem.write_program().solve()
         """
         print("Solving for point estimate bounds...")
@@ -488,7 +490,7 @@ class causalProblem:
                                 ].drop(self.covariates, axis = 1)
                                          )
                 )
-                point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta)    
+                point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta, verbose = verbose_optimizer)    
                 try:
                     self.point_lb_dual += point_bounds[0]['dual'] * row['prob_x'] 
                     self.point_ub_dual += point_bounds[1]['dual'] * row['prob_x'] 
@@ -497,9 +499,10 @@ class causalProblem:
                 except:
                     self.point_lb_dual, self.point_ub_dual = np.nan, np.nan
                     self.point_lb_primal, self.point_ub_primal = np.nan, np.nan
-        print(f"Point estimates\n")
-        print(f"Dual: [{self.point_lb_dual}, {self.point_ub_dual}]")
-        print(f"Primal: [{self.point_lb_primal}, {self.point_ub_primal}]")
+        if verbose_result:
+            print(f"Point estimates\n")
+            print(f"Dual: [{self.point_lb_dual}, {self.point_ub_dual}]")
+            print(f"Primal: [{self.point_lb_primal}, {self.point_ub_primal}]")
         if not ci:
             return {
                 "point lb dual": self.point_lb_dual,
@@ -511,10 +514,11 @@ class causalProblem:
             if not self.inference:
                 raise Exception("Confidence intervals can only be calculated if inference is True in read_data()")
             self.generate_samples(n = nsamples)
-            ci_lb_bounds, ci_ub_bounds = self.calculate_ci()
+            ci_lb_bounds, ci_ub_bounds = self.calculate_ci(verbose_optimizer = verbose_optimizer)
             lb275 = np.quantile(ci_lb_bounds, 0.0275)
             ub975 = np.quantile(ci_ub_bounds, 0.975)
-            print(f"95% Confidence intervals. Lower: {lb275},  Upper: {ub975}")
+            if verbose_result:
+                print(f"95% Confidence intervals. Lower: {lb275},  Upper: {ub975}")
             return {
                 "point lb dual": self.point_lb_dual,
                 "point ub dual": self.point_ub_dual,

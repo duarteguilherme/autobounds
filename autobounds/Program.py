@@ -140,7 +140,7 @@ class Program:
         optim_data = parse_bounds_scip(p_lower, p_upper,
                         filelower = self.scip_lower_filename,
                         fileupper = self.scip_upper_filename, 
-                                       epsilon = epsilon, theta = theta, maxtime = maxtime)
+                                       epsilon = epsilon, theta = theta, maxtime = maxtime, verbose = verbose)
         return optim_data
     
     def get_bounds_scip(self):

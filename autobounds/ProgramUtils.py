@@ -279,15 +279,17 @@ def get_final_bound(filename):
     return result
 
 
-def check_process_end_scip(p, filename):
+def check_process_end_scip(p, filename, verbose = True):
     with open(filename,'r') as f: 
         data = f.readlines()
     if any([x for x in data if "[optimal solution found]" in x ]):
-        print("Problem is finished! Returning final values")
+        if verbose:
+            print("Problem is finished! Returning final values")
         p.terminate()
         return 1
     if any([x for x in data if 'problem is solved [infeasible]' in x ]):
-        print("Problem is infeasible. Returning without solutions")
+        if verbose:
+            print("Problem is infeasible. Returning without solutions")
         p.terminate()
         return 0
     else:
@@ -339,25 +341,28 @@ def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, outp
         total_upper += partial_upper
         if len(partial_lower) > 0:
             for i in partial_lower:
-                print(f"LOWER BOUND: # -- Primal: {i['primal']} / Dual: {i['dual']} / Time: {i['time']} ##")
+                if verbose:
+                    print(f"LOWER BOUND: # -- Primal: {i['primal']} / Dual: {i['dual']} / Time: {i['time']} ##")
                 if output is not None:
                     with open(output, 'a') as f:
                         f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
         if len(partial_upper) > 0:
             for j in partial_upper:
-                print(f"UPPER BOUND: # -- Primal: {j['primal']} / Dual: {j['dual']} / Time: {j['time']} ##")
+                if verbose:
+                    print(f"UPPER BOUND: # -- Primal: {j['primal']} / Dual: {j['dual']} / Time: {j['time']} ##")
                 if output is not None:
                     with open(output, 'a') as f:
                         f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
-        end_lower = check_process_end_scip(p_lower, filelower)
-        end_upper = check_process_end_scip(p_upper, fileupper)
+        end_lower = check_process_end_scip(p_lower, filelower, verbose)
+        end_upper = check_process_end_scip(p_upper, fileupper, verbose)
         if len(total_lower) > 0 and len(total_upper) > 0:
             total_upper[-1]['dual'] = 1 if pd.isna(total_upper[-1]['dual']) else total_upper[-1]['dual'] # Fixing the problem with nan inside dual
             total_lower[-1]['dual'] = -1 if pd.isna(total_lower[-1]['dual']) else total_lower[-1]['dual']
             current_theta = total_upper[-1]['dual'] - total_lower[-1]['dual']
             gamma = abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) 
             current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
-            print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
+            if verbose:
+                print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
             if current_theta <  theta or current_epsilon < epsilon:
                 p_lower.terminate()
                 p_upper.terminate()
