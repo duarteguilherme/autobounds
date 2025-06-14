@@ -512,16 +512,16 @@ class causalProblem:
                 raise Exception("Confidence intervals can only be calculated if inference is True in read_data()")
             self.generate_samples(n = nsamples)
             ci_lb_bounds, ci_ub_bounds = self.calculate_ci()
-            275_lb = np.quantile(ci_lb_bounds, 0.0275)
-            975_ub = np.quantile(ci_ub_bounds, 0.975)
-            print(f"95% Confidence intervals. Lower: {275_lb},  Upper: {975_ub}")
+            lb275 = np.quantile(ci_lb_bounds, 0.0275)
+            ub975 = np.quantile(ci_ub_bounds, 0.975)
+            print(f"95% Confidence intervals. Lower: {lb275},  Upper: {ub975}")
             return {
                 "point lb dual": self.point_lb_dual,
                 "point ub dual": self.point_ub_dual,
                 "point lb primal": self.point_lb_primal,
                 "point ub primal": self.point_ub_primal,
-                "2.75% lb bounds": 275_lb,
-                "9.75% ub bounds": 975_ub,
+                "2.75% lb bounds": lb275,
+                "9.75% ub bounds": ub975,
                 "1% lb bounds": np.quantile(ci_lb_bounds, 0.01),
                 "99% ub bounds": np.quantile(ci_ub_bounds, 0.99)
             }

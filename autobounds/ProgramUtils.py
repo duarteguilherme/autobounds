@@ -222,10 +222,13 @@ def parse_particular_bound_scip(filename, n_bound):
     if len(datarows) > n_bound:
         res = datarows[-1].split('|')
         res = res[0:1] + res[-4:-2] 
-        return (len(datarows), [{  
+        output = (len(datarows), [{  
                                 'time': tofloat(res[0].strip().split('s')[0].split('L')[-1].split('*')[-1].split('R')[-1]),
                                 'dual': tofloat(res[1].strip()), 
                                 'primal': tofloat(res[2].strip()) }])
+        if  res[1].strip() == 'cutoff':
+            output[1][0]['dual'] = float('nan')
+        return output
     else:
         return (n_bound, {})
 
