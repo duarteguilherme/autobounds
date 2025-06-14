@@ -64,7 +64,7 @@ def test_program_scip_time():
     problem.load_data(datafile)
     problem.add_prob_constraints()
     z = problem.write_program()
-#    res = z.run_scip(maxtime = 5)
+    res = z.run_scip(maxtime = 5)
 
 
 
