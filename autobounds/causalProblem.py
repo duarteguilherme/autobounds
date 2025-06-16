@@ -166,9 +166,9 @@ def get_dirichlet_sample(backbone, all_data, row, covariates):
     - dirichlet_samples: Dirichlet samples generated from the matched data
     """
     if covariates is None:
-        prov = backbone.merge(all_data).fillna(0)
+        prov = pd.merge(backbone, all_data, how = 'left').fillna(0)
     else:
-        prov = backbone.merge(
+        prov = pd.merge(backbone,
             all_data[
             (all_data[covariates].values == row[covariates].values).all(axis=1)
             ], how = 'left').fillna(0)
