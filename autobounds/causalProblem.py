@@ -243,7 +243,7 @@ def get_constraint_from_row(row_data, row_prob, program, cond = [ ], n = 0):
     query = [ f'{row_data.index[j]}={int(row_data.iloc[j])}'
                     for j,k in enumerate(list(row_data)) ]
     if len(row_cond) > 0:
-        query_cond = [ f'{row_cond.index[j]}={int(row_cond[j])}'
+        query_cond = [ f'{row_cond.index[j]}={int(row_cond.iloc[j])}'
                     for j,k in enumerate(list(row_cond)) ]
         return program.p('&'.join(query)) - Query(row_prob) * program.p('&'.join(query_cond))
     return   program.p('&'.join(query)) - Query(row_prob)
@@ -286,7 +286,7 @@ class causalProblem:
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
         self.samples = None
-        
+       
     def read_data(self, raw = None, covariates = None, inference = False, cond = [ ],
                   categorical = True, model = None, nsamples = 1000):
         """ This is the new method for loading data in place of 

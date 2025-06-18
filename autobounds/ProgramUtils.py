@@ -371,6 +371,8 @@ def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, outp
             break
         if maxtime is not None:
             if time.time() - init_time > maxtime:
+                p_lower.terminate()
+                p_upper.terminate()
                 break
         time.sleep(5)
     # Checking bounds if problem is finished
