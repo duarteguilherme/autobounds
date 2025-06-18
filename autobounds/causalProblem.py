@@ -464,7 +464,7 @@ class causalProblem:
                 newproblem.load_data(input_data)
             except:
                 pass
-            point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta)
+            point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta, verbose = verbose_optimizer)
             try:
                 self.point_lb_dual = point_bounds[0]['dual']
                 self.point_ub_dual = point_bounds[1]['dual']
