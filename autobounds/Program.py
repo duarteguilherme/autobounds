@@ -101,7 +101,7 @@ class Program:
                     )
         self.constraints = constraints2
     
-    def run_scip(self, verbose = True, epsilon = -10, theta = 0.01, maxtime = None, debug = False):
+    def run_scip(self, verbose = True, epsilon = -10, theta = 0.01, maxtime = None, debug = False, limits = [None, None]):
         """ We won't be using to_pip here,
         because we need the function to save into a .cip file
 
@@ -118,8 +118,8 @@ class Program:
                 par_dict_lower[p] = self.M_lower.addVar(p, lb=0.0, ub=1.0)
                 par_dict_upper[p] = self.M_upper.addVar(p, lb=0.0, ub=1.0)
             else:
-                par_dict_upper[p] = self.M_upper.addVar(p, lb = None, ub = None)
-                par_dict_lower[p] = self.M_lower.addVar(p, lb = None, ub = None)
+                par_dict_upper[p] = self.M_upper.addVar(p, lb = limits[0], ub = limits[1])
+                par_dict_lower[p] = self.M_lower.addVar(p, lb = limits[0], ub = limits[1])
         # Next loop is not elegant, needs refactoring
         for i, c in enumerate(self.constraints):
             self.M_upper.addCons(

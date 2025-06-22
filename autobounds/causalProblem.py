@@ -305,6 +305,7 @@ class causalProblem:
         self.categorical = categorical
         self.covariates = covariates
         self.inference = inference
+        self.data_cond = cond
         if raw is not None:
             data = raw
             datam = deepcopy(data) if isinstance(data, pd.DataFrame) else pd.read_csv(data)
@@ -322,7 +323,8 @@ class causalProblem:
                 self.load_data(raw = datam, cond = cond) 
                 return None 
             else: # if covariates do not exist, but there is inference
-#                print(f"Generating {nsamples} samples for inference...")
+                # If we want to do inference, then load_data is not executed immediately, but it will wait 
+                # until it is evaluated by solve(). This of course is a workaround that will be removed in the future
                 return None
         else: # If covariates exist, they become X
             if len(cond) > 0:
@@ -344,7 +346,7 @@ class causalProblem:
             else:
                 self.main_model = model
 
-    def calc_bounds_sample(self, prob, verbose = False):
+    def calc_bounds_sample(self, prob, cond = [], verbose = False, limits   = [None, None]):
         """
         This method exists to solve the bounds problem
         for not hardcoded causalProblem
@@ -359,9 +361,9 @@ class causalProblem:
 #            datam = get_summary_from_raw(self.datam)
         datam = deepcopy(self.backbone_dataset)
         datam['prob'] = prob 
-        newproblem.load_data(datam)
+        newproblem.load_data(datam, cond)
         newprogram = newproblem.write_program()
-        bounds = newprogram.run_scip(verbose)
+        bounds = newprogram.run_scip(verbose, limits = limits)
         try:
             return (bounds[0]['dual'], bounds[1]['dual'])
         except:
@@ -390,14 +392,14 @@ class causalProblem:
             if self.covariates_data.shape[0] > 1:
                 print(f'\n{index + 1} of {self.covariates_data.shape[0]}')
             for j in range(n):                    
-                print(f'{j}', end = ',')
                 self.samples[index, j, :] = (
                         get_dirichlet_sample(
                             self.backbone_dataset, all_data, row, self.covariates)
                 )
             print('')
         
-    def calculate_ci(self, nx = 1000, randomize = True, debug = False, verbose_optimizer = False):
+    def calculate_ci(self, nx = 1000, randomize = True, debug = False, 
+                     verbose_optimizer = False, limits = [None, None]):
         """
         Calculate confidence intervals for the causal estimand.
 
@@ -416,7 +418,8 @@ class causalProblem:
                 for j in range(nsamples):   
 #                    breakpoint()
                     self.lb_samples[index, j], self.ub_samples[index, j] = self.calc_bounds_sample(
-                            self.samples[index, j, :].reshape(-1), verbose = verbose_optimizer
+                            self.samples[index, j, :].reshape(-1), verbose = verbose_optimizer,
+                            limits = limits
                         )
                     self.lb_samples[index, j] *= row['prob_x'] 
                     self.ub_samples[index, j] *= row['prob_x']
@@ -441,7 +444,8 @@ class causalProblem:
                 for nb in range(nsamples):
                     self.lb_samples[nx,nb], self.ub_samples[nx,nb] = (
                         (
-                            self.calc_bounds_sample(self.probs[nx,nb],  verbose = verbose_optimizer))
+                            self.calc_bounds_sample(self.probs[nx,nb],  verbose = verbose_optimizer,
+                                                    limits = limits))
                     )
             return (self.lb_samples.mean(axis = 1), self.ub_samples.mean(axis = 1))
 
@@ -453,18 +457,23 @@ class causalProblem:
         params = [ Query(i) for i in self.Parser.is_active(expr, ind, dep) ]
         return reduce(lambda a,b : a + b, params)
 
-    def solve(self, ci = False, nsamples = 10, maxtime = None, theta = 0.01, verbose_optimizer = False, verbose_result = True):
+    def solve(self, ci = False, nsamples = 10, maxtime = None, theta = 0.01, 
+              verbose_optimizer = False, verbose_result = True, limits = [None, None]):
         """ Wrapper for causalProblem.write_program().solve()
         """
         print("Solving for point estimate bounds...")
+        if self.estimand is None:
+            print("Estimand is not set. Please set an estimand using set_estimand() method.")
         if self.covariates is None:
             newproblem = deepcopy(self)
             try:
                 input_data = self.datam if 'prob' in self.datam.columns else get_summary_from_raw(self.datam)
-                newproblem.load_data(input_data)
+                newproblem.load_data(input_data, cond = self.data_cond )
             except:
                 pass
-            point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta, verbose = verbose_optimizer)
+            point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta, 
+                                                               verbose = verbose_optimizer,
+                                                                limits = limits)
             try:
                 self.point_lb_dual = point_bounds[0]['dual']
                 self.point_ub_dual = point_bounds[1]['dual']
@@ -488,9 +497,12 @@ class causalProblem:
                                     self.datam[self.covariates]
                                     .eq(row[self.covariates].values).all(axis=1)
                                 ].drop(self.covariates, axis = 1)
-                                         )
+                                         ), 
+                    cond = self.data_cond
                 )
-                point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta, verbose = verbose_optimizer)    
+                point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta, 
+                                                                   verbose = verbose_optimizer,
+                                                                     limits = limits)
                 try:
                     self.point_lb_dual += point_bounds[0]['dual'] * row['prob_x'] 
                     self.point_ub_dual += point_bounds[1]['dual'] * row['prob_x'] 
@@ -514,7 +526,7 @@ class causalProblem:
             if not self.inference:
                 raise Exception("Confidence intervals can only be calculated if inference is True in read_data()")
             self.generate_samples(n = nsamples)
-            ci_lb_bounds, ci_ub_bounds = self.calculate_ci(verbose_optimizer = verbose_optimizer)
+            ci_lb_bounds, ci_ub_bounds = self.calculate_ci(verbose_optimizer = verbose_optimizer, limits = limits)
             lb275 = np.quantile(ci_lb_bounds, 0.0275)
             ub975 = np.quantile(ci_ub_bounds, 0.975)
             if verbose_result:
@@ -732,6 +744,13 @@ class causalProblem:
         datam = datam[columns]
         column_rest = [x for x in columns if x!= 'prob']
         grouped_data = datam.groupby(column_rest).sum()['prob'].reset_index()
+        if len(cond) > 0:
+            for i, row in cond_data.drop_duplicates().iterrows():
+                self.add_constraint(self.p('&'.join(
+                                     [ f'{k}={int(row[k])}'
+                                     for k in cond_data.columns ] )),
+                                     '>=', 
+                                     0.0001)
         for i, row in grouped_data.iterrows():
             #  ISSUE: need to add constraints for numeric tolerance
             # For instance if P(Y=1,X=0|M=1),
@@ -805,12 +824,13 @@ class causalProblem:
 
         control is a numeric parameter to avoid numeric problem, such as division by 0
         """
+        self.estimand =  estimand
         self.add_prob_constraints()
         if div is None:
             div = Query(1)
         else:
             self.add_constraint(div - Query(control), ">=")
-        self.add_constraint(estimand -  (Query('objvar') * div ))
+        self.add_constraint(self.estimand -  (Query('objvar') * div ))
     
     def check_indep(self, c):
         """
