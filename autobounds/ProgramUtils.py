@@ -358,9 +358,12 @@ def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, outp
         if len(total_lower) > 0 and len(total_upper) > 0:
             total_upper[-1]['dual'] = 1 if pd.isna(total_upper[-1]['dual']) else total_upper[-1]['dual'] # Fixing the problem with nan inside dual
             total_lower[-1]['dual'] = -1 if pd.isna(total_lower[-1]['dual']) else total_lower[-1]['dual']
-            current_theta = total_upper[-1]['dual'] - total_lower[-1]['dual']
-            gamma = abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) 
-            current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
+            try:
+                current_theta = total_upper[-1]['dual'] - total_lower[-1]['dual']
+                gamma = abs(total_upper[-1]['primal'] - total_lower[-1]['primal']) 
+                current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
+            except:
+                current_theta, gamma, current_epsilon = np.nan, np.nan, np.nan
             if verbose:
                 print(f"CURRENT THRESHOLDS: # -- Theta: {current_theta} / Epsilon: {current_epsilon} ##")
             if current_theta <  theta or current_epsilon < epsilon:
@@ -381,9 +384,12 @@ def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, outp
             i = get_final_bound_scip(filelower)
         if end_upper == 1:
             j = get_final_bound_scip(fileupper)
-        current_theta = j['dual'] - i['dual']
-        gamma = abs(j['primal'] - i['primal'])
-        current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
+        try:
+            current_theta = j['dual'] - i['dual']
+            gamma = abs(j['primal'] - i['primal'])
+            current_epsilon = current_theta/gamma - 1 if gamma != 0 else 99999999
+        except:
+            current_theta, gamma, current_epsilon = -1, -1, -1
     else:
         if end_lower == 0 and end_upper == 0:
             i, j, current_theta, current_epsilon = {}, {},-1,-1
