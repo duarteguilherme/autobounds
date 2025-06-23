@@ -537,7 +537,7 @@ class causalProblem:
                 "point lb primal": self.point_lb_primal,
                 "point ub primal": self.point_ub_primal,
                 "2.75% lb bounds": lb275,
-                "9.75% ub bounds": ub975,
+                "97.5% ub bounds": ub975,
                 "1% lb bounds": np.quantile(ci_lb_bounds, 0.01),
                 "99% ub bounds": np.quantile(ci_ub_bounds, 0.99)
             }
