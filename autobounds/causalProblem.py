@@ -536,7 +536,7 @@ class causalProblem:
             lb25 = np.quantile(ci_lb_bounds, 0.025)
             ub975 = np.quantile(ci_ub_bounds, 0.975)
             if verbose_result:
-                print(f"95% Confidence intervals. Lower: {25},  Upper: {ub975}")
+                print(f"95% Confidence intervals. Lower: {lb25},  Upper: {ub975}")
             return {
                 "point lb dual": self.point_lb_dual,
                 "point ub dual": self.point_ub_dual,
