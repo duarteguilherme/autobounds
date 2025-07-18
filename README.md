@@ -12,4 +12,4 @@ This will allow you to easily integrate Autobounds into your causal inference wo
 
 To install it in your machine, clone this repo and use python -m pip install .
 
-Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai Cooper. Substantial contributions were made by 
+Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai Cooper. Code contributions were also made by Lisa Schulze-Bergkamen and Jeremy Zucker.
