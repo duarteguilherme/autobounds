@@ -1,6 +1,6 @@
 # Autobounds
 
-Autobounds is an advanced software tool designed to automate the calculation of partial identification bounds in causal inference problems.
+Autobounds is an advanced software tool designed to automate the calculation of partial identification bounds in causal inference problems (we're still in beta, so expect many changes soon).
 
 Developed by researchers at the University of Pennsylvania, Johns Hopkins University, and Princeton University, Autobounds leverages polynomial programming and dual relaxation techniques to compute the sharpest possible bounds on causal effects, even when data is incomplete or mismeasured. You can learn more in their research paper.
 
@@ -12,4 +12,4 @@ This will allow you to easily integrate Autobounds into your causal inference wo
 
 To install it in your machine, clone this repo and use python -m pip install .
 
-Development is being currently conduced by Guilherme Duarte, Dean Knox, and Kai Cooper. 
+Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai Cooper. Substantial contributions were made by 
