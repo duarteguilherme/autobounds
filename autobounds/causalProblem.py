@@ -532,9 +532,11 @@ class causalProblem:
             if not self.inference:
                 raise Exception("Confidence intervals can only be calculated if inference is True in read_data()")
             self.generate_samples(n = nsamples)
-            ci_lb_bounds, ci_ub_bounds = self.calculate_ci(verbose_optimizer = verbose_optimizer, limits = limits)
-            lb25 = np.quantile(ci_lb_bounds, 0.025)
-            ub975 = np.quantile(ci_ub_bounds, 0.975)
+            self.ci_lb_bounds, self.ci_ub_bounds = self.calculate_ci(verbose_optimizer = verbose_optimizer, limits = limits)
+            lb25 = np.quantile(self.ci_lb_bounds, 0.025)
+            ub975 = np.quantile(self.ci_ub_bounds, 0.975)
+            lb1 = np.quantile(self.ci_lb_bounds, 0.01)
+            ub99 = np.quantile(self.ci_ub_bounds, 0.99)
             if verbose_result:
                 print(f"95% Confidence intervals. Lower: {lb25},  Upper: {ub975}")
             return {
@@ -544,8 +546,8 @@ class causalProblem:
                 "point ub primal": self.point_ub_primal,
                 "2.5% lb bounds": lb25,
                 "97.5% ub bounds": ub975,
-                "1% lb bounds": np.quantile(ci_lb_bounds, 0.01),
-                "99% ub bounds": np.quantile(ci_ub_bounds, 0.99)
+                "1% lb bounds": lb1,
+                "99% ub bounds": ub99
             }
 
     def p(self, event, cond = None, sign = 1):
