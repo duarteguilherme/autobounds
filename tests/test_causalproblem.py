@@ -40,7 +40,11 @@ def test_set_ate():
     x = causalProblem(y, {'X': 2})
     x.set_estimand(x.p('Y(X=1)=1&X=0') - x.p('Y(X=0)=1&X=0'), div = x.p('X=0'))
     x.set_ate('X','Y', cond = 'X=0')
-    assert compare_lists(x.constraints[-1], x.constraints[3]) # Comparing two ways of setting the ATE
+#    print(x.constraints)
+    assert compare_lists(x.constraints[-1], x.constraints[2]) # Comparing two ways of setting the ATE
+    # Notice that laws of probability are added twice due to setting two estimands. 
+    # This problem cannot se solved of course, because it has two objective functions
+    # Must check if denominators are not being added twice either.
 
 
 def test_add_constraints():

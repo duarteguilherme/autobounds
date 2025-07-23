@@ -66,13 +66,10 @@ def sub_list(lst, sublst):
         return clean_list([(-scalar, terms) for scalar, terms in sublst])
     if sublst is None or len(sublst) == 0:
         return clean_list(lst)
-
     # Negate all scalars in sublst
     negated_sublst = [(-scalar, terms) for scalar, terms in sublst]
-
     # Combine lst with the negated sublst
     combined = lst + negated_sublst
-
     # Clean the combined list (remove zeros, combine duplicates, and handle '1')
     return clean_list(combined)
 
@@ -224,14 +221,18 @@ class Q():
             if q2._cond is None:
                 return Q(add_list(self._event, q2._event))
             else:
-                return Q(add_list(mul_list(self._event, q2._cond), q2._event))
+                return Q(add_list(mul_list(self._event, q2._cond), q2._event),
+                         cond = q2._cond)
         else:
             if q2._cond is None:
-                return Q(add_list(self._event, mul_list(q2._event, self._cond)))
+                return Q(add_list(self._event, mul_list(q2._event, self._cond)),
+                         cond = self._cond)
             else:
                 if compare_lists(self._cond, q2._cond):
-                    return Q(add_list(self._event, q2._event), self._cond)
-                return Q(add_list(mul_list(self._event, q2._cond), mul_list(q2._event, self._cond)))
+                    return Q(add_list(self._event, q2._event), 
+                             cond = self._cond)
+                return Q(add_list(mul_list(self._event, q2._cond), mul_list(q2._event, self._cond)),
+                         cond = mul_list(self._cond, q2._cond))
     
     def __sub__(self, q2):
         """ Subtract q from self
@@ -241,14 +242,18 @@ class Q():
             if q2._cond is None:
                 return Q(sub_list(self._event, q2._event))
             else:
-                return Q(sub_list(mul_list(self._event, q2._cond), q2._event))
+                return Q(sub_list(mul_list(self._event, q2._cond), q2._event),
+                            cond = q2._cond)
         else:
             if q2._cond is None:
-                return Q(sub_list(self._event, mul_list(q2._event, self._cond)))
+                return Q(sub_list(self._event, mul_list(q2._event, self._cond)),
+                            cond = self._cond)
             else:
                 if compare_lists(self._cond, q2._cond):
-                    return Q(sub_list(self._event, q2._event), self._cond)
-                return Q(sub_list(mul_list(self._event, q2._cond), mul_list(q2._event, self._cond)))
+                    return Q(sub_list(self._event, q2._event), 
+                             cond = self._cond)
+                return Q(sub_list(mul_list(self._event, q2._cond), mul_list(q2._event, self._cond)),
+                            cond = mul_list(self._cond, q2._cond))
             
     def __mul__(self, q2):
         """ Multiply two queries together

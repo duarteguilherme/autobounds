@@ -1,5 +1,5 @@
 from .canonicalModel import canonicalModel
-from .Q import Query, Q
+from .Q import Query, Q, sub_list
 from .Program import Program
 from .DAG import DAG
 from .Parser import Parser
@@ -15,7 +15,6 @@ import statsmodels.stats.proportion
 import inspect
 import statsmodels.api as sm
 from tqdm import tqdm
-
 
 
 def generate_posterior_beta(result, randomize = True):
@@ -363,7 +362,10 @@ class causalProblem:
 #            datam = get_summary_from_raw(self.datam)
         datam = deepcopy(self.backbone_dataset)
         datam['prob'] = prob 
-        newproblem.load_data(datam, cond)
+        if len(cond) > 0:
+            datam = deepcopy(self.input_data)
+            datam['prob'] = prob
+        newproblem.load_data(datam, cond = cond)
         newprogram = newproblem.write_program()
         bounds = newprogram.run_scip(verbose = verbose, limits = limits, maxtime=self.maxtime, theta = self.theta)
         try:
@@ -424,7 +426,7 @@ class causalProblem:
 #                print(index)
                 for j in tqdm(range(nsamples)):
                     self.lb_samples[index, j], self.ub_samples[index, j] = self.calc_bounds_sample(
-                            self.samples[index, j, :].reshape(-1), verbose = verbose_optimizer,
+                            self.samples[index, j, :].reshape(-1), cond = self.data_cond, verbose = verbose_optimizer,
                             limits = limits
                         )
                     self.lb_samples[index, j] *= row['prob_x'] 
@@ -473,8 +475,8 @@ class causalProblem:
         if self.covariates is None:
             newproblem = deepcopy(self)
             try:
-                input_data = self.datam if 'prob' in self.datam.columns else get_summary_from_raw(self.datam)
-                newproblem.load_data(input_data, cond = self.data_cond )
+                self.input_data = self.datam if 'prob' in self.datam.columns else get_summary_from_raw(self.datam)
+                newproblem.load_data(self.input_data, cond = self.data_cond )
             except:
                 pass
             point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta, 
