@@ -1,7 +1,44 @@
 [build-system]
 requires = [
-    "setuptools>=61",
-    "wheel"
+        "setuptools>=61",
+        "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+
+# PEP 621 metadata so tools like `uv add` can manage dependencies
+[project]
+name = "autobounds"
+version = "0.0.2"
+description = "AUTOBOUNDS — software for calculating causal inference bounds"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Guilherme Duarte" },
+    { name = "Dean Knox" },
+    { name = "Jonathan Mummolo" },
+    { name = "Ilya Shpitser" },
+    { name = "Noam Finkelstein" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+dependencies = [
+    "tqdm",
+    "pandas",
+    "networkx",
+    "matplotlib",
+    "numpy",
+    "plotnine",
+    "pyscipopt",
+    "sympy",
+    "scipy"
+]
+
+[project.urls]
+Homepage = "https://github.com/duarteguilherme/autobounds"
+"Bug Tracker" = "https://github.com/duarteguilherme/autobounds/issues"
 
