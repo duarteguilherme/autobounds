@@ -8,7 +8,7 @@ autobounds/ID.py
 autobounds/Parser.py
 autobounds/Program.py
 autobounds/ProgramUtils.py
-autobounds/Query.py
+autobounds/Q.py
 autobounds/SCM.py
 autobounds/__init__.py
 autobounds/canonicalModel.py
@@ -23,6 +23,7 @@ autobounds_gjduarte.egg-info/requires.txt
 autobounds_gjduarte.egg-info/top_level.txt
 tests/__init__.py
 tests/autobounds_analysis_final.py
+tests/test_bottleneck.py
 tests/test_canonicalmodel.py
 tests/test_causalproblem.py
 tests/test_closedproblem.py
@@ -30,6 +31,7 @@ tests/test_dag.py
 tests/test_funcs.py
 tests/test_parser.py
 tests/test_program.py
-tests/test_query.py
+tests/test_q.py
+tests/test_sampling_ci.py
 tests/test_scm.py
 tests/test_simpl_program.py

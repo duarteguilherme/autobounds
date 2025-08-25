@@ -1,16 +1,7 @@
 [build-system]
 requires = [
-    "setuptools",
-    "pandas",
-    "networkx",
-    "matplotlib",
-    "wheel",
-    "numpy",
-    "pandas",
-    "plotnine",
-    "pyscipopt",
-    "sympy",
-    "scipy"
-    ]
+    "setuptools>=61",
+    "wheel"
+]
 build-backend = "setuptools.build_meta"
 
