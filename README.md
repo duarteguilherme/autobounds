@@ -13,3 +13,43 @@ This will allow you to easily integrate Autobounds into your causal inference wo
 To install it in your machine, clone this repo and use python -m pip install .
 
 Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai Cooper. Code contributions were also made by Lisa Schulze-Bergkamen and Jeremy Zucker.
+
+## Install from source
+
+Use a recent Python (>=3.8) and a clean virtual environment.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e .
+```
+
+This installs Autobounds in editable mode for development. For a regular install, replace the last line with:
+
+```bash
+python -m pip install .
+```
+
+## Build and publish (PyPI)
+
+Build source and wheel distributions:
+
+```bash
+python -m pip install build twine
+python -m build
+```
+
+Optional: upload to TestPyPI to verify packaging (requires an API token):
+
+```bash
+python -m twine upload -r testpypi dist/*
+```
+
+Publish to PyPI (requires a PyPI token):
+
+```bash
+python -m twine upload dist/*
+```
+
+Tip: If the package name `autobounds` is already taken on PyPI, you will need to choose a unique distribution name before publishing.

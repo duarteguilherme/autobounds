@@ -2,7 +2,7 @@ from functools import reduce
 import io 
 import random
 from copy import deepcopy, copy
-from multiprocessing import Process,Pool,Manager
+from multiprocessing import Process,Pool,Manager, get_context
 import time
 import sys
 from .ProgramUtils import *
@@ -133,8 +133,13 @@ class Program:
         if debug:
             self.scip_lower_filename = '.lower.log'
             self.scip_upper_filename = '.upper.log'
-        p_lower = Process(target=lambda k: solve_scip(k, filename = self.scip_lower_filename), args=[self.M_lower])
-        p_upper = Process(target=lambda k: solve_scip(k, filename = self.scip_upper_filename), args=[self.M_upper])
+        # Use 'fork' start method when available to avoid pickling the SCIP model on macOS (spawn requires pickling)
+        try:
+            ctx = get_context('fork')
+        except ValueError:
+            ctx = get_context()
+        p_lower = ctx.Process(target=solve_scip, args=(self.M_lower, self.scip_lower_filename))
+        p_upper = ctx.Process(target=solve_scip, args=(self.M_upper, self.scip_upper_filename))
         p_lower.start()
         p_upper.start()
         optim_data = parse_bounds_scip(p_lower, p_upper,
