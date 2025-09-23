@@ -51,5 +51,3 @@ Publish to PyPI (requires a PyPI token):
 ```bash
 python -m twine upload dist/*
 ```
-
-Tip: If the package name `autobounds` is already taken on PyPI, you will need to choose a unique distribution name before publishing.
