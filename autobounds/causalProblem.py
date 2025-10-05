@@ -59,6 +59,7 @@ class respect_to:
         self.globals['load_data'] = self.problem.load_data
         self.globals['read_data'] = self.problem.read_data
         self.globals['generate_samples'] = self.problem.generate_samples
+        self.globals['is_active'] = self.is_active
         self.globals['calculate_ci'] = self.problem.calculate_ci
 
 
@@ -73,6 +74,7 @@ class respect_to:
         del self.globals['read_data']
         del self.globals['generate_samples']
         del self.globals['calculate_ci']
+        del self.globals['is_active']
 
 def get_summary_from_raw(datam):
     """
