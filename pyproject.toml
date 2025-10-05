@@ -13,18 +13,18 @@ version = "0.0.2"
 description = "AUTOBOUNDS — software for calculating causal inference bounds"
 readme = "README.md"
 requires-python = ">=3.8"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
 authors = [
     { name = "Guilherme Duarte" },
     { name = "Dean Knox" },
     { name = "Jonathan Mummolo" },
     { name = "Ilya Shpitser" },
     { name = "Noam Finkelstein" }
-]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent"
 ]
 dependencies = [
     "tqdm",
