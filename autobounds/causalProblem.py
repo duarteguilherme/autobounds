@@ -59,9 +59,8 @@ class respect_to:
         self.globals['load_data'] = self.problem.load_data
         self.globals['read_data'] = self.problem.read_data
         self.globals['generate_samples'] = self.problem.generate_samples
-        self.globals['is_active'] = self.is_active
+        self.globals['is_active'] = self.problem.is_active
         self.globals['calculate_ci'] = self.problem.calculate_ci
-
 
     def __exit__(self, exc_type, exc_value, traceback):
         del self.globals['p']
