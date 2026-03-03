@@ -39,3 +39,10 @@ def test_add_bounder_duplicate_name_requires_replace():
     replacement = Bounder(DAG("A -> B"))
     manager.add_bounder(replacement, name="b1", replace=True)
     assert manager.get_bounder("b1") is replacement
+
+
+def test_single_problem_wrappers_forward_to_default_bounder():
+    problem = causalProblem(DAG("D -> Y"))
+    problem.set_ate("D", "Y")
+    # Wrapper should update default bounder state.
+    assert problem.get_bounder("default").estimand is not None

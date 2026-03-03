@@ -14,6 +14,13 @@ To install it in your machine, clone this repo and use python -m pip install .
 
 Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai Cooper. Code contributions were also made by Lisa Schulze-Bergkamen and Jeremy Zucker.
 
+## API structure
+
+- `Bounder`: single bounds problem engine (one model/estimand/data solve flow).
+- `causalProblem`: orchestrator that can manage one or more bounders.
+  - For backward compatibility, single-problem calls on `causalProblem` still work via an implicit default bounder.
+  - New code should prefer explicit `Bounder` usage when solving a single problem.
+
 ## Install from source
 
 Use a recent Python (>=3.10) and a clean virtual environment.

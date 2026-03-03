@@ -42,6 +42,12 @@ Split responsibilities so:
    - orchestration in `test_causalproblem.py`.
 3. Update docs/examples.
 
+## PR3 Status
+
+- Added explicit backward-compatible wrapper methods on `causalProblem` for common single-bounder APIs (`load_data`, `set_ate`, `solve`, etc.).
+- Kept fallback proxying for uncovered attributes, with a deprecation warning to guide migration toward explicit `Bounder` usage.
+- Updated README with `Bounder` vs `causalProblem` API guidance.
+
 ## Acceptance Criteria for PR1
 
 1. `from autobounds import Bounder` works.

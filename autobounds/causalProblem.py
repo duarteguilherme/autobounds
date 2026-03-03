@@ -15,6 +15,7 @@ import statsmodels.stats.proportion
 import inspect
 import statsmodels.api as sm
 from tqdm import tqdm
+import warnings
 
 
 def generate_posterior_beta(result, randomize = True):
@@ -920,18 +921,33 @@ class causalProblem:
     - Existing single-problem calls are proxied to the implicit default bounder.
     """
 
-    _INTERNAL_ATTRS = {"_default_bounder", "_bounders", "_bounder_order"}
+    _INTERNAL_ATTRS = {"_default_bounder", "_bounders", "_bounder_order", "_proxy_warned"}
 
     def __init__(self, dag, number_values = {}):
         object.__setattr__(self, "_default_bounder", Bounder(dag, number_values))
         object.__setattr__(self, "_bounders", {})
         object.__setattr__(self, "_bounder_order", [])
+        object.__setattr__(self, "_proxy_warned", False)
+
+    def _warn_proxy(self):
+        if not self._proxy_warned:
+            warnings.warn(
+                "Accessing single-problem APIs through causalProblem is kept for "
+                "backward compatibility. Prefer explicit Bounder usage via "
+                "get_bounder('default') or Bounder(...) for new code.",
+                PendingDeprecationWarning,
+                stacklevel=3,
+            )
+            object.__setattr__(self, "_proxy_warned", True)
 
     def __getattr__(self, name):
         default = self.__dict__.get("_default_bounder")
         if default is None:
             raise AttributeError(name)
-        return getattr(default, name)
+        attr = getattr(default, name)
+        if callable(attr):
+            self._warn_proxy()
+        return attr
 
     def __setattr__(self, name, value):
         if name in self._INTERNAL_ATTRS:
@@ -985,3 +1001,61 @@ class causalProblem:
         for name in self.list_bounders():
             results[name] = self.get_bounder(name).solve(*args, **kwargs)
         return results
+
+    # Explicit backward-compatible wrappers for single-bounder operations.
+    def p(self, *args, **kwargs):
+        return self._default_bounder.p(*args, **kwargs)
+
+    def E(self, *args, **kwargs):
+        return self._default_bounder.E(*args, **kwargs)
+
+    def set_estimand(self, *args, **kwargs):
+        return self._default_bounder.set_estimand(*args, **kwargs)
+
+    def set_ate(self, *args, **kwargs):
+        return self._default_bounder.set_ate(*args, **kwargs)
+
+    def add_assumption(self, *args, **kwargs):
+        return self._default_bounder.add_assumption(*args, **kwargs)
+
+    def add_constraint(self, *args, **kwargs):
+        return self._default_bounder.add_constraint(*args, **kwargs)
+
+    def set_p_to_zero(self, *args, **kwargs):
+        return self._default_bounder.set_p_to_zero(*args, **kwargs)
+
+    def load_data(self, *args, **kwargs):
+        return self._default_bounder.load_data(*args, **kwargs)
+
+    def load_data_do(self, *args, **kwargs):
+        return self._default_bounder.load_data_do(*args, **kwargs)
+
+    def load_data_kl(self, *args, **kwargs):
+        return self._default_bounder.load_data_kl(*args, **kwargs)
+
+    def load_data_gaussian(self, *args, **kwargs):
+        return self._default_bounder.load_data_gaussian(*args, **kwargs)
+
+    def read_data(self, *args, **kwargs):
+        return self._default_bounder.read_data(*args, **kwargs)
+
+    def write_program(self, *args, **kwargs):
+        return self._default_bounder.write_program(*args, **kwargs)
+
+    def solve(self, *args, **kwargs):
+        return self._default_bounder.solve(*args, **kwargs)
+
+    def is_active(self, *args, **kwargs):
+        return self._default_bounder.is_active(*args, **kwargs)
+
+    def generate_samples(self, *args, **kwargs):
+        return self._default_bounder.generate_samples(*args, **kwargs)
+
+    def calculate_ci(self, *args, **kwargs):
+        return self._default_bounder.calculate_ci(*args, **kwargs)
+
+    def check_constraints(self, *args, **kwargs):
+        return self._default_bounder.check_constraints(*args, **kwargs)
+
+    def add_prob_constraints(self, *args, **kwargs):
+        return self._default_bounder.add_prob_constraints(*args, **kwargs)
