@@ -6,8 +6,8 @@ from autobounds.autobounds.bounder import Bounder
 def test_default_bounder_registry():
     problem = causalProblem(DAG("D -> Y"))
     assert problem.list_bounders() == ["default"]
-    assert problem.get_bounder("default") is problem
-    assert problem.bounders == [problem]
+    assert isinstance(problem.get_bounder("default"), Bounder)
+    assert problem.bounders == [problem.get_bounder("default")]
 
 
 def test_add_and_get_named_bounder():
@@ -16,7 +16,7 @@ def test_add_and_get_named_bounder():
     manager.add_bounder(extra, name="sensitivity")
     assert manager.list_bounders() == ["default", "sensitivity"]
     assert manager.get_bounder("sensitivity") is extra
-    assert manager.bounders == [manager, extra]
+    assert manager.bounders == [manager.get_bounder("default"), extra]
 
 
 def test_new_bounder_factory():

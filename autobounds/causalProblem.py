@@ -268,7 +268,7 @@ def get_query_data_do(row, cols, do, self):
     return self.p(str_query)
 
 
-class causalProblem:
+class Bounder:
     def __init__(self, dag, number_values = {}):
         """
         Causal problem has to have three elements: 
@@ -298,68 +298,6 @@ class causalProblem:
         self.samples = None
         self.safe_min = 0.0001 # This is a safe minimum to avoid division by zero
         self.maxtime, self.theta = None, 0.01  # There is no maximum time a program will be running
-        # PR2 orchestration scaffold:
-        # keep current object as the implicit default bounder and allow
-        # additional bounders to be registered for higher-level workflows.
-        self._bounders = {}
-        self._bounder_order = []
-
-    @property
-    def bounders(self):
-        """Return the default bounder plus any registered additional bounders."""
-        return [self] + [self._bounders[k] for k in self._bounder_order]
-
-    def list_bounders(self):
-        """Return registered bounder names; default is always present."""
-        return ['default'] + self._bounder_order.copy()
-
-    def get_bounder(self, name = 'default'):
-        """Get a bounder by name, including the implicit default bounder."""
-        if name == 'default':
-            return self
-        if name not in self._bounders:
-            raise KeyError(f"Unknown bounder '{name}'. Available: {self.list_bounders()}")
-        return self._bounders[name]
-
-    def add_bounder(self, bounder, name = None, replace = False):
-        """
-        Register an additional bounder on this orchestrator.
-        The default bounder is always this object and cannot be replaced.
-        """
-        if name is None:
-            name = f'bounder_{len(self._bounder_order) + 1}'
-        if name == 'default':
-            raise ValueError("'default' is reserved for the implicit primary bounder.")
-        if name in self._bounders and not replace:
-            raise ValueError(f"Bounder '{name}' already exists. Use replace=True to overwrite.")
-        if not isinstance(bounder, causalProblem):
-            raise TypeError("bounder must be an instance of causalProblem/Bounder.")
-        if name not in self._bounders:
-            self._bounder_order.append(name)
-        self._bounders[name] = bounder
-        return bounder
-
-    def new_bounder(self, dag = None, number_values = None, name = None):
-        """
-        Create and register a new Bounder.
-        If dag/number_values are omitted, clone the default bounder structure.
-        """
-        from .bounder import Bounder
-        if dag is None:
-            dag = deepcopy(self.dag)
-        if number_values is None:
-            number_values = deepcopy(self.number_values)
-        bounder = Bounder(dag, number_values)
-        self.add_bounder(bounder, name = name)
-        return bounder
-
-    def solve_bounders(self, *args, **kwargs):
-        """Solve default + registered bounders and return a name->result dict."""
-        results = {}
-        for name in self.list_bounders():
-            results[name] = self.get_bounder(name).solve(*args, **kwargs)
-        return results
-       
     def read_data(self, raw = None, covariates = None, inference = False, cond = [ ],
                   categorical = True, model = None, nsamples = 1000):
         """ This is the new method for loading data in place of 
@@ -974,3 +912,76 @@ class causalProblem:
     
 
 
+class causalProblem:
+    """
+    Orchestrator for one or more Bounder objects.
+
+    Backward compatibility:
+    - Existing single-problem calls are proxied to the implicit default bounder.
+    """
+
+    _INTERNAL_ATTRS = {"_default_bounder", "_bounders", "_bounder_order"}
+
+    def __init__(self, dag, number_values = {}):
+        object.__setattr__(self, "_default_bounder", Bounder(dag, number_values))
+        object.__setattr__(self, "_bounders", {})
+        object.__setattr__(self, "_bounder_order", [])
+
+    def __getattr__(self, name):
+        default = self.__dict__.get("_default_bounder")
+        if default is None:
+            raise AttributeError(name)
+        return getattr(default, name)
+
+    def __setattr__(self, name, value):
+        if name in self._INTERNAL_ATTRS:
+            object.__setattr__(self, name, value)
+            return
+        default = self.__dict__.get("_default_bounder")
+        if default is not None and hasattr(default, name):
+            setattr(default, name, value)
+            return
+        object.__setattr__(self, name, value)
+
+    @property
+    def bounders(self):
+        return [self._default_bounder] + [self._bounders[k] for k in self._bounder_order]
+
+    def list_bounders(self):
+        return ["default"] + self._bounder_order.copy()
+
+    def get_bounder(self, name = "default"):
+        if name == "default":
+            return self._default_bounder
+        if name not in self._bounders:
+            raise KeyError(f"Unknown bounder '{name}'. Available: {self.list_bounders()}")
+        return self._bounders[name]
+
+    def add_bounder(self, bounder, name = None, replace = False):
+        if name is None:
+            name = f"bounder_{len(self._bounder_order) + 1}"
+        if name == "default":
+            raise ValueError("'default' is reserved for the implicit primary bounder.")
+        if not isinstance(bounder, Bounder):
+            raise TypeError("bounder must be an instance of Bounder.")
+        if name in self._bounders and not replace:
+            raise ValueError(f"Bounder '{name}' already exists. Use replace=True to overwrite.")
+        if name not in self._bounders:
+            self._bounder_order.append(name)
+        self._bounders[name] = bounder
+        return bounder
+
+    def new_bounder(self, dag = None, number_values = None, name = None):
+        if dag is None:
+            dag = deepcopy(self._default_bounder.dag)
+        if number_values is None:
+            number_values = deepcopy(self._default_bounder.number_values)
+        bounder = Bounder(dag, number_values)
+        self.add_bounder(bounder, name = name)
+        return bounder
+
+    def solve_bounders(self, *args, **kwargs):
+        results = {}
+        for name in self.list_bounders():
+            results[name] = self.get_bounder(name).solve(*args, **kwargs)
+        return results
