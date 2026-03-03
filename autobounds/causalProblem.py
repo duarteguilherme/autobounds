@@ -291,7 +291,7 @@ class causalProblem:
         # self.parameters is exactly the same as self.canModel.parameters
         # the difference is self.parameters will keep track if parameters will not be used
         # this will be used to remove parameters that are not used in the final polynomial program
-        self.estimand = [ ]
+        self.estimand = None
         self.covariates = None
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
@@ -482,7 +482,7 @@ class causalProblem:
         if maxtime is not None:
             self.maxtime = maxtime
         if self.estimand is None:
-            print("Estimand is not set. Please set an estimand using set_estimand() method.")
+            raise ValueError("Estimand is not set. Please set an estimand using set_estimand() method.")
         if self.covariates is None:
             newproblem = deepcopy(self)
             try:
@@ -911,7 +911,6 @@ class causalProblem:
             self.add_rest_indep(i)
 
     
-
 
 
 
