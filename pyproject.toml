@@ -12,7 +12,7 @@ name = "autobounds"
 version = "0.0.2"
 description = "AUTOBOUNDS — software for calculating causal inference bounds"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -40,4 +40,3 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/duarteguilherme/autobounds"
 "Bug Tracker" = "https://github.com/duarteguilherme/autobounds/issues"
-

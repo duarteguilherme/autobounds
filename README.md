@@ -16,7 +16,7 @@ Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai
 
 ## Install from source
 
-Use a recent Python (>=3.8) and a clean virtual environment.
+Use a recent Python (>=3.10) and a clean virtual environment.
 
 ```bash
 python -m venv .venv

@@ -133,6 +133,7 @@ def solve_kl_p(ns, K, o, alpha):
     KL = lambda p: o * log(o / p) + (1 - o) * log((1 - o) / (1 - p)) 
     thresh = log(2 * K / alpha) / ns
     optim_func = lambda p: KL(p) - thresh
+    eps = 1e-12
     if o == 0:
         return np.array(
                 statsmodels
@@ -144,12 +145,21 @@ def solve_kl_p(ns, K, o, alpha):
                 .stats
                 .proportion.proportion_confint(ns, ns, alpha = alpha/K, method = 'agresti_coull'))
     else:
-        res = newton(optim_func, [o/2, (1+o)/2])
-    if np.isnan(res[0]):
-        res[0] = 0
-    if np.isnan(res[1]):
-        res[1] = 1
-    return res
+        # Use bounded roots to avoid evaluating log terms outside (0, 1).
+        lower_left = eps
+        lower_right = max(o - eps, lower_left + eps)
+        upper_left = min(o + eps, 1 - 2 * eps)
+        upper_right = 1 - eps
+
+        try:
+            lb = scipy.optimize.brentq(optim_func, lower_left, lower_right)
+        except ValueError:
+            lb = 0.0
+        try:
+            ub = scipy.optimize.brentq(optim_func, upper_left, upper_right)
+        except ValueError:
+            ub = 1.0
+        return np.array([lb, ub])
 
 def get_dirichlet_sample(backbone, all_data, row, covariates):
     """
@@ -901,7 +911,6 @@ class causalProblem:
             self.add_rest_indep(i)
 
     
-
 
 
 

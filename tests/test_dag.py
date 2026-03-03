@@ -1,7 +1,4 @@
 from autobounds.autobounds.DAG import DAG
-import numpy.random as rd
-import pytest
-import os
 
 
 
@@ -10,8 +7,12 @@ def test_dag_find_path():
     x = DAG()
     x.from_structure("B -> D,X -> Z, X -> Y, A -> X, A -> Z, Z -> Y, B -> A, B -> Y")
     paths = x.find_paths('B','Y')
-    paths.sort()
-    assert paths[0] == ['A', 'X', 'Y', True]
+    assert {tuple(p) for p in paths} == {
+        ('A', 'X', 'Y', True),
+        ('A', 'Z', 'Y', True),
+        ('A', 'X', 'Z', 'Y', True),
+        ('Y', True),
+    }
     assert x.find_inbetween('B','Y') == {'X', 'Z', 'A', 'Y', 'B'}
 
 def test_dag_str():
@@ -64,6 +65,3 @@ def test_c_comp():
             Uma -> M, U -> B, C -> D""", unob = "U , Uy, Uma")
     assert x.find_u_linked('X') == set({'X','Y', 'B'})
     assert frozenset({'X','B', 'Y'}) in x.find_c_components()
-
-def auto_structure():
-    x = DAG('D -> Y, U -> D, U -> Y', unob = 'U')
