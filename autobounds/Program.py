@@ -72,7 +72,9 @@ class Program:
         """
         res_lower = parse_whole_file_scip(self.scip_lower_filename)
         res_upper = parse_whole_file_scip(self.scip_upper_filename)
-        if len(res_lower) == 0 and len(res_upper) == 0:
+        if not res_lower and not res_upper:
+            return None
+        if not res_lower or not res_upper:
             return None
         df_lower = pd.DataFrame(res_lower)
         df_upper = pd.DataFrame(res_upper)

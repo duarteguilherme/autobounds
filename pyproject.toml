@@ -40,3 +40,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/duarteguilherme/autobounds"
 "Bug Tracker" = "https://github.com/duarteguilherme/autobounds/issues"
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:\\[Errno 13\\] Permission denied\\.\\s+joblib will operate in serial mode:UserWarning",
+    "ignore:This process \\(pid=.*\\) is multi-threaded, use of fork\\(\\) may lead to deadlocks in the child\\.:DeprecationWarning",
+]

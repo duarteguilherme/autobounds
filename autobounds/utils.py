@@ -1,4 +1,7 @@
+import pandas as pd
 from pyscipopt import quicksum
+
+from .SCM import SCM
 
 def prepare_ate(var, do):
     """ Prepare ATE expr for simulations
@@ -7,15 +10,18 @@ def prepare_ate(var, do):
     expr2  = { 'sign': -1,'var': (var, 1),'do': (do, 0) }
     return (expr1, expr2)
 
-def get_probability_from_model(m, intervention = {}, overlap = False):
-    data = m.draw_sample(intervention = intervention)
+def get_probability_from_model(m, intervention=None, overlap=False):
+    if intervention is None:
+        intervention = {}
+    data = m.draw_sample(intervention=intervention)
+    n = len(data)
     columns_to_group = [x for x in data.columns  if x not in m.u_data.keys() ]
     data = (data
             .drop(m.u_data.keys(), axis = 1)
             .assign(P = 1)
             .groupby(columns_to_group)
             .agg('count')
-            .assign(P = lambda v: v['P'] / N)
+            .assign(P=lambda v: v['P'] / n)
             .reset_index()
             )
     if overlap == True and len(data) < (2**len(m.V)):
@@ -44,10 +50,10 @@ def get_c_estimand_value(m, estimand):
         value += get_estimand_value(m, e)
     return value
 
-def simulate_model(dag):
+def simulate_model(dag, n=10000):
     model = SCM()
     model.from_dag(dag)
-    model.sample_u(N)
+    model.sample_u(n)
     return model
 
 
@@ -69,5 +75,4 @@ def introduce_prob_into_progr(program, prob_table):
                 ) ==
             list(p.items())[-1][1]
         )
-
 

@@ -246,7 +246,7 @@ def parse_particular_bound_scip(filename, n_bound):
             output[1][0]['dual'] = float('nan')
         return output
     else:
-        return (n_bound, {})
+        return (n_bound, [])
 
 
 def parse_particular_bound(filename, n_bound):
@@ -344,6 +344,8 @@ def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, outp
     """
     time.sleep(0.5)
     init_time = time.time()
+    i = {'primal': np.nan, 'dual': np.nan, 'time': np.nan}
+    j = {'primal': np.nan, 'dual': np.nan, 'time': np.nan}
     total_lower, total_upper = [ ], []
     n_lower, n_upper = 0, 0
     current_theta, current_epsilon = 9999, 9999
@@ -413,8 +415,8 @@ def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, outp
     j['end'] = end_upper
     if output is not None:
         with open(output, 'a') as f:
-            f.write(f"lb,{i['primal']},{i['dual']},{i['time']}\n")
-            f.write(f"ub,{j['primal']},{j['dual']},{j['time']}\n")
+            f.write(f"lb,{i.get('primal', np.nan)},{i.get('dual', np.nan)},{i.get('time', np.nan)}\n")
+            f.write(f"ub,{j.get('primal', np.nan)},{j.get('dual', np.nan)},{j.get('time', np.nan)}\n")
     return (i, j, current_theta, current_epsilon)
 
 def parse_bounds(p_lower, p_upper, filename = None, epsilon = 0.01, theta = 0.01):
