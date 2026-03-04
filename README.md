@@ -7,7 +7,11 @@ Developed by researchers at the University of Pennsylvania, Johns Hopkins Univer
 This tool is particularly valuable in fields like economics, political science, and epidemiology, where researchers often face challenges such as confounding, selection bias, measurement error, and noncompliance. By automating the process, Autobounds allows for more precise and reliable estimation of causal relationships, facilitating better-informed decision-making.
 
 To get started, download the software via Docker and run the following command to launch Autobounds:
+
+```bash
 docker run -p 8888:8888 -it gjardimduarte/autolab:v5
+```
+
 This will allow you to easily integrate Autobounds into your causal inference workflows.
 
 To install it in your machine, clone this repo and use python -m pip install .
