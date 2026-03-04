@@ -73,6 +73,20 @@ def test_respect_to():
             })           )
 #        print(solve())
 
+def test_respect_to_restores_existing_globals():
+    d = DAG('D -> Y')
+    pro = causalProblem(d)
+
+    original_p = "preexisting_symbol"
+    globals()["p"] = original_p
+    try:
+        with respect_to(pro):
+            assert callable(p)
+        assert globals()["p"] == original_p
+    finally:
+        if globals().get("p", None) == original_p:
+            del globals()["p"]
+
 
 def test_solve():
     d = DAG('D -> Y')

@@ -49,32 +49,50 @@ class respect_to:
     def __init__(self, problem):
         self.problem = problem
         self.globals = inspect.currentframe().f_back.f_globals
+        self._names = (
+            "p",
+            "E",
+            "add_assumption",
+            "set_estimand",
+            "set_ate",
+            "solve",
+            "load_data",
+            "read_data",
+            "generate_samples",
+            "is_active",
+            "calculate_ci",
+        )
+        self._previous = {}
+        self._created = set()
 
     def __enter__(self):
-        self.globals['p'] = self.problem.p
-        self.globals['E'] = self.problem.E
-        self.globals['add_assumption'] = self.problem.add_assumption
-        self.globals['set_estimand'] = self.problem.set_estimand
-        self.globals['set_ate'] = self.problem.set_ate
-        self.globals['solve'] = self.problem.solve
-        self.globals['load_data'] = self.problem.load_data
-        self.globals['read_data'] = self.problem.read_data
-        self.globals['generate_samples'] = self.problem.generate_samples
-        self.globals['is_active'] = self.problem.is_active
-        self.globals['calculate_ci'] = self.problem.calculate_ci
+        bindings = {
+            "p": self.problem.p,
+            "E": self.problem.E,
+            "add_assumption": self.problem.add_assumption,
+            "set_estimand": self.problem.set_estimand,
+            "set_ate": self.problem.set_ate,
+            "solve": self.problem.solve,
+            "load_data": self.problem.load_data,
+            "read_data": self.problem.read_data,
+            "generate_samples": self.problem.generate_samples,
+            "is_active": self.problem.is_active,
+            "calculate_ci": self.problem.calculate_ci,
+        }
+        for name in self._names:
+            if name in self.globals:
+                self._previous[name] = self.globals[name]
+            else:
+                self._created.add(name)
+            self.globals[name] = bindings[name]
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        del self.globals['p']
-        del self.globals['E']
-        del self.globals['add_assumption']
-        del self.globals['set_estimand']
-        del self.globals['set_ate']
-        del self.globals['solve']
-        del self.globals['load_data']
-        del self.globals['read_data']
-        del self.globals['generate_samples']
-        del self.globals['calculate_ci']
-        del self.globals['is_active']
+        for name in self._names:
+            if name in self._previous:
+                self.globals[name] = self._previous[name]
+            elif name in self._created and name in self.globals:
+                del self.globals[name]
 
 def get_summary_from_raw(datam):
     """
