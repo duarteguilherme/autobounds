@@ -1,12 +1,14 @@
 from functools import reduce
 import io 
 import random
+import tempfile
 from copy import deepcopy, copy
 from multiprocessing import Process,Pool,Manager, get_context
 import time
 import sys
 from .ProgramUtils import *
 import os
+import json
 
 
 alphanum = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -32,10 +34,13 @@ class Program:
         self.scip_upper_filename = ''.join(random.choices(alphanum, k = 16)) + '.log2n'
 
     def __del__(self):
-        if os.path.exists(self.scip_lower_filename):
-            os.remove(self.scip_lower_filename)
-        if os.path.exists(self.scip_upper_filename):
-            os.remove(self.scip_upper_filename)
+        try:
+            if os.path.exists(self.scip_lower_filename):
+                os.remove(self.scip_lower_filename)
+            if os.path.exists(self.scip_upper_filename):
+                os.remove(self.scip_upper_filename)
+        except Exception:
+            pass
 
     def simplify_linear(self):
         """ Firstly, it divides constraints in linear and nonlinear
@@ -101,7 +106,7 @@ class Program:
                     )
         self.constraints = constraints2
     
-    def run_scip(self, verbose = True, epsilon = -10, theta = 0.01, maxtime = None, debug = False, limits = [None, None]):
+    def run_scip(self, verbose = True, epsilon = -10, theta = 0.01, maxtime = None, debug = False, limits = [None, None], return_dgps = False):
         """ We won't be using to_pip here,
         because we need the function to save into a .cip file
 
@@ -130,23 +135,83 @@ class Program:
                     )
         self.M_upper.setObjective(par_dict_upper['objvar'], sense = 'maximize')
         self.M_lower.setObjective(par_dict_lower['objvar'], sense = 'minimize')
+        old_lower, old_upper = self.scip_lower_filename, self.scip_upper_filename
+        dgps_lower_file, dgps_upper_file = None, None
         if debug:
             self.scip_lower_filename = '.lower.log'
             self.scip_upper_filename = '.upper.log'
+            open(self.scip_lower_filename, 'w').close()
+            open(self.scip_upper_filename, 'w').close()
+            if return_dgps:
+                dgps_lower_file = '.lower.dgps.json'
+                dgps_upper_file = '.upper.dgps.json'
+                open(dgps_lower_file, 'w').close()
+                open(dgps_upper_file, 'w').close()
+        else:
+            # Use temp files to avoid cwd side effects and cross-run collisions.
+            lower_tmp = tempfile.NamedTemporaryFile(suffix='.log2n', delete=False)
+            upper_tmp = tempfile.NamedTemporaryFile(suffix='.log2n', delete=False)
+            lower_tmp.close()
+            upper_tmp.close()
+            self.scip_lower_filename = lower_tmp.name
+            self.scip_upper_filename = upper_tmp.name
+            if return_dgps:
+                dgps_lower_tmp = tempfile.NamedTemporaryFile(suffix='.dgps.json', delete=False)
+                dgps_upper_tmp = tempfile.NamedTemporaryFile(suffix='.dgps.json', delete=False)
+                dgps_lower_tmp.close()
+                dgps_upper_tmp.close()
+                dgps_lower_file = dgps_lower_tmp.name
+                dgps_upper_file = dgps_upper_tmp.name
         # Use 'fork' start method when available to avoid pickling the SCIP model on macOS (spawn requires pickling)
         try:
             ctx = get_context('fork')
         except ValueError:
             ctx = get_context()
-        p_lower = ctx.Process(target=solve_scip, args=(self.M_lower, self.scip_lower_filename))
-        p_upper = ctx.Process(target=solve_scip, args=(self.M_upper, self.scip_upper_filename))
-        p_lower.start()
-        p_upper.start()
-        optim_data = parse_bounds_scip(p_lower, p_upper,
-                        filelower = self.scip_lower_filename,
-                        fileupper = self.scip_upper_filename, 
-                                       epsilon = epsilon, theta = theta, maxtime = maxtime, verbose = verbose)
-        return optim_data
+        p_lower = ctx.Process(target=solve_scip, args=(self.M_lower, self.scip_lower_filename, False, dgps_lower_file))
+        p_upper = ctx.Process(target=solve_scip, args=(self.M_upper, self.scip_upper_filename, False, dgps_upper_file))
+        try:
+            p_lower.start()
+            p_upper.start()
+            optim_data = parse_bounds_scip(p_lower, p_upper,
+                            filelower = self.scip_lower_filename,
+                            fileupper = self.scip_upper_filename, 
+                                           epsilon = epsilon, theta = theta, maxtime = maxtime, verbose = verbose)
+            if return_dgps:
+                dgps = {"lower": {}, "upper": {}}
+                if dgps_lower_file is not None and os.path.exists(dgps_lower_file):
+                    with open(dgps_lower_file, "r") as f:
+                        dgps["lower"] = json.load(f)
+                if dgps_upper_file is not None and os.path.exists(dgps_upper_file):
+                    with open(dgps_upper_file, "r") as f:
+                        dgps["upper"] = json.load(f)
+                return (optim_data, dgps)
+            return optim_data
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to launch SCIP workers. This can happen with non-fork "
+                "multiprocessing contexts because pyscipopt models are not picklable."
+            ) from exc
+        finally:
+            if not debug:
+                for proc in (p_lower, p_upper):
+                    try:
+                        if proc.is_alive():
+                            proc.terminate()
+                    except Exception:
+                        pass
+                for filename in (self.scip_lower_filename, self.scip_upper_filename):
+                    try:
+                        if os.path.exists(filename):
+                            os.remove(filename)
+                    except Exception:
+                        pass
+                for filename in (dgps_lower_file, dgps_upper_file):
+                    try:
+                        if filename is not None and os.path.exists(filename):
+                            os.remove(filename)
+                    except Exception:
+                        pass
+                self.scip_lower_filename, self.scip_upper_filename = old_lower, old_upper
     
     def get_bounds_scip(self):
         return (
@@ -250,4 +315,3 @@ class Program:
     
     def to_cip(self):
         pass
-

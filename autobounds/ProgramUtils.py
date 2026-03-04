@@ -21,6 +21,7 @@ import pandas as pd
 import numpy as np
 from sympy import *
 from tqdm import tqdm
+import json
 
 get_symb_func = {
         '==': lambda a,b: a== b,
@@ -91,11 +92,26 @@ def solve1(solver, model, sensetype, verbose):
     sys.stdout = open('.' + sensetype + '.log', 'w', buffering = 1)
     solver.solve(model, tee = verbose)
 
-def solve_scip(model, filename, verbose = False):
+def solve_scip(model, filename, verbose = False, dgps_filename = None):
     """ To be used with scip """
     model.redirectOutput()
     sys.stdout = open(filename, 'w', buffering = 1)
     model.optimize()
+    if dgps_filename is None:
+        return
+    dgps = {"status": "no_solution", "values": {}}
+    try:
+        sol = model.getBestSol()
+        if sol is not None:
+            var_values = {
+                v.name: float(model.getSolVal(sol, v))
+                for v in model.getVars()
+            }
+            dgps = {"status": "ok", "values": var_values}
+    except Exception:
+        dgps = {"status": "error", "values": {}}
+    with open(dgps_filename, "w") as f:
+        json.dump(dgps, f)
     
 
 def pip_join_expr(expr, params):

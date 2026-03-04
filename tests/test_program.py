@@ -232,3 +232,37 @@ def test_program_iv():
     # assert b[0] >= -0.52
     # assert b[1] <= 0.52
     # assert b[1] >= 0.48
+
+
+def test_program_iv_returns_dgps():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
+    problem = causalProblem(dag)
+    datafile = io.StringIO('''X,Y,Z,prob
+    0,0,0,0.05
+    0,0,1,0.05
+    0,1,0,0.1
+    0,1,1,0.1
+    1,0,0,0.15
+    1,0,1,0.15
+    1,1,0,0.2
+    1,1,1,0.2''')
+    problem.set_ate('X', 'Y')
+    problem.load_data(datafile)
+    problem.add_prob_constraints()
+    program = problem.write_program()
+
+    bounds, dgps = program.run_scip(return_dgps = True, verbose = False)
+
+    assert isinstance(bounds, tuple)
+    assert isinstance(dgps, dict)
+    assert "lower" in dgps
+    assert "upper" in dgps
+    assert dgps["lower"].get("status") == "ok"
+    assert dgps["upper"].get("status") == "ok"
+    assert "values" in dgps["lower"]
+    assert "values" in dgps["upper"]
+    assert "objvar" in dgps["lower"]["values"]
+    assert "objvar" in dgps["upper"]["values"]
+    assert dgps["lower"]["values"]["objvar"] <= bounds[1]["primal"] + 1e-8
+    assert dgps["upper"]["values"]["objvar"] >= bounds[0]["primal"] - 1e-8
