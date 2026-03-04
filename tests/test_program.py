@@ -5,6 +5,9 @@ from autobounds.autobounds.Q import Q
 import io
 import time
 import pandas as pd
+import importlib
+
+ProgramModule = importlib.import_module("autobounds.autobounds.Program")
 
 
 #
@@ -266,3 +269,41 @@ def test_program_iv_returns_dgps():
     assert "objvar" in dgps["upper"]["values"]
     assert dgps["lower"]["values"]["objvar"] <= bounds[1]["primal"] + 1e-8
     assert dgps["upper"]["values"]["objvar"] >= bounds[0]["primal"] - 1e-8
+
+
+def test_run_scip_return_dgps_handles_invalid_json(monkeypatch):
+    class DummyProcess:
+        def start(self):
+            return None
+
+        def is_alive(self):
+            return False
+
+        def terminate(self):
+            return None
+
+    class DummyContext:
+        def Process(self, target=None, args=()):
+            return DummyProcess()
+
+    monkeypatch.setattr(ProgramModule, "get_context", lambda *args, **kwargs: DummyContext())
+    monkeypatch.setattr(
+        ProgramModule,
+        "parse_bounds_scip",
+        lambda *args, **kwargs: (
+            {"primal": -0.5, "dual": -0.5, "time": 0.0, "end": 1},
+            {"primal": 0.5, "dual": 0.5, "time": 0.0, "end": 1},
+            1.0,
+            0.0,
+        ),
+    )
+
+    program = ProgramModule.Program()
+    program.parameters = ["objvar"]
+    program.constraints = [[["objvar"], ["=="]]]
+    bounds, dgps = program.run_scip(return_dgps=True, verbose=False)
+
+    assert bounds[0]["dual"] == -0.5
+    assert bounds[1]["dual"] == 0.5
+    assert dgps["lower"]["status"] == "parse_error"
+    assert dgps["upper"]["status"] == "parse_error"

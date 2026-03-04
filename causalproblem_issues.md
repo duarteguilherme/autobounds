@@ -1,42 +1,32 @@
-# Remaining Major Issues in `causalProblem`
+# Remaining Issues in `causalProblem` (2026-03-04 pass)
 
-## Open issues
+## Open issues (ordered by severity)
 
-1. **Broad exception handling hides failures**
-   - Multiple code paths use bare `except:` and continue with `pass`/`nan`, which can silently mask model/data/solver bugs.
+1. **`respect_to` can clobber caller globals**
+   - It injects symbols like `p`, `E`, `solve` into caller globals and then unconditionally deletes them on exit.
+   - If the caller already had any of these names, values are lost after the context exits.
    - References:
-     - `autobounds/causalProblem.py:384`
-     - `autobounds/causalProblem.py:491`
-     - `autobounds/causalProblem.py:501`
-     - `autobounds/causalProblem.py:530`
-     - `autobounds/causalProblem.py:593`
-
-2. **`respect_to` mutates caller globals unsafely**
-   - It injects symbols into caller module globals and unconditionally deletes them on exit.
-   - This can clobber pre-existing names and create hard-to-debug side effects.
-   - References:
-     - `autobounds/causalProblem.py:50`
+     - `autobounds/causalProblem.py:51`
      - `autobounds/causalProblem.py:53`
      - `autobounds/causalProblem.py:66`
 
-3. **Mutable default arguments across API**
-   - Several methods use defaults like `[]`/`{}`; this is risky and should be replaced with `None` + local initialization.
+2. **Mutable default arguments remain in helper/public entry points**
+   - Defaults like `number_values={}` and `cond=[]` are shared objects across calls.
+   - They are not heavily mutated today, but this is brittle and can introduce cross-call state bugs later.
    - References:
-     - `autobounds/causalProblem.py:231`
-     - `autobounds/causalProblem.py:246`
-     - `autobounds/causalProblem.py:272`
-     - `autobounds/causalProblem.py:302`
-     - `autobounds/causalProblem.py:361`
-     - `autobounds/causalProblem.py:656`
-     - `autobounds/causalProblem.py:685`
-     - `autobounds/causalProblem.py:715`
-     - `autobounds/causalProblem.py:729`
+     - `autobounds/causalProblem.py:247`
+     - `autobounds/causalProblem.py:282`
+     - `autobounds/causalProblem.py:348`
 
-## Fixed in this pass
+3. **`solve()` has dead variable assignment (`ci`)**
+   - `ci = kwargs.get("ci", False)` is currently unused in the orchestrator `solve` path.
+   - This is not a runtime bug, but it creates misleading intent and should be removed or used.
+   - Reference:
+     - `autobounds/causalProblem.py:406`
 
-- Estimand initialization/check mismatch:
-  - `self.estimand` now initializes as `None`.
-  - `solve()` now raises a clear `ValueError` if estimand is unset.
-  - References:
-    - `autobounds/causalProblem.py:294`
-    - `autobounds/causalProblem.py:484`
+4. **Bounder helper coupling remains circular/fragile**
+   - `Bounder.py` imports helper functions from `causalProblem.py`, while `causalProblem` imports `Bounder` dynamically.
+   - It works now, but this file-level coupling makes refactors/import-order changes risky.
+   - References:
+     - `autobounds/Bounder.py:19`
+     - `autobounds/causalProblem.py:283`

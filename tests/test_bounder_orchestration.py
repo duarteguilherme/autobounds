@@ -1,6 +1,9 @@
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.causalProblem import causalProblem
 from autobounds.autobounds.bounder import Bounder
+import io
+import numpy as np
+import pytest
 
 
 def test_default_bounder_registry():
@@ -46,3 +49,49 @@ def test_single_problem_wrappers_forward_to_default_bounder():
     problem.set_ate("D", "Y")
     # Wrapper should update default bounder state.
     assert problem.get_bounder("default").estimand is not None
+
+
+def _build_iv_problem():
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob="U")
+    problem = causalProblem(dag)
+    datafile = io.StringIO(
+        """X,Y,Z,prob
+0,0,0,0.05
+0,0,1,0.05
+0,1,0,0.1
+0,1,1,0.1
+1,0,0,0.15
+1,0,1,0.15
+1,1,0,0.2
+1,1,1,0.2"""
+    )
+    problem.set_ate("X", "Y")
+    problem.load_data(datafile)
+    problem.add_prob_constraints()
+    return problem
+
+
+def test_causalproblem_solve_matches_default_bounder():
+    cp = _build_iv_problem()
+    bd = _build_iv_problem().get_bounder("default")
+
+    res_cp = cp.solve(verbose_result=False, verbose_optimizer=False, maxtime=5)
+    res_bd = bd.solve(verbose_result=False, verbose_optimizer=False, maxtime=5)
+
+    assert res_cp["point lb dual"] == pytest.approx(res_bd["point lb dual"], abs=1e-6)
+    assert res_cp["point ub dual"] == pytest.approx(res_bd["point ub dual"], abs=1e-6)
+    assert res_cp["point lb primal"] == pytest.approx(res_bd["point lb primal"], abs=1e-6)
+    assert res_cp["point ub primal"] == pytest.approx(res_bd["point ub primal"], abs=1e-6)
+
+
+def test_default_bounder_solve_is_deterministic_with_seed():
+    np.random.seed(2026)
+    first = _build_iv_problem().solve(verbose_result=False, verbose_optimizer=False, maxtime=5)
+    np.random.seed(2026)
+    second = _build_iv_problem().solve(verbose_result=False, verbose_optimizer=False, maxtime=5)
+
+    assert first["point lb dual"] == pytest.approx(second["point lb dual"], abs=1e-6)
+    assert first["point ub dual"] == pytest.approx(second["point ub dual"], abs=1e-6)
+    assert first["point lb primal"] == pytest.approx(second["point lb primal"], abs=1e-6)
+    assert first["point ub primal"] == pytest.approx(second["point ub primal"], abs=1e-6)

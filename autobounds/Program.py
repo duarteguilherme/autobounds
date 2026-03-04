@@ -179,13 +179,19 @@ class Program:
                             fileupper = self.scip_upper_filename, 
                                            epsilon = epsilon, theta = theta, maxtime = maxtime, verbose = verbose)
             if return_dgps:
+                def _safe_load_dgps(path):
+                    if path is None or not os.path.exists(path):
+                        return {"status": "missing", "values": {}}
+                    try:
+                        with open(path, "r") as f:
+                            data = json.load(f)
+                        return data if isinstance(data, dict) else {"status": "invalid_format", "values": {}}
+                    except Exception:
+                        return {"status": "parse_error", "values": {}}
+
                 dgps = {"lower": {}, "upper": {}}
-                if dgps_lower_file is not None and os.path.exists(dgps_lower_file):
-                    with open(dgps_lower_file, "r") as f:
-                        dgps["lower"] = json.load(f)
-                if dgps_upper_file is not None and os.path.exists(dgps_upper_file):
-                    with open(dgps_upper_file, "r") as f:
-                        dgps["upper"] = json.load(f)
+                dgps["lower"] = _safe_load_dgps(dgps_lower_file)
+                dgps["upper"] = _safe_load_dgps(dgps_upper_file)
                 return (optim_data, dgps)
             return optim_data
         except Exception as exc:
