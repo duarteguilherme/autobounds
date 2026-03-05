@@ -295,7 +295,14 @@ class causalProblem:
     - Existing single-problem calls are proxied to the implicit default bounder.
     """
 
-    _INTERNAL_ATTRS = {"_default_bounder", "_bounders", "_bounder_order", "_proxy_warned"}
+    _INTERNAL_ATTRS = {
+        "_default_bounder",
+        "_bounders",
+        "_bounder_order",
+        "_proxy_warned",
+        "_operation_log",
+        "_is_replaying",
+    }
 
     def __init__(self, dag, number_values = {}):
         from .Bounder import Bounder
@@ -303,6 +310,175 @@ class causalProblem:
         object.__setattr__(self, "_bounders", {})
         object.__setattr__(self, "_bounder_order", [])
         object.__setattr__(self, "_proxy_warned", False)
+        object.__setattr__(self, "_operation_log", [])
+        object.__setattr__(self, "_is_replaying", False)
+
+    def _freeze_tabular(self, obj):
+        if obj is None:
+            return None
+        if isinstance(obj, pd.DataFrame):
+            return obj.copy(deep=True)
+        if isinstance(obj, str):
+            return pd.read_csv(obj)
+        if hasattr(obj, "read"):
+            pos = None
+            if hasattr(obj, "tell"):
+                try:
+                    pos = obj.tell()
+                except Exception:
+                    pos = None
+            if hasattr(obj, "seek"):
+                try:
+                    obj.seek(0)
+                except Exception:
+                    pass
+            df = pd.read_csv(obj)
+            if pos is not None and hasattr(obj, "seek"):
+                try:
+                    obj.seek(pos)
+                except Exception:
+                    pass
+            return df
+        raise TypeError("Unsupported tabular input type for subsampling CI.")
+
+    def _record_operation(self, method, args, kwargs):
+        if self._is_replaying:
+            return
+        self._operation_log.append(
+            {
+                "method": method,
+                "args": deepcopy(args),
+                "kwargs": deepcopy(kwargs),
+            }
+        )
+
+    def _record_load_data_operation(self, args, kwargs):
+        if self._is_replaying:
+            return
+        sig = inspect.signature(self._default_bounder.load_data)
+        bound = sig.bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        data_kwargs = deepcopy(bound.arguments)
+        data_kwargs["summary"] = self._freeze_tabular(data_kwargs.get("summary"))
+        data_kwargs["raw"] = self._freeze_tabular(data_kwargs.get("raw"))
+        self._operation_log.append(
+            {
+                "method": "load_data",
+                "args": tuple(),
+                "kwargs": data_kwargs,
+            }
+        )
+
+    def _record_read_data_operation(self, args, kwargs):
+        if self._is_replaying:
+            return
+        sig = inspect.signature(self._default_bounder.read_data)
+        bound = sig.bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        data_kwargs = deepcopy(bound.arguments)
+        data_kwargs["raw"] = self._freeze_tabular(data_kwargs.get("raw"))
+        self._operation_log.append(
+            {
+                "method": "read_data",
+                "args": tuple(),
+                "kwargs": data_kwargs,
+            }
+        )
+
+    def _subsample_rows(self, df, subsample_rate, subsample_size):
+        n = int(df.shape[0])
+        if n == 0:
+            raise ValueError("Cannot subsample empty dataset.")
+        if subsample_size is None:
+            if n < 120:
+                m = n
+            else:
+                m = min(n, max(80, int(np.floor(n ** subsample_rate))))
+        else:
+            m = min(n, int(subsample_size))
+        return df.sample(n=m, replace=False)
+
+    def _solve_with_subsampling_ci(self, *args, **kwargs):
+        from .Bounder import Bounder
+
+        if len(args) > 0:
+            raise ValueError("Use keyword arguments when ci=True in causalProblem.solve().")
+
+        nsamples = int(kwargs.pop("nsamples", 200))
+        maxtime = kwargs.get("maxtime", None)
+        theta = kwargs.get("theta", 0.01)
+        verbose_optimizer = kwargs.get("verbose_optimizer", False)
+        verbose_result = kwargs.get("verbose_result", True)
+        limits = kwargs.get("limits", [None, None])
+        subsample_rate = float(kwargs.pop("subsample_rate", 0.7))
+        subsample_size = kwargs.pop("subsample_size", None)
+
+        point_result = self._default_bounder.solve(
+            ci=False,
+            maxtime=maxtime,
+            theta=theta,
+            verbose_optimizer=verbose_optimizer,
+            verbose_result=verbose_result,
+            limits=limits,
+        )
+
+        if len(self._operation_log) == 0:
+            raise ValueError("No recorded operations available for subsampling CI.")
+
+        lb_samples, ub_samples = [], []
+        for _ in range(nsamples):
+            replay_bounder = Bounder(
+                deepcopy(self._default_bounder.dag),
+                deepcopy(self._default_bounder.number_values),
+            )
+            for step in self._operation_log:
+                method = step["method"]
+                call_args = deepcopy(step["args"])
+                call_kwargs = deepcopy(step["kwargs"])
+                if method == "load_data":
+                    if call_kwargs.get("raw") is None and call_kwargs.get("summary") is None:
+                        raise ValueError("Subsampling CI requires load_data with raw or summary data.")
+                    if call_kwargs.get("raw") is not None:
+                        call_kwargs["raw"] = self._subsample_rows(
+                            call_kwargs["raw"], subsample_rate, subsample_size
+                        ).reset_index(drop=True)
+                    elif call_kwargs.get("summary") is not None:
+                        # Summary data has no row-level units; keep it unchanged for now.
+                        call_kwargs["summary"] = call_kwargs["summary"].copy(deep=True)
+                elif method == "read_data":
+                    if call_kwargs.get("raw") is None:
+                        raise ValueError("Subsampling CI with read_data requires raw data.")
+                    call_kwargs["raw"] = self._subsample_rows(
+                        call_kwargs["raw"], subsample_rate, subsample_size
+                    ).reset_index(drop=True)
+                getattr(replay_bounder, method)(*call_args, **call_kwargs)
+
+            res = replay_bounder.solve(
+                ci=False,
+                maxtime=maxtime,
+                theta=theta,
+                verbose_optimizer=False,
+                verbose_result=False,
+                limits=limits,
+            )
+            lb_samples.append(float(res["point lb dual"]))
+            ub_samples.append(float(res["point ub dual"]))
+
+        lb_arr = np.asarray(lb_samples, dtype=float)
+        ub_arr = np.asarray(ub_samples, dtype=float)
+        valid = (~np.isnan(lb_arr)) & (~np.isnan(ub_arr))
+        if valid.sum() == 0:
+            raise RuntimeError("All subsampling CI replications returned NaN.")
+        lb_arr = lb_arr[valid]
+        ub_arr = ub_arr[valid]
+
+        ci_out = {
+            "2.5% lb bounds": float(np.quantile(lb_arr, 0.025)),
+            "97.5% ub bounds": float(np.quantile(ub_arr, 0.975)),
+            "1% lb bounds": float(np.quantile(lb_arr, 0.01)),
+            "99% ub bounds": float(np.quantile(ub_arr, 0.99)),
+        }
+        return {**point_result, **ci_out}
 
     def _warn_proxy(self):
         if not self._proxy_warned:
@@ -387,21 +563,32 @@ class causalProblem:
         return self._default_bounder.E(*args, **kwargs)
 
     def set_estimand(self, *args, **kwargs):
-        return self._default_bounder.set_estimand(*args, **kwargs)
+        out = self._default_bounder.set_estimand(*args, **kwargs)
+        self._record_operation("set_estimand", args, kwargs)
+        return out
 
     def set_ate(self, *args, **kwargs):
-        return self._default_bounder.set_ate(*args, **kwargs)
+        out = self._default_bounder.set_ate(*args, **kwargs)
+        self._record_operation("set_ate", args, kwargs)
+        return out
 
     def add_assumption(self, *args, **kwargs):
-        return self._default_bounder.add_assumption(*args, **kwargs)
+        out = self._default_bounder.add_assumption(*args, **kwargs)
+        self._record_operation("add_assumption", args, kwargs)
+        return out
 
     def add_constraint(self, *args, **kwargs):
-        return self._default_bounder.add_constraint(*args, **kwargs)
+        out = self._default_bounder.add_constraint(*args, **kwargs)
+        self._record_operation("add_constraint", args, kwargs)
+        return out
 
     def set_p_to_zero(self, *args, **kwargs):
-        return self._default_bounder.set_p_to_zero(*args, **kwargs)
+        out = self._default_bounder.set_p_to_zero(*args, **kwargs)
+        self._record_operation("set_p_to_zero", args, kwargs)
+        return out
 
     def load_data(self, *args, **kwargs):
+        self._record_load_data_operation(args, kwargs)
         return self._default_bounder.load_data(*args, **kwargs)
 
     def load_data_do(self, *args, **kwargs):
@@ -414,6 +601,7 @@ class causalProblem:
         return self._default_bounder.load_data_gaussian(*args, **kwargs)
 
     def read_data(self, *args, **kwargs):
+        self._record_read_data_operation(args, kwargs)
         return self._default_bounder.read_data(*args, **kwargs)
 
     def write_program(self, *args, **kwargs):
@@ -423,6 +611,8 @@ class causalProblem:
         # Simple path: one internal bounder, no orchestration requested.
         ci = kwargs.get("ci", False)
         if len(self._bounders) == 0:
+            if ci:
+                return self._solve_with_subsampling_ci(*args, **kwargs)
             return self._default_bounder.solve(*args, **kwargs)
 
         # Orchestration path: solve all registered bounders.
@@ -443,4 +633,6 @@ class causalProblem:
         return self._default_bounder.check_constraints(*args, **kwargs)
 
     def add_prob_constraints(self, *args, **kwargs):
-        return self._default_bounder.add_prob_constraints(*args, **kwargs)
+        out = self._default_bounder.add_prob_constraints(*args, **kwargs)
+        self._record_operation("add_prob_constraints", args, kwargs)
+        return out

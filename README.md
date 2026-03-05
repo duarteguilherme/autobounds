@@ -25,6 +25,34 @@ Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai
   - For backward compatibility, single-problem calls on `causalProblem` still work via an implicit default bounder.
   - New code should prefer explicit `Bounder` usage when solving a single problem.
 
+## Confidence Intervals (Subsampling)
+
+`causalProblem.solve(ci=True, ...)` now computes confidence intervals using subsampling (without replacement) by replaying your loaded datasets and model steps.
+Prefer loading analysis data with `read_data(...)` for this flow (legacy `load_data(...)` is still supported).
+
+Default subsample size per dataset:
+
+- `m = n` if `n < 120`
+- otherwise `m = min(n, max(80, floor(n**0.7)))`
+
+Important options:
+
+- `nsamples` (default `200`): number of subsampling replications
+- `subsample_rate` (default `0.7`): exponent used when `subsample_size` is not set
+- `subsample_size` (default `None`): explicit fixed `m` per dataset (overrides rate rule)
+
+Example:
+
+```python
+result = problem.solve(
+    ci=True,
+    nsamples=300,
+    subsample_rate=0.7,
+    verbose_optimizer=False,
+    verbose_result=False,
+)
+```
+
 ## Install from source
 
 Use a recent Python (>=3.10) and a clean virtual environment.
