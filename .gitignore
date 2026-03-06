@@ -1,0 +1,10 @@
+# Build artefacts
+build/
+dist/
+
+# Python caches
+__pycache__/
+.pytest_cache/
+
+# Virtual envs
+.venv/

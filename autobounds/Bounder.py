@@ -239,7 +239,6 @@ class Bounder:
               verbose_optimizer = False, verbose_result = True, limits = [None, None]):
         """ Wrapper for causalProblem.write_program().solve()
         """
-        print("Solving for point estimate bounds...")
         if maxtime is not None:
             self.maxtime = maxtime
         if self.estimand is None:
@@ -672,4 +671,3 @@ class Bounder:
             self.add_rest_indep(i)
 
     
-

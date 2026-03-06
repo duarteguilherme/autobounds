@@ -40,6 +40,9 @@ Important options:
 - `nsamples` (default `200`): number of subsampling replications
 - `subsample_rate` (default `0.7`): exponent used when `subsample_size` is not set
 - `subsample_size` (default `None`): explicit fixed `m` per dataset (overrides rate rule)
+- `ci_method`:
+  - `"empirical_subsample_quantile"` (legacy default): direct quantiles of subsample bounds
+  - `"recentered_subsampling"`: uses `sqrt(b) * (theta_b - theta_n)` recentering and `1/sqrt(n)` back-transform
 
 Example:
 
@@ -48,6 +51,7 @@ result = problem.solve(
     ci=True,
     nsamples=300,
     subsample_rate=0.7,
+    ci_method="recentered_subsampling",
     verbose_optimizer=False,
     verbose_result=False,
 )

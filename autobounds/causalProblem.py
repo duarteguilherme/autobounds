@@ -16,6 +16,7 @@ import inspect
 import statsmodels.api as sm
 from tqdm import tqdm
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def generate_posterior_beta(result, randomize = True):
@@ -58,9 +59,7 @@ class respect_to:
             "solve",
             "load_data",
             "read_data",
-            "generate_samples",
             "is_active",
-            "calculate_ci",
         )
         self._previous = {}
         self._created = set()
@@ -75,9 +74,7 @@ class respect_to:
             "solve": self.problem.solve,
             "load_data": self.problem.load_data,
             "read_data": self.problem.read_data,
-            "generate_samples": self.problem.generate_samples,
             "is_active": self.problem.is_active,
-            "calculate_ci": self.problem.calculate_ci,
         }
         for name in self._names:
             if name in self.globals:
@@ -302,6 +299,8 @@ class causalProblem:
         "_proxy_warned",
         "_operation_log",
         "_is_replaying",
+        "_has_covariates",
+        "K",
     }
 
     def __init__(self, dag, number_values = {}):
@@ -312,6 +311,8 @@ class causalProblem:
         object.__setattr__(self, "_proxy_warned", False)
         object.__setattr__(self, "_operation_log", [])
         object.__setattr__(self, "_is_replaying", False)
+        object.__setattr__(self, "_has_covariates", False)
+        object.__setattr__(self, "K", 20)
 
     def _freeze_tabular(self, obj):
         if obj is None:
@@ -377,6 +378,8 @@ class causalProblem:
         bound.apply_defaults()
         data_kwargs = deepcopy(bound.arguments)
         data_kwargs["raw"] = self._freeze_tabular(data_kwargs.get("raw"))
+        covariates = kwargs.get("covariates", data_kwargs.get("covariates", None))
+        object.__setattr__(self, "_has_covariates", covariates is not None and len(covariates) > 0)
         self._operation_log.append(
             {
                 "method": "read_data",
@@ -385,7 +388,137 @@ class causalProblem:
             }
         )
 
-    def _subsample_rows(self, df, subsample_rate, subsample_size):
+    def _solve_with_multinomial_binned_ci(self, *args, **kwargs):
+        from .Bounder import Bounder
+
+        if len(args) > 0:
+            raise ValueError("Use keyword arguments when ci=True in causalProblem.solve().")
+        if self._has_covariates:
+            raise NotImplementedError("Covariate-aware CI path is not implemented yet.")
+
+        maxtime = kwargs.get("maxtime", None)
+        theta = kwargs.get("theta", 0.01)
+        verbose_optimizer = kwargs.get("verbose_optimizer", False)
+        verbose_result = kwargs.get("verbose_result", True)
+        limits = kwargs.get("limits", [None, None])
+        ci_method = kwargs.get("ci_method", "recentered_subsampling")
+
+        point_result = self._default_bounder.solve(
+            ci=False,
+            maxtime=maxtime,
+            theta=theta,
+            verbose_optimizer=verbose_optimizer,
+            verbose_result=verbose_result,
+            limits=limits,
+        )
+
+        read_steps = [step for step in self._operation_log if step["method"] == "read_data"]
+        if len(read_steps) == 0:
+            # Backward-compatible path for legacy load_data-driven workflows.
+            return self._solve_with_subsampling_ci(*args, **kwargs)
+        if len(read_steps) != 1:
+            raise ValueError("Current multinomial-binned CI supports exactly one read_data(...) dataset.")
+        raw_df = read_steps[0]["kwargs"].get("raw")
+        if raw_df is None or not isinstance(raw_df, pd.DataFrame):
+            raise ValueError("read_data(raw=...) is required for multinomial-binned CI.")
+        if raw_df.shape[0] == 0:
+            raise ValueError("Cannot compute CI with empty raw data.")
+
+        # Build multinomial scores over observed outcomes to define K bins.
+        observed_cols = [c for c in raw_df.columns if c != "prob"]
+        y = raw_df[observed_cols].astype(str).agg("_".join, axis=1)
+        y_codes, _ = pd.factorize(y)
+        if len(np.unique(y_codes)) < 2:
+            obs_scores = np.ones(raw_df.shape[0], dtype=float)
+        else:
+            exog = sm.add_constant(raw_df[observed_cols].astype(float), has_constant="add")
+            try:
+                model = sm.MNLogit(y_codes, exog)
+                fit = model.fit(disp=False)
+                pred = np.asarray(fit.predict(exog))
+                obs_scores = pred[np.arange(pred.shape[0]), y_codes]
+                if not np.isfinite(obs_scores).all():
+                    raise ValueError("Non-finite multinomial predictions.")
+            except Exception:
+                freqs = pd.Series(y_codes).value_counts(normalize=True)
+                obs_scores = pd.Series(y_codes).map(freqs).to_numpy()
+
+        k_target = max(1, min(int(self.K), raw_df.shape[0]))
+        try:
+            bins = pd.qcut(
+                pd.Series(obs_scores).rank(method="first"),
+                q=k_target,
+                labels=False,
+                duplicates="drop",
+            )
+        except Exception:
+            bins = pd.Series(np.zeros(raw_df.shape[0], dtype=int))
+        if pd.Series(bins).dropna().nunique() == 0:
+            bins = pd.Series(np.zeros(raw_df.shape[0], dtype=int))
+
+        n = int(raw_df.shape[0])
+        b = max(2, min(n, int(np.floor(n ** 0.7))))
+        theta_n_lb = float(point_result["point lb dual"])
+        theta_n_ub = float(point_result["point ub dual"])
+
+        lb_sub, ub_sub = [], []
+        for bin_id in sorted(pd.Series(bins).dropna().unique().tolist()):
+            bin_df = raw_df.loc[pd.Series(bins) == bin_id]
+            if bin_df.shape[0] == 0:
+                continue
+            replace = bin_df.shape[0] < b
+            sub_df = bin_df.sample(n=(b if replace else min(b, bin_df.shape[0])), replace=replace).reset_index(drop=True)
+
+            replay_bounder = Bounder(
+                deepcopy(self._default_bounder.dag),
+                deepcopy(self._default_bounder.number_values),
+            )
+            for step in self._operation_log:
+                method = step["method"]
+                call_args = deepcopy(step["args"])
+                call_kwargs = deepcopy(step["kwargs"])
+                if method == "read_data":
+                    call_kwargs["raw"] = sub_df
+                getattr(replay_bounder, method)(*call_args, **call_kwargs)
+            out = replay_bounder.solve(
+                ci=False,
+                maxtime=maxtime,
+                theta=theta,
+                verbose_optimizer=False,
+                verbose_result=False,
+                limits=limits,
+            )
+            lb_sub.append(float(out["point lb dual"]))
+            ub_sub.append(float(out["point ub dual"]))
+
+        if len(lb_sub) == 0 or len(ub_sub) == 0:
+            raise RuntimeError("No bin-level subsample solves were produced.")
+        lb_arr = np.asarray(lb_sub, dtype=float)
+        ub_arr = np.asarray(ub_sub, dtype=float)
+
+        if ci_method == "empirical_subsample_quantile":
+            ci_out = {
+                "2.5% lb bounds": float(np.quantile(lb_arr, 0.025)),
+                "97.5% ub bounds": float(np.quantile(ub_arr, 0.975)),
+                "1% lb bounds": float(np.quantile(lb_arr, 0.01)),
+                "99% ub bounds": float(np.quantile(ub_arr, 0.99)),
+            }
+        else:
+            t_lb = np.sqrt(b) * (lb_arr - theta_n_lb)
+            t_ub = np.sqrt(b) * (ub_arr - theta_n_ub)
+            sqrt_n = np.sqrt(n)
+            ci_out = {
+                "2.5% lb bounds": float(theta_n_lb - np.quantile(t_lb, 0.975) / sqrt_n),
+                "97.5% ub bounds": float(theta_n_ub - np.quantile(t_ub, 0.025) / sqrt_n),
+                "1% lb bounds": float(theta_n_lb - np.quantile(t_lb, 0.99) / sqrt_n),
+                "99% ub bounds": float(theta_n_ub - np.quantile(t_ub, 0.01) / sqrt_n),
+            }
+        ci_out["ci method"] = ci_method
+        ci_out["K bins used"] = int(pd.Series(bins).nunique())
+        ci_out["subsample size b"] = int(b)
+        return {**point_result, **ci_out}
+
+    def _subsample_rows(self, df, subsample_rate, subsample_size, random_state=None):
         n = int(df.shape[0])
         if n == 0:
             raise ValueError("Cannot subsample empty dataset.")
@@ -396,11 +529,79 @@ class causalProblem:
                 m = min(n, max(80, int(np.floor(n ** subsample_rate))))
         else:
             m = min(n, int(subsample_size))
-        return df.sample(n=m, replace=False)
+        return df.sample(n=m, replace=False, random_state=random_state)
 
-    def _solve_with_subsampling_ci(self, *args, **kwargs):
+    def _run_subsampling_replication(
+        self,
+        rep_seed,
+        maxtime,
+        theta,
+        verbose_optimizer,
+        limits,
+        subsample_rate,
+        subsample_size,
+    ):
         from .Bounder import Bounder
 
+        replay_bounder = Bounder(
+            deepcopy(self._default_bounder.dag),
+            deepcopy(self._default_bounder.number_values),
+        )
+        rep_n_total = 0
+        rep_m_total = 0
+        rng = np.random.default_rng(int(rep_seed))
+        for step in self._operation_log:
+            method = step["method"]
+            call_args = deepcopy(step["args"])
+            call_kwargs = deepcopy(step["kwargs"])
+            if method == "load_data":
+                if call_kwargs.get("raw") is None and call_kwargs.get("summary") is None:
+                    raise ValueError("Subsampling CI requires load_data with raw or summary data.")
+                if call_kwargs.get("raw") is not None:
+                    raw_df = call_kwargs["raw"]
+                    sub_df = self._subsample_rows(
+                        raw_df,
+                        subsample_rate,
+                        subsample_size,
+                        random_state=int(rng.integers(0, 2**32 - 1)),
+                    ).reset_index(drop=True)
+                    rep_n_total += int(raw_df.shape[0])
+                    rep_m_total += int(sub_df.shape[0])
+                    call_kwargs["raw"] = sub_df
+                elif call_kwargs.get("summary") is not None:
+                    # Summary data has no row-level units; keep it unchanged for now.
+                    call_kwargs["summary"] = call_kwargs["summary"].copy(deep=True)
+            elif method == "read_data":
+                if call_kwargs.get("raw") is None:
+                    raise ValueError("Subsampling CI with read_data requires raw data.")
+                raw_df = call_kwargs["raw"]
+                sub_df = self._subsample_rows(
+                    raw_df,
+                    subsample_rate,
+                    subsample_size,
+                    random_state=int(rng.integers(0, 2**32 - 1)),
+                ).reset_index(drop=True)
+                rep_n_total += int(raw_df.shape[0])
+                rep_m_total += int(sub_df.shape[0])
+                call_kwargs["raw"] = sub_df
+            getattr(replay_bounder, method)(*call_args, **call_kwargs)
+
+        res = replay_bounder.solve(
+            ci=False,
+            maxtime=maxtime,
+            theta=theta,
+            verbose_optimizer=verbose_optimizer,
+            verbose_result=False,
+            limits=limits,
+        )
+        return (
+            float(res["point lb dual"]),
+            float(res["point ub dual"]),
+            rep_n_total,
+            rep_m_total,
+        )
+
+    def _solve_with_subsampling_ci(self, *args, **kwargs):
         if len(args) > 0:
             raise ValueError("Use keyword arguments when ci=True in causalProblem.solve().")
 
@@ -412,6 +613,15 @@ class causalProblem:
         limits = kwargs.get("limits", [None, None])
         subsample_rate = float(kwargs.pop("subsample_rate", 0.7))
         subsample_size = kwargs.pop("subsample_size", None)
+        ci_workers = int(kwargs.pop("ci_workers", kwargs.pop("executions", 1)))
+        if ci_workers < 1:
+            raise ValueError("ci_workers must be >= 1")
+        ci_method = kwargs.pop("ci_method", "empirical_subsample_quantile")
+        if ci_method not in {"empirical_subsample_quantile", "recentered_subsampling"}:
+            raise ValueError(
+                "Unsupported ci_method. Use 'empirical_subsample_quantile' or "
+                "'recentered_subsampling'."
+            )
 
         point_result = self._default_bounder.solve(
             ci=False,
@@ -426,43 +636,48 @@ class causalProblem:
             raise ValueError("No recorded operations available for subsampling CI.")
 
         lb_samples, ub_samples = [], []
-        for _ in range(nsamples):
-            replay_bounder = Bounder(
-                deepcopy(self._default_bounder.dag),
-                deepcopy(self._default_bounder.number_values),
-            )
-            for step in self._operation_log:
-                method = step["method"]
-                call_args = deepcopy(step["args"])
-                call_kwargs = deepcopy(step["kwargs"])
-                if method == "load_data":
-                    if call_kwargs.get("raw") is None and call_kwargs.get("summary") is None:
-                        raise ValueError("Subsampling CI requires load_data with raw or summary data.")
-                    if call_kwargs.get("raw") is not None:
-                        call_kwargs["raw"] = self._subsample_rows(
-                            call_kwargs["raw"], subsample_rate, subsample_size
-                        ).reset_index(drop=True)
-                    elif call_kwargs.get("summary") is not None:
-                        # Summary data has no row-level units; keep it unchanged for now.
-                        call_kwargs["summary"] = call_kwargs["summary"].copy(deep=True)
-                elif method == "read_data":
-                    if call_kwargs.get("raw") is None:
-                        raise ValueError("Subsampling CI with read_data requires raw data.")
-                    call_kwargs["raw"] = self._subsample_rows(
-                        call_kwargs["raw"], subsample_rate, subsample_size
-                    ).reset_index(drop=True)
-                getattr(replay_bounder, method)(*call_args, **call_kwargs)
+        n_eff_total = 0
+        m_eff_total = 0
+        rep_seeds = np.random.default_rng().integers(0, 2**32 - 1, size=nsamples)
 
-            res = replay_bounder.solve(
-                ci=False,
-                maxtime=maxtime,
-                theta=theta,
-                verbose_optimizer=False,
-                verbose_result=False,
-                limits=limits,
-            )
-            lb_samples.append(float(res["point lb dual"]))
-            ub_samples.append(float(res["point ub dual"]))
+        if ci_workers == 1:
+            for rep_seed in rep_seeds:
+                lb, ub, rep_n_total, rep_m_total = self._run_subsampling_replication(
+                    rep_seed=rep_seed,
+                    maxtime=maxtime,
+                    theta=theta,
+                    verbose_optimizer=False,
+                    limits=limits,
+                    subsample_rate=subsample_rate,
+                    subsample_size=subsample_size,
+                )
+                if n_eff_total == 0 and rep_n_total > 0:
+                    n_eff_total = rep_n_total
+                    m_eff_total = rep_m_total
+                lb_samples.append(lb)
+                ub_samples.append(ub)
+        else:
+            with ThreadPoolExecutor(max_workers=ci_workers) as ex:
+                futures = [
+                    ex.submit(
+                        self._run_subsampling_replication,
+                        rep_seed=rep_seed,
+                        maxtime=maxtime,
+                        theta=theta,
+                        verbose_optimizer=False,
+                        limits=limits,
+                        subsample_rate=subsample_rate,
+                        subsample_size=subsample_size,
+                    )
+                    for rep_seed in rep_seeds
+                ]
+                for fut in as_completed(futures):
+                    lb, ub, rep_n_total, rep_m_total = fut.result()
+                    if n_eff_total == 0 and rep_n_total > 0:
+                        n_eff_total = rep_n_total
+                        m_eff_total = rep_m_total
+                    lb_samples.append(lb)
+                    ub_samples.append(ub)
 
         lb_arr = np.asarray(lb_samples, dtype=float)
         ub_arr = np.asarray(ub_samples, dtype=float)
@@ -472,12 +687,38 @@ class causalProblem:
         lb_arr = lb_arr[valid]
         ub_arr = ub_arr[valid]
 
-        ci_out = {
-            "2.5% lb bounds": float(np.quantile(lb_arr, 0.025)),
-            "97.5% ub bounds": float(np.quantile(ub_arr, 0.975)),
-            "1% lb bounds": float(np.quantile(lb_arr, 0.01)),
-            "99% ub bounds": float(np.quantile(ub_arr, 0.99)),
-        }
+        if ci_method == "empirical_subsample_quantile":
+            ci_out = {
+                "2.5% lb bounds": float(np.quantile(lb_arr, 0.025)),
+                "97.5% ub bounds": float(np.quantile(ub_arr, 0.975)),
+                "1% lb bounds": float(np.quantile(lb_arr, 0.01)),
+                "99% ub bounds": float(np.quantile(ub_arr, 0.99)),
+            }
+        else:
+            if n_eff_total <= 0 or m_eff_total <= 0:
+                raise ValueError(
+                    "recentered_subsampling requires raw row-level data loaded via "
+                    "read_data(raw=...) or load_data(raw=...)."
+                )
+            theta_n_lb = float(point_result["point lb dual"])
+            theta_n_ub = float(point_result["point ub dual"])
+            t_lb = np.sqrt(m_eff_total) * (lb_arr - theta_n_lb)
+            t_ub = np.sqrt(m_eff_total) * (ub_arr - theta_n_ub)
+            sqrt_n = np.sqrt(n_eff_total)
+            q_lb_025, q_lb_975 = np.quantile(t_lb, [0.025, 0.975])
+            q_lb_01, q_lb_99 = np.quantile(t_lb, [0.01, 0.99])
+            q_ub_025, q_ub_975 = np.quantile(t_ub, [0.025, 0.975])
+            q_ub_01, q_ub_99 = np.quantile(t_ub, [0.01, 0.99])
+            ci_out = {
+                # Lower endpoint of CI for lower bound (95% and 98% two-sided analogs).
+                "2.5% lb bounds": float(theta_n_lb - q_lb_975 / sqrt_n),
+                "1% lb bounds": float(theta_n_lb - q_lb_99 / sqrt_n),
+                # Upper endpoint of CI for upper bound.
+                "97.5% ub bounds": float(theta_n_ub - q_ub_025 / sqrt_n),
+                "99% ub bounds": float(theta_n_ub - q_ub_01 / sqrt_n),
+            }
+        ci_out["ci method"] = ci_method
+        ci_out["ci workers"] = ci_workers
         return {**point_result, **ci_out}
 
     def _warn_proxy(self):
@@ -612,7 +853,11 @@ class causalProblem:
         ci = kwargs.get("ci", False)
         if len(self._bounders) == 0:
             if ci:
-                return self._solve_with_subsampling_ci(*args, **kwargs)
+                if not self._has_covariates:
+                    return self._solve_with_subsampling_ci(*args, **kwargs)
+                raise NotImplementedError(
+                    "CI path with non-empty covariates is not implemented yet."
+                )
             return self._default_bounder.solve(*args, **kwargs)
 
         # Orchestration path: solve all registered bounders.
@@ -622,12 +867,6 @@ class causalProblem:
 
     def is_active(self, *args, **kwargs):
         return self._default_bounder.is_active(*args, **kwargs)
-
-    def generate_samples(self, *args, **kwargs):
-        return self._default_bounder.generate_samples(*args, **kwargs)
-
-    def calculate_ci(self, *args, **kwargs):
-        return self._default_bounder.calculate_ci(*args, **kwargs)
 
     def check_constraints(self, *args, **kwargs):
         return self._default_bounder.check_constraints(*args, **kwargs)
