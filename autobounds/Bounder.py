@@ -60,8 +60,33 @@ class Bounder:
         self.samples = None
         self.safe_min = 0.0001 # This is a safe minimum to avoid division by zero
         self.maxtime, self.theta = None, 0.01  # There is no maximum time a program will be running
+        self._used_discrete_covariate_path = False
+        self._covariate_support_size = None
+
+    def _is_discrete_covariate(self, series):
+        if (
+            pd.api.types.is_bool_dtype(series)
+            or pd.api.types.is_integer_dtype(series)
+            or pd.api.types.is_categorical_dtype(series)
+            or pd.api.types.is_object_dtype(series)
+        ):
+            return True
+        if pd.api.types.is_float_dtype(series):
+            vals = series.dropna().to_numpy()
+            if vals.size == 0:
+                return True
+            return np.all(np.isclose(vals, np.round(vals)))
+        return False
+
+    def _use_empirical_covariate_path(self, datam, covariates, nk):
+        cov_df = datam[covariates]
+        is_discrete = all(self._is_discrete_covariate(cov_df[col]) for col in covariates)
+        support_size = int(cov_df.drop_duplicates().shape[0])
+        use_empirical = is_discrete and support_size <= int(nk)
+        return use_empirical, support_size
+
     def read_data(self, raw = None, covariates = None, inference = False, cond = [ ],
-                  categorical = True, model = None, nsamples = 1000):
+                  categorical = True, model = None, nsamples = 1000, nk = 200):
         """ This is the new method for loading data in place of 
         self.load_data, which will be outdated as a low version
 
@@ -76,9 +101,12 @@ class Bounder:
         This options is useful when there is selection
         """
         self.categorical = categorical
+        self.nk = int(nk)
         self.covariates = covariates
         self.inference = inference
         self.data_cond = cond
+        self._used_discrete_covariate_path = False
+        self._covariate_support_size = None
         if raw is not None:
             data = raw
             datam = deepcopy(data) if isinstance(data, pd.DataFrame) else pd.read_csv(data)
@@ -102,6 +130,12 @@ class Bounder:
         else: # If covariates exist, they become X
             if len(cond) > 0:
                 raise Exception("Conditional data is not supported in read_data method if covariates are introduced. Please remove cond argument.")
+            if not self.categorical:
+                use_empirical, support_size = self._use_empirical_covariate_path(datam, covariates, self.nk)
+                self._covariate_support_size = support_size
+                if use_empirical:
+                    self.categorical = True
+                    self._used_discrete_covariate_path = True
             self.covariates_data = (get_summary_from_raw(self.datam[self.covariates])
                     .rename({'prob': 'prob_x'}, axis = 1))
             self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))

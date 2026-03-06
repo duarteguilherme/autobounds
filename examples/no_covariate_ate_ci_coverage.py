@@ -9,12 +9,29 @@ import io
 import sys
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from autobounds import DAG, causalProblem
-from examples.iv_ate_ci_subsampling import simulate_iv_data
+
+
+def simulate_iv_data(n: int, seed: int = 2026) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+
+    u = rng.binomial(1, 0.5, size=n)
+    z = rng.binomial(1, 0.5, size=n)
+
+    p_x = np.clip(0.10 + 0.45 * z + 0.25 * u, 0.01, 0.99)
+    x = rng.binomial(1, p_x, size=n)
+
+    p_y = np.clip(0.05 + 0.35 * x + 0.25 * u, 0.01, 0.99)
+    y = rng.binomial(1, p_y, size=n)
+
+    return pd.DataFrame({"Z": z, "X": x, "Y": y})
 
 
 def build_problem(df):
