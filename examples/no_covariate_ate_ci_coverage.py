@@ -60,7 +60,6 @@ def solve_ci(
     b: int,
     ci_workers: int,
     subsample_rate: float,
-    ci_method: str,
     maxtime: float,
 ) -> dict:
     buf = io.StringIO()
@@ -70,7 +69,7 @@ def solve_ci(
             nsamples=b,
             ci_workers=ci_workers,
             subsample_rate=subsample_rate,
-            ci_method=ci_method,
+            ci_method="recentered_subsampling",
             maxtime=maxtime,
             verbose_optimizer=False,
             verbose_result=False,
@@ -84,13 +83,7 @@ def main() -> None:
     parser.add_argument("--n", type=int, default=600, help="Rows per Monte Carlo dataset.")
     parser.add_argument("--b", type=int, default=500, help="Subsampling reps per dataset.")
     parser.add_argument("--ci-workers", type=int, default=16, help="Parallel workers inside each CI solve.")
-    parser.add_argument("--subsample-rate", type=float, default=0.7)
-    parser.add_argument(
-        "--ci-method",
-        type=str,
-        default="recentered_subsampling",
-        choices=["recentered_subsampling", "empirical_subsample_quantile"],
-    )
+    parser.add_argument("--subsample-rate", type=float, default=(2.0 / 3.0))
     parser.add_argument("--true-n", type=int, default=120000, help="Rows for true-bound proxy.")
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--rep-seed-base", type=int, default=7000)
@@ -114,7 +107,6 @@ def main() -> None:
             b=args.b,
             ci_workers=args.ci_workers,
             subsample_rate=args.subsample_rate,
-            ci_method=args.ci_method,
             maxtime=args.maxtime,
         )
         lb = float(out["2.5% lb bounds"])

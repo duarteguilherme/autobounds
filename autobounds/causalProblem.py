@@ -402,6 +402,10 @@ class causalProblem:
         verbose_result = kwargs.get("verbose_result", True)
         limits = kwargs.get("limits", [None, None])
         ci_method = kwargs.get("ci_method", "recentered_subsampling")
+        if ci_method != "recentered_subsampling":
+            raise ValueError(
+                "Unsupported ci_method. Only 'recentered_subsampling' is available."
+            )
 
         point_result = self._default_bounder.solve(
             ci=False,
@@ -496,23 +500,15 @@ class causalProblem:
         lb_arr = np.asarray(lb_sub, dtype=float)
         ub_arr = np.asarray(ub_sub, dtype=float)
 
-        if ci_method == "empirical_subsample_quantile":
-            ci_out = {
-                "2.5% lb bounds": float(np.quantile(lb_arr, 0.025)),
-                "97.5% ub bounds": float(np.quantile(ub_arr, 0.975)),
-                "1% lb bounds": float(np.quantile(lb_arr, 0.01)),
-                "99% ub bounds": float(np.quantile(ub_arr, 0.99)),
-            }
-        else:
-            t_lb = np.sqrt(b) * (lb_arr - theta_n_lb)
-            t_ub = np.sqrt(b) * (ub_arr - theta_n_ub)
-            sqrt_n = np.sqrt(n)
-            ci_out = {
-                "2.5% lb bounds": float(theta_n_lb - np.quantile(t_lb, 0.975) / sqrt_n),
-                "97.5% ub bounds": float(theta_n_ub - np.quantile(t_ub, 0.025) / sqrt_n),
-                "1% lb bounds": float(theta_n_lb - np.quantile(t_lb, 0.99) / sqrt_n),
-                "99% ub bounds": float(theta_n_ub - np.quantile(t_ub, 0.01) / sqrt_n),
-            }
+        t_lb = np.sqrt(b) * (lb_arr - theta_n_lb)
+        t_ub = np.sqrt(b) * (ub_arr - theta_n_ub)
+        sqrt_n = np.sqrt(n)
+        ci_out = {
+            "2.5% lb bounds": float(theta_n_lb - np.quantile(t_lb, 0.975) / sqrt_n),
+            "97.5% ub bounds": float(theta_n_ub - np.quantile(t_ub, 0.025) / sqrt_n),
+            "1% lb bounds": float(theta_n_lb - np.quantile(t_lb, 0.99) / sqrt_n),
+            "99% ub bounds": float(theta_n_ub - np.quantile(t_ub, 0.01) / sqrt_n),
+        }
         ci_out["ci method"] = ci_method
         ci_out["K bins used"] = int(pd.Series(bins).nunique())
         ci_out["subsample size b"] = int(b)
@@ -616,11 +612,10 @@ class causalProblem:
         ci_workers = int(kwargs.pop("ci_workers", kwargs.pop("executions", 1)))
         if ci_workers < 1:
             raise ValueError("ci_workers must be >= 1")
-        ci_method = kwargs.pop("ci_method", "empirical_subsample_quantile")
-        if ci_method not in {"empirical_subsample_quantile", "recentered_subsampling"}:
+        ci_method = kwargs.pop("ci_method", "recentered_subsampling")
+        if ci_method != "recentered_subsampling":
             raise ValueError(
-                "Unsupported ci_method. Use 'empirical_subsample_quantile' or "
-                "'recentered_subsampling'."
+                "Unsupported ci_method. Only 'recentered_subsampling' is available."
             )
 
         point_result = self._default_bounder.solve(
@@ -687,36 +682,28 @@ class causalProblem:
         lb_arr = lb_arr[valid]
         ub_arr = ub_arr[valid]
 
-        if ci_method == "empirical_subsample_quantile":
-            ci_out = {
-                "2.5% lb bounds": float(np.quantile(lb_arr, 0.025)),
-                "97.5% ub bounds": float(np.quantile(ub_arr, 0.975)),
-                "1% lb bounds": float(np.quantile(lb_arr, 0.01)),
-                "99% ub bounds": float(np.quantile(ub_arr, 0.99)),
-            }
-        else:
-            if n_eff_total <= 0 or m_eff_total <= 0:
-                raise ValueError(
-                    "recentered_subsampling requires raw row-level data loaded via "
-                    "read_data(raw=...) or load_data(raw=...)."
-                )
-            theta_n_lb = float(point_result["point lb dual"])
-            theta_n_ub = float(point_result["point ub dual"])
-            t_lb = np.sqrt(m_eff_total) * (lb_arr - theta_n_lb)
-            t_ub = np.sqrt(m_eff_total) * (ub_arr - theta_n_ub)
-            sqrt_n = np.sqrt(n_eff_total)
-            q_lb_025, q_lb_975 = np.quantile(t_lb, [0.025, 0.975])
-            q_lb_01, q_lb_99 = np.quantile(t_lb, [0.01, 0.99])
-            q_ub_025, q_ub_975 = np.quantile(t_ub, [0.025, 0.975])
-            q_ub_01, q_ub_99 = np.quantile(t_ub, [0.01, 0.99])
-            ci_out = {
-                # Lower endpoint of CI for lower bound (95% and 98% two-sided analogs).
-                "2.5% lb bounds": float(theta_n_lb - q_lb_975 / sqrt_n),
-                "1% lb bounds": float(theta_n_lb - q_lb_99 / sqrt_n),
-                # Upper endpoint of CI for upper bound.
-                "97.5% ub bounds": float(theta_n_ub - q_ub_025 / sqrt_n),
-                "99% ub bounds": float(theta_n_ub - q_ub_01 / sqrt_n),
-            }
+        if n_eff_total <= 0 or m_eff_total <= 0:
+            raise ValueError(
+                "recentered_subsampling requires raw row-level data loaded via "
+                "read_data(raw=...) or load_data(raw=...)."
+            )
+        theta_n_lb = float(point_result["point lb dual"])
+        theta_n_ub = float(point_result["point ub dual"])
+        t_lb = np.sqrt(m_eff_total) * (lb_arr - theta_n_lb)
+        t_ub = np.sqrt(m_eff_total) * (ub_arr - theta_n_ub)
+        sqrt_n = np.sqrt(n_eff_total)
+        q_lb_025, q_lb_975 = np.quantile(t_lb, [0.025, 0.975])
+        q_lb_01, q_lb_99 = np.quantile(t_lb, [0.01, 0.99])
+        q_ub_025, q_ub_975 = np.quantile(t_ub, [0.025, 0.975])
+        q_ub_01, q_ub_99 = np.quantile(t_ub, [0.01, 0.99])
+        ci_out = {
+            # Lower endpoint of CI for lower bound (95% and 98% two-sided analogs).
+            "2.5% lb bounds": float(theta_n_lb - q_lb_975 / sqrt_n),
+            "1% lb bounds": float(theta_n_lb - q_lb_99 / sqrt_n),
+            # Upper endpoint of CI for upper bound.
+            "97.5% ub bounds": float(theta_n_ub - q_ub_025 / sqrt_n),
+            "99% ub bounds": float(theta_n_ub - q_ub_01 / sqrt_n),
+        }
         ci_out["ci method"] = ci_method
         ci_out["ci workers"] = ci_workers
         return {**point_result, **ci_out}
@@ -853,11 +840,7 @@ class causalProblem:
         ci = kwargs.get("ci", False)
         if len(self._bounders) == 0:
             if ci:
-                if not self._has_covariates:
-                    return self._solve_with_subsampling_ci(*args, **kwargs)
-                raise NotImplementedError(
-                    "CI path with non-empty covariates is not implemented yet."
-                )
+                return self._solve_with_subsampling_ci(*args, **kwargs)
             return self._default_bounder.solve(*args, **kwargs)
 
         # Orchestration path: solve all registered bounders.

@@ -48,10 +48,9 @@ def build_problem(df: pd.DataFrame) -> causalProblem:
 
 
 def solve_point(problem: causalProblem, maxtime: float) -> dict:
-    # CI with covariates is intentionally delegated to Bounder for now.
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-        return problem.get_bounder("default").solve(
+        return problem.solve(
             ci=False,
             maxtime=maxtime,
             verbose_optimizer=False,
@@ -60,12 +59,21 @@ def solve_point(problem: causalProblem, maxtime: float) -> dict:
         )
 
 
-def solve_ci(problem: causalProblem, nsamples: int, maxtime: float) -> dict:
+def solve_ci(
+    problem: causalProblem,
+    nsamples: int,
+    ci_workers: int,
+    subsample_rate: float,
+    maxtime: float,
+) -> dict:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-        return problem.get_bounder("default").solve(
+        return problem.solve(
             ci=True,
             nsamples=nsamples,
+            ci_workers=ci_workers,
+            subsample_rate=subsample_rate,
+            ci_method="recentered_subsampling",
             maxtime=maxtime,
             verbose_optimizer=False,
             verbose_result=False,
@@ -77,13 +85,18 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--r", type=int, default=75, help="Number of Monte Carlo datasets.")
     parser.add_argument("--n", type=int, default=600, help="Rows per Monte Carlo dataset.")
-    parser.add_argument("--nsamples", type=int, default=100, help="CI inner reps.")
+    parser.add_argument("--b", type=int, default=500, help="Subsampling reps per dataset.")
+    parser.add_argument("--nsamples", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--ci-workers", type=int, default=16, help="Parallel workers inside each CI solve.")
+    parser.add_argument("--subsample-rate", type=float, default=(2.0 / 3.0))
     parser.add_argument("--true-n", type=int, default=120000, help="Rows for true-bound proxy.")
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--rep-seed-base", type=int, default=7000)
     parser.add_argument("--maxtime", type=float, default=6.0)
     parser.add_argument("--print-cis", action="store_true")
     args = parser.parse_args()
+
+    b = args.b if args.nsamples is None else args.nsamples
 
     print(f"Estimating true bounds with true_n={args.true_n} ...", flush=True)
     true_df = simulate_covariate_data(args.true_n, args.seed)
@@ -96,7 +109,13 @@ def main() -> None:
     rep_rows = []
     for r in range(args.r):
         df = simulate_covariate_data(args.n, args.rep_seed_base + r)
-        out = solve_ci(build_problem(df), nsamples=args.nsamples, maxtime=args.maxtime)
+        out = solve_ci(
+            build_problem(df),
+            nsamples=b,
+            ci_workers=args.ci_workers,
+            subsample_rate=args.subsample_rate,
+            maxtime=args.maxtime,
+        )
         lb = float(out["2.5% lb bounds"])
         ub = float(out["97.5% ub bounds"])
         lb_ok = lb <= true_lb
@@ -124,7 +143,7 @@ def main() -> None:
             )
 
     print("----- FINAL -----")
-    print(f"R={args.r} n={args.n} nsamples={args.nsamples}")
+    print(f"R={args.r} n={args.n} B={b}")
     print(f"lb_coverage={cover_lb/args.r:.6f}")
     print(f"ub_coverage={cover_ub/args.r:.6f}")
     print(f"joint_coverage={cover_joint/args.r:.6f}")

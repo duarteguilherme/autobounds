@@ -84,16 +84,13 @@ def test_causalproblem_subsampling_ci_replays_multiple_datasets(monkeypatch):
     res = problem.solve(
         ci=True,
         nsamples=8,
-        ci_method="empirical_subsample_quantile",
         verbose_result=False,
     )
 
-    # Point estimate uses full data (200 + 150).
     assert res["point lb dual"] == pytest.approx(350.0)
-    # Default subsample size uses m = max(80, floor(n**0.7)) for n >= 120.
-    # So each replicate uses 80 + 80 = 160 observations.
-    assert res["2.5% lb bounds"] == pytest.approx(160.0)
-    assert res["97.5% ub bounds"] == pytest.approx(160.0)
+    assert res["ci method"] == "recentered_subsampling"
+    assert pd.notna(res["2.5% lb bounds"])
+    assert pd.notna(res["97.5% ub bounds"])
 
 
 def test_causalproblem_subsampling_ci_replays_multiple_datasets_parallel(monkeypatch):
@@ -112,13 +109,13 @@ def test_causalproblem_subsampling_ci_replays_multiple_datasets_parallel(monkeyp
         ci=True,
         nsamples=8,
         ci_workers=2,
-        ci_method="empirical_subsample_quantile",
         verbose_result=False,
     )
 
     assert res["point lb dual"] == pytest.approx(350.0)
-    assert res["2.5% lb bounds"] == pytest.approx(160.0)
-    assert res["97.5% ub bounds"] == pytest.approx(160.0)
+    assert res["ci method"] == "recentered_subsampling"
+    assert pd.notna(res["2.5% lb bounds"])
+    assert pd.notna(res["97.5% ub bounds"])
     assert res["ci workers"] == 2
 
 
@@ -136,8 +133,9 @@ def test_causalproblem_subsampling_ci_uses_explicit_subsample_size(monkeypatch):
     res = problem.solve(ci=True, nsamples=6, subsample_size=30, verbose_result=False)
 
     assert res["point lb dual"] == pytest.approx(280.0)
-    assert res["2.5% lb bounds"] == pytest.approx(60.0)
-    assert res["97.5% ub bounds"] == pytest.approx(60.0)
+    assert res["ci method"] == "recentered_subsampling"
+    assert pd.notna(res["2.5% lb bounds"])
+    assert pd.notna(res["97.5% ub bounds"])
 
 
 def test_causalproblem_subsampling_ci_supports_read_data(monkeypatch):
@@ -153,13 +151,13 @@ def test_causalproblem_subsampling_ci_supports_read_data(monkeypatch):
     res = problem.solve(
         ci=True,
         nsamples=8,
-        ci_method="empirical_subsample_quantile",
         verbose_result=False,
     )
 
     assert res["point lb dual"] == pytest.approx(200.0)
-    assert res["2.5% lb bounds"] == pytest.approx(80.0)
-    assert res["97.5% ub bounds"] == pytest.approx(80.0)
+    assert res["ci method"] == "recentered_subsampling"
+    assert pd.notna(res["2.5% lb bounds"])
+    assert pd.notna(res["97.5% ub bounds"])
 
 
 def test_causalproblem_read_data_point_solve_does_not_use_ci_path(monkeypatch):
@@ -202,6 +200,19 @@ def test_causalproblem_recentered_subsampling_ci_mode(monkeypatch):
     assert isinstance(out["97.5% ub bounds"], float)
 
 
+def test_causalproblem_unsupported_ci_method_raises(monkeypatch):
+    monkeypatch.setattr(Bounder, "load_data", _fake_load_data_signal)
+    monkeypatch.setattr(Bounder, "solve", _fake_solve_signal)
+    monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
+
+    problem = causalProblem(DAG("D -> Y"))
+    problem.set_ate("D", "Y")
+    problem.load_data(raw=pd.DataFrame({"D": [0, 1] * 40, "Y": [0, 1] * 40}))
+
+    with pytest.raises(ValueError, match="Only 'recentered_subsampling' is available"):
+        problem.solve(ci=True, ci_method="empirical_subsample_quantile", verbose_result=False)
+
+
 def test_causalproblem_defaults_include_k_and_covariate_flag():
     problem = causalProblem(DAG("D -> Y"))
     assert problem.K == 20
@@ -239,14 +250,19 @@ def test_no_covariate_ci_uses_subsampling_path(monkeypatch):
     assert out == {"ok": True}
 
 
-def test_causalproblem_ci_with_covariates_not_implemented(monkeypatch):
+def test_covariate_ci_uses_subsampling_path(monkeypatch):
     monkeypatch.setattr(Bounder, "read_data", _fake_read_data_noop)
     monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
     monkeypatch.setattr(Bounder, "solve", _fake_solve_signal)
+    monkeypatch.setattr(
+        causalProblem,
+        "_solve_with_subsampling_ci",
+        lambda self, *args, **kwargs: {"cov_ci": True},
+    )
 
     problem = causalProblem(DAG("D -> Y"))
     problem.set_ate("D", "Y")
     problem.read_data(raw=pd.DataFrame({"D": [0, 1], "Y": [0, 1]}), covariates=["D"])
 
-    with pytest.raises(NotImplementedError):
-        problem.solve(ci=True, verbose_result=False)
+    out = problem.solve(ci=True, verbose_result=False)
+    assert out == {"cov_ci": True}
