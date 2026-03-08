@@ -266,3 +266,61 @@ def test_covariate_ci_uses_subsampling_path(monkeypatch):
 
     out = problem.solve(ci=True, verbose_result=False)
     assert out == {"cov_ci": True}
+
+
+def test_covariate_ci_uses_strata_read_data_without_bounder_covariates(monkeypatch):
+    read_covariates_args = []
+
+    def _fake_read_data_track(self, raw=None, covariates=None, **kwargs):
+        read_covariates_args.append(covariates)
+        if raw is None:
+            raise ValueError("Missing raw data.")
+        df = raw if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
+        if not hasattr(self, "_test_n_rows"):
+            self._test_n_rows = []
+        self._test_n_rows.append(int(df.shape[0]))
+        return None
+
+    monkeypatch.setattr(Bounder, "read_data", _fake_read_data_track)
+    monkeypatch.setattr(Bounder, "solve", _fake_solve)
+    monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
+
+    problem = causalProblem(DAG("D -> Y"))
+    problem.set_ate("D", "Y")
+    df = pd.DataFrame(
+        {
+            "X": [0] * 90 + [1] * 30,
+            "D": [0, 1] * 60,
+            "Y": [1, 0] * 60,
+        }
+    )
+    problem.read_data(raw=df, covariates=["X"])
+
+    out = problem.solve(ci=True, nsamples=6, ci_workers=2, verbose_result=False)
+
+    assert out["ci method"] == "recentered_subsampling"
+    assert len(read_covariates_args) > 0
+    assert read_covariates_args[0] == ["X"]
+    # Once in CI replay path, each stratum solve should use non-covariate read_data.
+    assert all(c is None for c in read_covariates_args[1:])
+
+
+def test_stratified_subsample_preserves_covariate_support():
+    problem = causalProblem(DAG("X -> Y"))
+    df = pd.DataFrame(
+        {
+            "X": [0] * 90 + [1] * 30,
+            "Y": [0, 1] * 60,
+        }
+    )
+    sub = problem._subsample_rows_stratified(
+        df,
+        covariates=["X"],
+        subsample_rate=2.0 / 3.0,
+        subsample_size=40,
+        random_state=123,
+    )
+
+    assert len(sub) == 40
+    levels = set(sub["X"].unique().tolist())
+    assert levels == {0, 1}

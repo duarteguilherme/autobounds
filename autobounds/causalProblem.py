@@ -527,6 +527,94 @@ class causalProblem:
             m = min(n, int(subsample_size))
         return df.sample(n=m, replace=False, random_state=random_state)
 
+    def _resolve_subsample_size(self, n, subsample_rate, subsample_size):
+        n = int(n)
+        if n == 0:
+            raise ValueError("Cannot subsample empty dataset.")
+        if subsample_size is None:
+            if n < 120:
+                return n
+            return min(n, max(80, int(np.floor(n ** subsample_rate))))
+        return min(n, int(subsample_size))
+
+    def _allocate_strata_counts(self, counts, m):
+        counts = np.asarray(counts, dtype=int)
+        n = int(counts.sum())
+        if n == 0:
+            raise ValueError("Cannot allocate subsamples over empty strata.")
+        if m >= n:
+            return counts.copy()
+
+        weights = counts / n
+        raw = m * weights
+        alloc = np.floor(raw).astype(int)
+
+        positive = counts > 0
+        for idx in np.where((alloc == 0) & positive)[0]:
+            alloc[idx] = 1
+
+        alloc = np.minimum(alloc, counts)
+        total = int(alloc.sum())
+
+        if total > m:
+            excess = total - m
+            removable = np.argsort(-(alloc - 1))
+            for idx in removable:
+                if excess == 0:
+                    break
+                drop = min(excess, max(0, alloc[idx] - 1))
+                alloc[idx] -= drop
+                excess -= drop
+        elif total < m:
+            deficit = m - total
+            room = counts - alloc
+            add_order = np.argsort(-(raw - np.floor(raw)))
+            while deficit > 0 and np.any(room > 0):
+                progressed = False
+                for idx in add_order:
+                    if room[idx] <= 0 or deficit == 0:
+                        continue
+                    alloc[idx] += 1
+                    room[idx] -= 1
+                    deficit -= 1
+                    progressed = True
+                    if deficit == 0:
+                        break
+                if not progressed:
+                    break
+        return alloc
+
+    def _subsample_rows_stratified(
+        self,
+        df,
+        covariates,
+        subsample_rate,
+        subsample_size,
+        random_state=None,
+    ):
+        if covariates is None or len(covariates) == 0:
+            return self._subsample_rows(df, subsample_rate, subsample_size, random_state=random_state)
+
+        n = int(df.shape[0])
+        m = self._resolve_subsample_size(n, subsample_rate, subsample_size)
+        if m >= n:
+            return df.sample(n=n, replace=False, random_state=random_state)
+
+        grouped = list(df.groupby(covariates, sort=False, dropna=False))
+        counts = np.array([g.shape[0] for _, g in grouped], dtype=int)
+        alloc = self._allocate_strata_counts(counts, m)
+
+        rng = np.random.default_rng(random_state)
+        chunks = []
+        for (_, g), take in zip(grouped, alloc):
+            if take <= 0:
+                continue
+            seed = int(rng.integers(0, 2**32 - 1))
+            chunks.append(g.sample(n=int(take), replace=False, random_state=seed))
+        if len(chunks) == 0:
+            raise RuntimeError("Stratified subsampling produced no rows.")
+        return pd.concat(chunks, axis=0).sample(frac=1, random_state=int(rng.integers(0, 2**32 - 1)))
+
     def _run_subsampling_replication(
         self,
         rep_seed,
@@ -539,6 +627,87 @@ class causalProblem:
     ):
         from .Bounder import Bounder
 
+        res, rep_n_total, rep_m_total = self._solve_from_operation_log(
+            maxtime=maxtime,
+            theta=theta,
+            verbose_optimizer=verbose_optimizer,
+            limits=limits,
+            subsample=True,
+            subsample_rate=subsample_rate,
+            subsample_size=subsample_size,
+            rep_seed=int(rep_seed),
+        )
+        return (
+            float(res["point lb dual"]),
+            float(res["point ub dual"]),
+            rep_n_total,
+            rep_m_total,
+        )
+
+    def _solve_covariate_read_data_by_strata(
+        self,
+        base_bounder,
+        raw_df,
+        covariates,
+        cond,
+        maxtime,
+        theta,
+        verbose_optimizer,
+        limits,
+    ):
+        if raw_df is None or raw_df.shape[0] == 0:
+            raise ValueError("Covariate read_data requires non-empty raw data.")
+        if covariates is None or len(covariates) == 0:
+            raise ValueError("covariates must be non-empty in covariate solve path.")
+
+        point_lb_dual = 0.0
+        point_ub_dual = 0.0
+        point_lb_primal = 0.0
+        point_ub_primal = 0.0
+
+        total_n = float(raw_df.shape[0])
+        for _, gdf in raw_df.groupby(covariates, sort=False, dropna=False):
+            w = float(gdf.shape[0]) / total_n
+            strata_bounder = deepcopy(base_bounder)
+            strata_bounder.read_data(
+                raw=gdf.drop(columns=covariates).reset_index(drop=True),
+                covariates=None,
+                inference=False,
+                cond=cond,
+            )
+            out = strata_bounder.solve(
+                ci=False,
+                maxtime=maxtime,
+                theta=theta,
+                verbose_optimizer=verbose_optimizer,
+                verbose_result=False,
+                limits=limits,
+            )
+            point_lb_dual += float(out["point lb dual"]) * w
+            point_ub_dual += float(out["point ub dual"]) * w
+            point_lb_primal += float(out["point lb primal"]) * w
+            point_ub_primal += float(out["point ub primal"]) * w
+
+        return {
+            "point lb dual": point_lb_dual,
+            "point ub dual": point_ub_dual,
+            "point lb primal": point_lb_primal,
+            "point ub primal": point_ub_primal,
+        }
+
+    def _solve_from_operation_log(
+        self,
+        maxtime,
+        theta,
+        verbose_optimizer,
+        limits,
+        subsample,
+        subsample_rate,
+        subsample_size,
+        rep_seed,
+    ):
+        from .Bounder import Bounder
+
         replay_bounder = Bounder(
             deepcopy(self._default_bounder.dag),
             deepcopy(self._default_bounder.number_values),
@@ -546,14 +715,17 @@ class causalProblem:
         rep_n_total = 0
         rep_m_total = 0
         rng = np.random.default_rng(int(rep_seed))
+        covariate_read_payload = None
+
         for step in self._operation_log:
             method = step["method"]
             call_args = deepcopy(step["args"])
             call_kwargs = deepcopy(step["kwargs"])
+
             if method == "load_data":
                 if call_kwargs.get("raw") is None and call_kwargs.get("summary") is None:
                     raise ValueError("Subsampling CI requires load_data with raw or summary data.")
-                if call_kwargs.get("raw") is not None:
+                if call_kwargs.get("raw") is not None and subsample:
                     raw_df = call_kwargs["raw"]
                     sub_df = self._subsample_rows(
                         raw_df,
@@ -565,37 +737,74 @@ class causalProblem:
                     rep_m_total += int(sub_df.shape[0])
                     call_kwargs["raw"] = sub_df
                 elif call_kwargs.get("summary") is not None:
-                    # Summary data has no row-level units; keep it unchanged for now.
                     call_kwargs["summary"] = call_kwargs["summary"].copy(deep=True)
-            elif method == "read_data":
+                getattr(replay_bounder, method)(*call_args, **call_kwargs)
+                continue
+
+            if method == "read_data":
                 if call_kwargs.get("raw") is None:
                     raise ValueError("Subsampling CI with read_data requires raw data.")
                 raw_df = call_kwargs["raw"]
-                sub_df = self._subsample_rows(
-                    raw_df,
-                    subsample_rate,
-                    subsample_size,
-                    random_state=int(rng.integers(0, 2**32 - 1)),
-                ).reset_index(drop=True)
-                rep_n_total += int(raw_df.shape[0])
-                rep_m_total += int(sub_df.shape[0])
-                call_kwargs["raw"] = sub_df
+                covariates = call_kwargs.get("covariates", None)
+                cond = call_kwargs.get("cond", [])
+
+                work_df = raw_df
+                if subsample:
+                    if covariates is not None and len(covariates) > 0:
+                        work_df = self._subsample_rows_stratified(
+                            raw_df,
+                            covariates=covariates,
+                            subsample_rate=subsample_rate,
+                            subsample_size=subsample_size,
+                            random_state=int(rng.integers(0, 2**32 - 1)),
+                        ).reset_index(drop=True)
+                    else:
+                        work_df = self._subsample_rows(
+                            raw_df,
+                            subsample_rate,
+                            subsample_size,
+                            random_state=int(rng.integers(0, 2**32 - 1)),
+                        ).reset_index(drop=True)
+                    rep_n_total += int(raw_df.shape[0])
+                    rep_m_total += int(work_df.shape[0])
+                elif rep_n_total == 0:
+                    rep_n_total += int(raw_df.shape[0])
+                    rep_m_total += int(work_df.shape[0])
+
+                if covariates is not None and len(covariates) > 0:
+                    covariate_read_payload = {
+                        "raw_df": work_df,
+                        "covariates": covariates,
+                        "cond": cond,
+                    }
+                else:
+                    call_kwargs["raw"] = work_df
+                    getattr(replay_bounder, method)(*call_args, **call_kwargs)
+                continue
+
             getattr(replay_bounder, method)(*call_args, **call_kwargs)
 
-        res = replay_bounder.solve(
-            ci=False,
-            maxtime=maxtime,
-            theta=theta,
-            verbose_optimizer=verbose_optimizer,
-            verbose_result=False,
-            limits=limits,
-        )
-        return (
-            float(res["point lb dual"]),
-            float(res["point ub dual"]),
-            rep_n_total,
-            rep_m_total,
-        )
+        if covariate_read_payload is not None:
+            res = self._solve_covariate_read_data_by_strata(
+                base_bounder=replay_bounder,
+                raw_df=covariate_read_payload["raw_df"],
+                covariates=covariate_read_payload["covariates"],
+                cond=covariate_read_payload["cond"],
+                maxtime=maxtime,
+                theta=theta,
+                verbose_optimizer=verbose_optimizer,
+                limits=limits,
+            )
+        else:
+            res = replay_bounder.solve(
+                ci=False,
+                maxtime=maxtime,
+                theta=theta,
+                verbose_optimizer=verbose_optimizer,
+                verbose_result=False,
+                limits=limits,
+            )
+        return res, rep_n_total, rep_m_total
 
     def _solve_with_subsampling_ci(self, *args, **kwargs):
         if len(args) > 0:
@@ -618,14 +827,20 @@ class causalProblem:
                 "Unsupported ci_method. Only 'recentered_subsampling' is available."
             )
 
-        point_result = self._default_bounder.solve(
-            ci=False,
+        point_result, _, _ = self._solve_from_operation_log(
             maxtime=maxtime,
             theta=theta,
             verbose_optimizer=verbose_optimizer,
-            verbose_result=verbose_result,
             limits=limits,
+            subsample=False,
+            subsample_rate=subsample_rate,
+            subsample_size=subsample_size,
+            rep_seed=0,
         )
+        if verbose_result:
+            print("Point estimates\n")
+            print(f"Dual: [{point_result['point lb dual']}, {point_result['point ub dual']}]")
+            print(f"Primal: [{point_result['point lb primal']}, {point_result['point ub primal']}]")
 
         if len(self._operation_log) == 0:
             raise ValueError("No recorded operations available for subsampling CI.")

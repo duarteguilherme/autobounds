@@ -47,6 +47,15 @@ def build_problem(df: pd.DataFrame) -> causalProblem:
     return problem
 
 
+def build_problem_x(df: pd.DataFrame) -> causalProblem:
+    dag = DAG()
+    dag.from_structure("Z -> D, D -> Y, U -> D, U -> Y", unob="U")
+    problem = causalProblem(dag)
+    problem.set_ate("D", "Y")
+    problem.read_data(raw=df[["Z", "D", "Y"]], inference=True)
+    return problem
+
+
 def solve_point(problem: causalProblem, maxtime: float) -> dict:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
@@ -81,6 +90,10 @@ def solve_ci(
         )
 
 
+def _safe_ratio(num, den):
+    return float(num) / float(den) if den > 0 else float("nan")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--r", type=int, default=75, help="Number of Monte Carlo datasets.")
@@ -105,7 +118,25 @@ def main() -> None:
     true_ub = float(true_out["point ub dual"])
     print(f"true_lb={true_lb:.8f} true_ub={true_ub:.8f}", flush=True)
 
+    x_levels = sorted(true_df["X"].dropna().unique().tolist())
+    true_x = {}
+    for x in x_levels:
+        tdf_x = true_df.loc[true_df["X"] == x].reset_index(drop=True)
+        out_x = solve_point(build_problem_x(tdf_x), maxtime=max(args.maxtime, 12.0))
+        true_x[int(x)] = (
+            float(out_x["point lb dual"]),
+            float(out_x["point ub dual"]),
+        )
+        print(
+            f"true_x={int(x)} lb={true_x[int(x)][0]:.8f} ub={true_x[int(x)][1]:.8f}",
+            flush=True,
+        )
+
     cover_lb = cover_ub = cover_joint = 0
+    x_cov = {
+        int(x): {"lb": 0, "ub": 0, "joint": 0, "n": 0}
+        for x in x_levels
+    }
     rep_rows = []
     for r in range(args.r):
         df = simulate_covariate_data(args.n, args.rep_seed_base + r)
@@ -125,6 +156,28 @@ def main() -> None:
         cover_ub += int(ub_ok)
         cover_joint += int(both)
         rep_rows.append((r, lb, ub, both))
+
+        for x in x_levels:
+            df_x = df.loc[df["X"] == x].reset_index(drop=True)
+            if df_x.shape[0] == 0:
+                continue
+            out_x = solve_ci(
+                build_problem_x(df_x),
+                nsamples=b,
+                ci_workers=args.ci_workers,
+                subsample_rate=args.subsample_rate,
+                maxtime=args.maxtime,
+            )
+            lb_x = float(out_x["2.5% lb bounds"])
+            ub_x = float(out_x["97.5% ub bounds"])
+            true_lb_x, true_ub_x = true_x[int(x)]
+            lb_ok_x = lb_x <= true_lb_x
+            ub_ok_x = ub_x >= true_ub_x
+            x_cov[int(x)]["lb"] += int(lb_ok_x)
+            x_cov[int(x)]["ub"] += int(ub_ok_x)
+            x_cov[int(x)]["joint"] += int(lb_ok_x and ub_ok_x)
+            x_cov[int(x)]["n"] += 1
+
         if (r + 1) % 10 == 0 or (r + 1) == args.r:
             print(
                 f"progress {r+1}/{args.r} "
@@ -147,6 +200,15 @@ def main() -> None:
     print(f"lb_coverage={cover_lb/args.r:.6f}")
     print(f"ub_coverage={cover_ub/args.r:.6f}")
     print(f"joint_coverage={cover_joint/args.r:.6f}")
+    print("----- STRATUM (X) COVERAGE -----")
+    for x in x_levels:
+        s = x_cov[int(x)]
+        print(
+            f"x={int(x)} "
+            f"lb_coverage={_safe_ratio(s['lb'], s['n']):.6f} "
+            f"ub_coverage={_safe_ratio(s['ub'], s['n']):.6f} "
+            f"joint_coverage={_safe_ratio(s['joint'], s['n']):.6f}"
+        )
 
 
 if __name__ == "__main__":
