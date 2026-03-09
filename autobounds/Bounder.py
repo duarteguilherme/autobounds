@@ -12,8 +12,6 @@ from scipy.optimize import newton
 import scipy
 from numpy import log
 import statsmodels.stats.proportion
-import statsmodels.api as sm
-from tqdm import tqdm
 
 # Shared helper functions currently live in causalProblem.py
 from .causalProblem import (
@@ -54,104 +52,10 @@ class Bounder:
         # the difference is self.parameters will keep track if parameters will not be used
         # this will be used to remove parameters that are not used in the final polynomial program
         self.estimand = None
-        self.covariates = None
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
-        self.samples = None
         self.safe_min = 0.0001 # This is a safe minimum to avoid division by zero
         self.maxtime, self.theta = None, 0.01  # There is no maximum time a program will be running
-        self._used_discrete_covariate_path = False
-        self._covariate_support_size = None
-
-    def _is_discrete_covariate(self, series):
-        if (
-            pd.api.types.is_bool_dtype(series)
-            or pd.api.types.is_integer_dtype(series)
-            or pd.api.types.is_categorical_dtype(series)
-            or pd.api.types.is_object_dtype(series)
-        ):
-            return True
-        if pd.api.types.is_float_dtype(series):
-            vals = series.dropna().to_numpy()
-            if vals.size == 0:
-                return True
-            return np.all(np.isclose(vals, np.round(vals)))
-        return False
-
-    def _use_empirical_covariate_path(self, datam, covariates, nk):
-        cov_df = datam[covariates]
-        is_discrete = all(self._is_discrete_covariate(cov_df[col]) for col in covariates)
-        support_size = int(cov_df.drop_duplicates().shape[0])
-        use_empirical = is_discrete and support_size <= int(nk)
-        return use_empirical, support_size
-
-    def read_data(self, raw = None, covariates = None, inference = False, cond = [ ],
-                  categorical = True, model = None, nsamples = 1000, nk = 200):
-        """ This is the new method for loading data in place of 
-        self.load_data, which will be outdated as a low version
-
-        The idea is that load_data is not immediately executed, 
-        but it is only evaluated at the time of writing program
-
-        Notice that read_data only accepts raw data
-
-        * cond must be a list of  variables that are used to condition the data
-        For instance, if we have a dataset with X and Y, and we want to condition on X,
-        we can introduce cond = ['X'] and the data will be conditioned on X.
-        This options is useful when there is selection
-        """
-        self.categorical = categorical
-        self.nk = int(nk)
-        self.covariates = covariates
-        self.inference = inference
-        self.data_cond = cond
-        self._used_discrete_covariate_path = False
-        self._covariate_support_size = None
-        if raw is not None:
-            data = raw
-            datam = deepcopy(data) if isinstance(data, pd.DataFrame) else pd.read_csv(data)
-        else:
-            raise Exception("Data was not introduced!")
-        self.datam = datam
-        if covariates is None:
-            # If covariates do not exist, but there is no inference, just run the standard bounds and return
-            self.covariates_data = pd.DataFrame({'X': [int(1)], 'prob_x': [1]})
-            self.y_columns = [ i for i in self.datam.columns if i not in cond ]
-            self.y = self.datam.drop_duplicates()[self.y_columns].astype(str).agg("_".join, axis=1)
-            self.y, category_mapping = pd.factorize(self.y)
-            self.category_decoder = dict(enumerate(category_mapping))
-            if not inference: 
-                self.load_data(raw = datam, cond = cond) 
-                return None 
-            else: # if covariates do not exist, but there is inference
-                # If we want to do inference, then load_data is not executed immediately, but it will wait 
-                # until it is evaluated by solve(). This of course is a workaround that will be removed in the future
-                return None
-        else: # If covariates exist, they become X
-            if len(cond) > 0:
-                raise Exception("Conditional data is not supported in read_data method if covariates are introduced. Please remove cond argument.")
-            if not self.categorical:
-                use_empirical, support_size = self._use_empirical_covariate_path(datam, covariates, self.nk)
-                self._covariate_support_size = support_size
-                if use_empirical:
-                    self.categorical = True
-                    self._used_discrete_covariate_path = True
-            self.covariates_data = (get_summary_from_raw(self.datam[self.covariates])
-                    .rename({'prob': 'prob_x'}, axis = 1))
-            self.X = datam[covariates].to_numpy().reshape((-1, len(covariates)))
-            self.X = sm.add_constant(self.X)
-        self.covariates = covariates
-        # load no-covariate data ( y )
-        self.y_columns = [ k for k in datam.columns if k not in covariates ]
-        self.y = datam.drop(columns = covariates).astype(str).agg("_".join, axis=1)
-        self.y, category_mapping = pd.factorize(self.y)
-        self.category_decoder = dict(enumerate(category_mapping))
-        if not self.categorical: # If categorical is False, then we run a regression
-            if model is None:
-                model = sm.MNLogit(self.y, self.X) # Run multinomial logistic model -- in the future, this will allow for other models
-                self.main_model = model.fit()
-            else:
-                self.main_model = model
 
     def calc_bounds_sample(self, prob, cond = [], verbose = False, limits   = [None, None]):
         """
@@ -179,88 +83,6 @@ class Bounder:
         except:
             return (np.nan, np.nan)
 
-    def generate_samples(self, n = 1000, randomize = True):
-        """
-        Generate samples from the posterior distribution of the coefficients
-        of the main model.
-
-        Parameters:
-        - n: Number of samples to generate (default = 1000)
-        - randomize: If True, randomizes the coefficients (default = True)
-        """
-        all_data = self.datam.value_counts().reset_index()
-        all_data.rename(columns={all_data.columns[-1]: 'count'}, inplace=True)
-        all_values = {col: np.arange(self.number_values[col]) 
-                      for col in self.y_columns
-                      if col not in self.data_cond
-                      } # This is restricted for the case where only one conditional value exists
-                       #  if there is more than one, each must be introduced separately 
-        self.backbone_dataset = pd.DataFrame(list(product(*all_values.values())), columns=all_values.keys())
-        self.samples = np.full((self.covariates_data.shape[0], n, self.backbone_dataset.shape[0]), np.nan)
-        self.nsamples = n
-        # Generate samples for each row in covariates_data
-        # The dimensions of self.samples is 
-        # (number of covariates, n, number of backbone dataset rows (prob))
-        print("Generating samples:")
-        for index, row in self.covariates_data.iterrows():
-            if self.covariates_data.shape[0] > 1:
-                print(f'\n{index + 1} of {self.covariates_data.shape[0]}')
-            for j in range(n):                    
-                self.samples[index, j, :] = (
-                        get_dirichlet_sample(
-                            self.backbone_dataset, all_data, row, self.covariates)
-                )
-            print('')
-        
-    def calculate_ci(self, nx = 1000, randomize = True, debug = False, 
-                     verbose_optimizer = False, limits = [None, None]):
-        """
-        Calculate confidence intervals for the causal estimand.
-
-        Parameters:
-        - nx: Number of samples to generate for the X matrix (default = 1000)
-        - categorical: If True, uses categorical data (default = False)
-        """
-        if self.samples is None:
-            raise Exception("Samples have not been generated yet. Please call generate_samples() first.")
-        nsamples = self.nsamples
-        if self.categorical:
-            self.lb_samples = np.full((self.covariates_data.shape[0], nsamples), np.nan)
-            self.ub_samples = np.full((self.covariates_data.shape[0], nsamples), np.nan)
-            print('Estimating CI: ')
-            for index, row in self.covariates_data.iterrows():
-#                print(index)
-                for j in tqdm(range(nsamples)):
-                    self.lb_samples[index, j], self.ub_samples[index, j] = self.calc_bounds_sample(
-                            self.samples[index, j, :].reshape(-1), cond = self.data_cond, verbose = verbose_optimizer,
-                            limits = limits
-                        )
-                    self.lb_samples[index, j] *= row['prob_x'] 
-                    self.ub_samples[index, j] *= row['prob_x']
-            return (self.lb_samples.sum(axis = 0), self.ub_samples.sum(axis = 0))
-        else:
-            if self.X.shape[0] > nx:
-                newX =  self.X[
-                    np.random.choice(self.X.shape[0], size = nx, replace = True), :]
-            else:
-                newX = self.X.copy()
-            self.betas = np.array([ generate_posterior_beta(self.main_model, randomize) for i in range(nsamples) ])
-            self.probs = np.array([ 
-                [ generate_mn_sample(b, x)
-                for b in self.betas ]
-                for x in newX 
-                ])
-            self.lb_samples = np.full(self.probs.shape[0:2], np.nan)
-            self.ub_samples = np.full(self.probs.shape[0:2], np.nan)
-            for nx in range(self.probs.shape[0]):
-                for nb in range(nsamples):
-                    self.lb_samples[nx,nb], self.ub_samples[nx,nb] = (
-                        (
-                            self.calc_bounds_sample(self.probs[nx,nb],  verbose = verbose_optimizer,
-                                                    limits = limits))
-                    )
-            return (self.lb_samples.mean(axis = 1), self.ub_samples.mean(axis = 1))
-
     def is_active(self, expr = '', ind = '', dep = ''):
         """ Call Parser.is_active()
         
@@ -277,53 +99,20 @@ class Bounder:
             self.maxtime = maxtime
         if self.estimand is None:
             raise ValueError("Estimand is not set. Please set an estimand using set_estimand() method.")
-        if self.covariates is None:
-            newproblem = deepcopy(self)
-            try:
-                self.input_data = self.datam if 'prob' in self.datam.columns else get_summary_from_raw(self.datam)
-                newproblem.load_data(self.input_data, cond = self.data_cond )
-            except:
-                pass
-            point_bounds = newproblem.write_program().run_scip(maxtime = maxtime, theta = theta, 
-                                                               verbose = verbose_optimizer,
-                                                                limits = limits)
-            try:
-                self.point_lb_dual = point_bounds[0]['dual']
-                self.point_ub_dual = point_bounds[1]['dual']
-                self.point_lb_primal = point_bounds[0]['primal']
-                self.point_ub_primal = point_bounds[1]['primal']
-            except:
-                self.point_lb_dual, self.point_ub_dual = np.nan, np.nan
-                self.point_lb_primal, self.point_ub_primal = np.nan, np.nan
-        else:
-            self.point_lb_dual = 0
-            self.point_ub_dual = 0
-            self.point_lb_primal = 0
-            self.point_ub_primal = 0
-            for index, row in self.covariates_data.iterrows():
-                newproblem = deepcopy(self)
-                newproblem.load_data(
-                    # We load data from all the values where the covariate iteration
-                    # is equal to the current row covariates
-                    get_summary_from_raw(
-                        self.datam.loc[
-                                    self.datam[self.covariates]
-                                    .eq(row[self.covariates].values).all(axis=1)
-                                ].drop(self.covariates, axis = 1)
-                                         ), 
-                    cond = self.data_cond
-                )
-                point_bounds = newproblem.write_program().run_scip(maxtime = self.maxtime, theta = self.theta, 
-                                                                   verbose = verbose_optimizer,
-                                                                     limits = limits)
-                try:
-                    self.point_lb_dual += point_bounds[0]['dual'] * row['prob_x'] 
-                    self.point_ub_dual += point_bounds[1]['dual'] * row['prob_x'] 
-                    self.point_lb_primal += point_bounds[0]['primal'] * row['prob_x'] 
-                    self.point_ub_primal += point_bounds[1]['primal'] * row['prob_x'] 
-                except:
-                    self.point_lb_dual, self.point_ub_dual = np.nan, np.nan
-                    self.point_lb_primal, self.point_ub_primal = np.nan, np.nan
+        point_bounds = self.write_program().run_scip(
+            maxtime=maxtime,
+            theta=theta,
+            verbose=verbose_optimizer,
+            limits=limits,
+        )
+        try:
+            self.point_lb_dual = point_bounds[0]['dual']
+            self.point_ub_dual = point_bounds[1]['dual']
+            self.point_lb_primal = point_bounds[0]['primal']
+            self.point_ub_primal = point_bounds[1]['primal']
+        except:
+            self.point_lb_dual, self.point_ub_dual = np.nan, np.nan
+            self.point_lb_primal, self.point_ub_primal = np.nan, np.nan
         if verbose_result:
             print(f"Point estimates\n")
             print(f"Dual: [{self.point_lb_dual}, {self.point_ub_dual}]")
@@ -336,26 +125,9 @@ class Bounder:
                 "point ub primal": self.point_ub_primal
             }
         if ci:
-            if not self.inference:
-                raise Exception("Confidence intervals can only be calculated if inference is True in read_data()")
-            self.generate_samples(n = nsamples)
-            self.ci_lb_bounds, self.ci_ub_bounds = self.calculate_ci(verbose_optimizer = verbose_optimizer, limits = limits)
-            lb25 = np.quantile(self.ci_lb_bounds, 0.025)
-            ub975 = np.quantile(self.ci_ub_bounds, 0.975)
-            lb1 = np.quantile(self.ci_lb_bounds, 0.01)
-            ub99 = np.quantile(self.ci_ub_bounds, 0.99)
-            if verbose_result:
-                print(f"95% Confidence intervals. Lower: {lb25},  Upper: {ub975}")
-            return {
-                "point lb dual": self.point_lb_dual,
-                "point ub dual": self.point_ub_dual,
-                "point lb primal": self.point_lb_primal,
-                "point ub primal": self.point_ub_primal,
-                "2.5% lb bounds": lb25,
-                "97.5% ub bounds": ub975,
-                "1% lb bounds": lb1,
-                "99% ub bounds": ub99
-            }
+            raise NotImplementedError(
+                "Confidence intervals are handled by causalProblem. Use causalProblem.solve(ci=True)."
+            )
 
     def p(self, event, cond = None, sign = 1):
         """ 
@@ -539,6 +311,8 @@ class Bounder:
         This method also implements one simplifier (first nodes simplifier).
         If data regarding first nodes is complete, then numeric values are added directly.
         """
+        if covariates is not None:
+            raise ValueError("covariates are handled by causalProblem.read_data(), not Bounder.load_data().")
         if summary is not None:
             data = summary
             datam = data if isinstance(data, pd.DataFrame) else pd.read_csv(data) 
@@ -549,6 +323,8 @@ class Bounder:
                 datam = get_summary_from_raw(datam) 
             else:
                 raise Exception("Data was not introduced!")
+        self.datam = datam.copy(deep=True)
+        self.data_cond = list(cond)
         if len(do) >= 1:
             if len(cond) >= 1:
                 raise Exception('Data with cond and do at the same are not implemented yet')

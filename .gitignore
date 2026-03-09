@@ -8,3 +8,7 @@ __pycache__/
 
 # Virtual envs
 .venv/
+
+# Local comparison scripts
+examples/covariate_ate_ci_method_comparison.py
+examples/no_covariate_ate_ci_method_comparison.py

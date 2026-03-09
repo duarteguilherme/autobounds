@@ -300,7 +300,14 @@ class causalProblem:
         "_operation_log",
         "_is_replaying",
         "_has_covariates",
+        "_read_data_state",
         "K",
+        "covariates",
+        "inference",
+        "categorical",
+        "main_model",
+        "_used_discrete_covariate_path",
+        "_covariate_support_size",
     }
 
     def __init__(self, dag, number_values = {}):
@@ -312,7 +319,14 @@ class causalProblem:
         object.__setattr__(self, "_operation_log", [])
         object.__setattr__(self, "_is_replaying", False)
         object.__setattr__(self, "_has_covariates", False)
+        object.__setattr__(self, "_read_data_state", None)
         object.__setattr__(self, "K", 20)
+        object.__setattr__(self, "covariates", None)
+        object.__setattr__(self, "inference", False)
+        object.__setattr__(self, "categorical", True)
+        object.__setattr__(self, "main_model", None)
+        object.__setattr__(self, "_used_discrete_covariate_path", False)
+        object.__setattr__(self, "_covariate_support_size", None)
 
     def _freeze_tabular(self, obj):
         if obj is None:
@@ -370,15 +384,53 @@ class causalProblem:
             }
         )
 
+    def _is_discrete_covariate(self, series):
+        if (
+            pd.api.types.is_bool_dtype(series)
+            or pd.api.types.is_integer_dtype(series)
+            or pd.api.types.is_categorical_dtype(series)
+            or pd.api.types.is_object_dtype(series)
+        ):
+            return True
+        if pd.api.types.is_float_dtype(series):
+            vals = series.dropna().to_numpy()
+            if vals.size == 0:
+                return True
+            return np.all(np.isclose(vals, np.round(vals)))
+        return False
+
+    def _use_empirical_covariate_path(self, datam, covariates, nk):
+        cov_df = datam[covariates]
+        is_discrete = all(self._is_discrete_covariate(cov_df[col]) for col in covariates)
+        support_size = int(cov_df.drop_duplicates().shape[0])
+        use_empirical = is_discrete and support_size <= int(nk)
+        return use_empirical, support_size
+
+    def _normalize_read_data_args(self, args, kwargs):
+        if len(args) > 1:
+            raise TypeError("read_data accepts at most one positional argument for raw data.")
+        local_kwargs = dict(kwargs)
+        if len(args) == 1:
+            if "raw" in local_kwargs:
+                raise TypeError("raw provided twice to read_data.")
+            local_kwargs["raw"] = args[0]
+        return {
+            "raw": local_kwargs.get("raw", None),
+            "covariates": local_kwargs.get("covariates", None),
+            "inference": local_kwargs.get("inference", False),
+            "cond": local_kwargs.get("cond", []),
+            "categorical": local_kwargs.get("categorical", True),
+            "model": local_kwargs.get("model", None),
+            "nsamples": local_kwargs.get("nsamples", 1000),
+            "nk": local_kwargs.get("nk", 200),
+        }
+
     def _record_read_data_operation(self, args, kwargs):
         if self._is_replaying:
             return
-        sig = inspect.signature(self._default_bounder.read_data)
-        bound = sig.bind_partial(*args, **kwargs)
-        bound.apply_defaults()
-        data_kwargs = deepcopy(bound.arguments)
+        data_kwargs = self._normalize_read_data_args(args, kwargs)
         data_kwargs["raw"] = self._freeze_tabular(data_kwargs.get("raw"))
-        covariates = kwargs.get("covariates", data_kwargs.get("covariates", None))
+        covariates = data_kwargs.get("covariates", None)
         object.__setattr__(self, "_has_covariates", covariates is not None and len(covariates) > 0)
         self._operation_log.append(
             {
@@ -624,10 +676,11 @@ class causalProblem:
         limits,
         subsample_rate,
         subsample_size,
+        return_subsample_df=False,
     ):
         from .Bounder import Bounder
 
-        res, rep_n_total, rep_m_total = self._solve_from_operation_log(
+        res, rep_n_total, rep_m_total, rep_subsample_df = self._solve_from_operation_log(
             maxtime=maxtime,
             theta=theta,
             verbose_optimizer=verbose_optimizer,
@@ -636,13 +689,17 @@ class causalProblem:
             subsample_rate=subsample_rate,
             subsample_size=subsample_size,
             rep_seed=int(rep_seed),
+            return_subsample_df=return_subsample_df,
         )
-        return (
+        out = (
             float(res["point lb dual"]),
             float(res["point ub dual"]),
             rep_n_total,
             rep_m_total,
         )
+        if return_subsample_df:
+            return out + (rep_subsample_df,)
+        return out
 
     def _solve_covariate_read_data_by_strata(
         self,
@@ -669,12 +726,7 @@ class causalProblem:
         for _, gdf in raw_df.groupby(covariates, sort=False, dropna=False):
             w = float(gdf.shape[0]) / total_n
             strata_bounder = deepcopy(base_bounder)
-            strata_bounder.read_data(
-                raw=gdf.drop(columns=covariates).reset_index(drop=True),
-                covariates=None,
-                inference=False,
-                cond=cond,
-            )
+            strata_bounder.load_data(raw=gdf.drop(columns=covariates).reset_index(drop=True), cond=cond)
             out = strata_bounder.solve(
                 ci=False,
                 maxtime=maxtime,
@@ -705,6 +757,7 @@ class causalProblem:
         subsample_rate,
         subsample_size,
         rep_seed,
+        return_subsample_df=False,
     ):
         from .Bounder import Bounder
 
@@ -714,6 +767,7 @@ class causalProblem:
         )
         rep_n_total = 0
         rep_m_total = 0
+        rep_subsample_df = None
         rng = np.random.default_rng(int(rep_seed))
         covariate_read_payload = None
 
@@ -735,6 +789,8 @@ class causalProblem:
                     ).reset_index(drop=True)
                     rep_n_total += int(raw_df.shape[0])
                     rep_m_total += int(sub_df.shape[0])
+                    if return_subsample_df and rep_subsample_df is None:
+                        rep_subsample_df = sub_df.copy(deep=True)
                     call_kwargs["raw"] = sub_df
                 elif call_kwargs.get("summary") is not None:
                     call_kwargs["summary"] = call_kwargs["summary"].copy(deep=True)
@@ -767,6 +823,8 @@ class causalProblem:
                         ).reset_index(drop=True)
                     rep_n_total += int(raw_df.shape[0])
                     rep_m_total += int(work_df.shape[0])
+                    if return_subsample_df and rep_subsample_df is None:
+                        rep_subsample_df = work_df.copy(deep=True)
                 elif rep_n_total == 0:
                     rep_n_total += int(raw_df.shape[0])
                     rep_m_total += int(work_df.shape[0])
@@ -778,8 +836,7 @@ class causalProblem:
                         "cond": cond,
                     }
                 else:
-                    call_kwargs["raw"] = work_df
-                    getattr(replay_bounder, method)(*call_args, **call_kwargs)
+                    replay_bounder.load_data(raw=work_df, cond=cond)
                 continue
 
             getattr(replay_bounder, method)(*call_args, **call_kwargs)
@@ -804,13 +861,16 @@ class causalProblem:
                 verbose_result=False,
                 limits=limits,
             )
-        return res, rep_n_total, rep_m_total
+        return res, rep_n_total, rep_m_total, rep_subsample_df
 
     def _solve_with_subsampling_ci(self, *args, **kwargs):
         if len(args) > 0:
             raise ValueError("Use keyword arguments when ci=True in causalProblem.solve().")
 
         nsamples = int(kwargs.pop("nsamples", 200))
+        return_rep_seeds = bool(kwargs.pop("return_rep_seeds", False))
+        return_subsample_dfs = bool(kwargs.pop("return_subsample_dfs", False))
+        rep_seeds = kwargs.pop("rep_seeds", None)
         maxtime = kwargs.get("maxtime", None)
         theta = kwargs.get("theta", 0.01)
         verbose_optimizer = kwargs.get("verbose_optimizer", False)
@@ -827,7 +887,7 @@ class causalProblem:
                 "Unsupported ci_method. Only 'recentered_subsampling' is available."
             )
 
-        point_result, _, _ = self._solve_from_operation_log(
+        point_result, _, _, _ = self._solve_from_operation_log(
             maxtime=maxtime,
             theta=theta,
             verbose_optimizer=verbose_optimizer,
@@ -846,13 +906,21 @@ class causalProblem:
             raise ValueError("No recorded operations available for subsampling CI.")
 
         lb_samples, ub_samples = [], []
+        subsample_dfs = []
         n_eff_total = 0
         m_eff_total = 0
-        rep_seeds = np.random.default_rng().integers(0, 2**32 - 1, size=nsamples)
+        if rep_seeds is None:
+            rep_seeds = np.random.default_rng().integers(0, 2**32 - 1, size=nsamples)
+        else:
+            rep_seeds = np.asarray(rep_seeds, dtype=np.int64)
+            if rep_seeds.ndim != 1:
+                raise ValueError("rep_seeds must be a one-dimensional array-like.")
+            if rep_seeds.size != nsamples:
+                raise ValueError("rep_seeds length must match nsamples.")
 
         if ci_workers == 1:
             for rep_seed in rep_seeds:
-                lb, ub, rep_n_total, rep_m_total = self._run_subsampling_replication(
+                out = self._run_subsampling_replication(
                     rep_seed=rep_seed,
                     maxtime=maxtime,
                     theta=theta,
@@ -860,12 +928,20 @@ class causalProblem:
                     limits=limits,
                     subsample_rate=subsample_rate,
                     subsample_size=subsample_size,
+                    return_subsample_df=return_subsample_dfs,
                 )
+                if return_subsample_dfs:
+                    lb, ub, rep_n_total, rep_m_total, rep_subsample_df = out
+                else:
+                    lb, ub, rep_n_total, rep_m_total = out
+                    rep_subsample_df = None
                 if n_eff_total == 0 and rep_n_total > 0:
                     n_eff_total = rep_n_total
                     m_eff_total = rep_m_total
                 lb_samples.append(lb)
                 ub_samples.append(ub)
+                if return_subsample_dfs:
+                    subsample_dfs.append(rep_subsample_df)
         else:
             with ThreadPoolExecutor(max_workers=ci_workers) as ex:
                 futures = [
@@ -878,16 +954,24 @@ class causalProblem:
                         limits=limits,
                         subsample_rate=subsample_rate,
                         subsample_size=subsample_size,
+                        return_subsample_df=return_subsample_dfs,
                     )
                     for rep_seed in rep_seeds
                 ]
                 for fut in as_completed(futures):
-                    lb, ub, rep_n_total, rep_m_total = fut.result()
+                    out = fut.result()
+                    if return_subsample_dfs:
+                        lb, ub, rep_n_total, rep_m_total, rep_subsample_df = out
+                    else:
+                        lb, ub, rep_n_total, rep_m_total = out
+                        rep_subsample_df = None
                     if n_eff_total == 0 and rep_n_total > 0:
                         n_eff_total = rep_n_total
                         m_eff_total = rep_m_total
                     lb_samples.append(lb)
                     ub_samples.append(ub)
+                    if return_subsample_dfs:
+                        subsample_dfs.append(rep_subsample_df)
 
         lb_arr = np.asarray(lb_samples, dtype=float)
         ub_arr = np.asarray(ub_samples, dtype=float)
@@ -921,6 +1005,10 @@ class causalProblem:
         }
         ci_out["ci method"] = ci_method
         ci_out["ci workers"] = ci_workers
+        if return_rep_seeds:
+            ci_out["subsample rep seeds"] = rep_seeds.astype(int).tolist()
+        if return_subsample_dfs:
+            ci_out["subsample raw dfs"] = subsample_dfs
         return {**point_result, **ci_out}
 
     def _warn_proxy(self):
@@ -1045,7 +1133,63 @@ class causalProblem:
 
     def read_data(self, *args, **kwargs):
         self._record_read_data_operation(args, kwargs)
-        return self._default_bounder.read_data(*args, **kwargs)
+        data_kwargs = self._normalize_read_data_args(args, kwargs)
+        raw = data_kwargs["raw"]
+        if raw is None:
+            raise Exception("Data was not introduced!")
+        datam = deepcopy(raw) if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
+        covariates = data_kwargs["covariates"]
+        cond = list(data_kwargs["cond"])
+        categorical = bool(data_kwargs["categorical"])
+        model = data_kwargs["model"]
+        nk = int(data_kwargs["nk"])
+
+        object.__setattr__(self, "covariates", covariates)
+        object.__setattr__(self, "inference", bool(data_kwargs["inference"]))
+        object.__setattr__(self, "categorical", categorical)
+        object.__setattr__(self, "main_model", None)
+        object.__setattr__(self, "_used_discrete_covariate_path", False)
+        object.__setattr__(self, "_covariate_support_size", None)
+        object.__setattr__(self, "_has_covariates", covariates is not None and len(covariates) > 0)
+
+        if covariates is not None and len(covariates) > 0:
+            if len(cond) > 0:
+                raise Exception(
+                    "Conditional data is not supported in read_data when covariates are introduced."
+                )
+            if not categorical:
+                use_empirical, support_size = self._use_empirical_covariate_path(datam, covariates, nk)
+                object.__setattr__(self, "_covariate_support_size", support_size)
+                if use_empirical:
+                    categorical = True
+                    object.__setattr__(self, "categorical", True)
+                    object.__setattr__(self, "_used_discrete_covariate_path", True)
+            if not categorical:
+                x = datam[covariates].to_numpy().reshape((-1, len(covariates)))
+                x = sm.add_constant(x)
+                y = datam.drop(columns=covariates).astype(str).agg("_".join, axis=1)
+                y, _ = pd.factorize(y)
+                if model is None:
+                    model = sm.MNLogit(y, x)
+                    object.__setattr__(self, "main_model", model.fit())
+                else:
+                    object.__setattr__(self, "main_model", model)
+
+        object.__setattr__(
+            self,
+            "_read_data_state",
+            {
+                "raw": datam,
+                "covariates": covariates,
+                "inference": bool(data_kwargs["inference"]),
+                "cond": cond,
+                "categorical": categorical,
+                "model": model,
+                "nsamples": int(data_kwargs["nsamples"]),
+                "nk": nk,
+            },
+        )
+        return None
 
     def write_program(self, *args, **kwargs):
         return self._default_bounder.write_program(*args, **kwargs)
@@ -1056,6 +1200,22 @@ class causalProblem:
         if len(self._bounders) == 0:
             if ci:
                 return self._solve_with_subsampling_ci(*args, **kwargs)
+            if any(step["method"] == "read_data" for step in self._operation_log):
+                point_result, _, _, _ = self._solve_from_operation_log(
+                    maxtime=kwargs.get("maxtime", None),
+                    theta=kwargs.get("theta", 0.01),
+                    verbose_optimizer=kwargs.get("verbose_optimizer", False),
+                    limits=kwargs.get("limits", [None, None]),
+                    subsample=False,
+                    subsample_rate=kwargs.get("subsample_rate", 0.7),
+                    subsample_size=kwargs.get("subsample_size", None),
+                    rep_seed=0,
+                )
+                if kwargs.get("verbose_result", True):
+                    print("Point estimates\n")
+                    print(f"Dual: [{point_result['point lb dual']}, {point_result['point ub dual']}]")
+                    print(f"Primal: [{point_result['point lb primal']}, {point_result['point ub primal']}]")
+                return point_result
             return self._default_bounder.solve(*args, **kwargs)
 
         # Orchestration path: solve all registered bounders.

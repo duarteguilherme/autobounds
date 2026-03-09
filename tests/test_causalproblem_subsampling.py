@@ -29,20 +29,6 @@ def _fake_solve(self, ci=False, **kwargs):
     }
 
 
-def _fake_read_data(self, raw=None, **kwargs):
-    if raw is None:
-        raise ValueError("Missing raw data.")
-    df = raw if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
-    if not hasattr(self, "_test_n_rows"):
-        self._test_n_rows = []
-    self._test_n_rows.append(int(df.shape[0]))
-    return None
-
-
-def _fake_read_data_noop(self, raw=None, **kwargs):
-    return None
-
-
 def _fake_load_data_signal(self, summary=None, raw=None, **kwargs):
     if raw is not None:
         df = raw if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
@@ -139,7 +125,7 @@ def test_causalproblem_subsampling_ci_uses_explicit_subsample_size(monkeypatch):
 
 
 def test_causalproblem_subsampling_ci_supports_read_data(monkeypatch):
-    monkeypatch.setattr(Bounder, "read_data", _fake_read_data)
+    monkeypatch.setattr(Bounder, "load_data", _fake_load_data)
     monkeypatch.setattr(Bounder, "solve", _fake_solve)
     monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
 
@@ -161,7 +147,7 @@ def test_causalproblem_subsampling_ci_supports_read_data(monkeypatch):
 
 
 def test_causalproblem_read_data_point_solve_does_not_use_ci_path(monkeypatch):
-    monkeypatch.setattr(Bounder, "read_data", _fake_read_data)
+    monkeypatch.setattr(Bounder, "load_data", _fake_load_data)
     monkeypatch.setattr(Bounder, "solve", _fake_solve)
     monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
     monkeypatch.setattr(
@@ -220,8 +206,6 @@ def test_causalproblem_defaults_include_k_and_covariate_flag():
 
 
 def test_read_data_updates_covariate_flag(monkeypatch):
-    monkeypatch.setattr(Bounder, "read_data", _fake_read_data_noop)
-
     problem = causalProblem(DAG("D -> Y"))
     df = pd.DataFrame({"D": [0, 1], "Y": [0, 1]})
 
@@ -233,7 +217,6 @@ def test_read_data_updates_covariate_flag(monkeypatch):
 
 
 def test_no_covariate_ci_uses_subsampling_path(monkeypatch):
-    monkeypatch.setattr(Bounder, "read_data", _fake_read_data_noop)
     monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
     monkeypatch.setattr(Bounder, "solve", _fake_solve_signal)
     monkeypatch.setattr(
@@ -251,7 +234,6 @@ def test_no_covariate_ci_uses_subsampling_path(monkeypatch):
 
 
 def test_covariate_ci_uses_subsampling_path(monkeypatch):
-    monkeypatch.setattr(Bounder, "read_data", _fake_read_data_noop)
     monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
     monkeypatch.setattr(Bounder, "solve", _fake_solve_signal)
     monkeypatch.setattr(
@@ -268,20 +250,23 @@ def test_covariate_ci_uses_subsampling_path(monkeypatch):
     assert out == {"cov_ci": True}
 
 
-def test_covariate_ci_uses_strata_read_data_without_bounder_covariates(monkeypatch):
+def test_covariate_ci_uses_strata_load_data_without_bounder_covariates(monkeypatch):
     read_covariates_args = []
 
-    def _fake_read_data_track(self, raw=None, covariates=None, **kwargs):
+    def _fake_load_data_track(self, summary=None, raw=None, covariates=None, **kwargs):
         read_covariates_args.append(covariates)
-        if raw is None:
-            raise ValueError("Missing raw data.")
-        df = raw if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
+        if raw is not None:
+            df = raw if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
+        elif summary is not None:
+            df = summary if isinstance(summary, pd.DataFrame) else pd.read_csv(summary)
+        else:
+            raise ValueError("Missing data.")
         if not hasattr(self, "_test_n_rows"):
             self._test_n_rows = []
         self._test_n_rows.append(int(df.shape[0]))
         return None
 
-    monkeypatch.setattr(Bounder, "read_data", _fake_read_data_track)
+    monkeypatch.setattr(Bounder, "load_data", _fake_load_data_track)
     monkeypatch.setattr(Bounder, "solve", _fake_solve)
     monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
 
@@ -300,8 +285,6 @@ def test_covariate_ci_uses_strata_read_data_without_bounder_covariates(monkeypat
 
     assert out["ci method"] == "recentered_subsampling"
     assert len(read_covariates_args) > 0
-    assert read_covariates_args[0] == ["X"]
-    # Once in CI replay path, each stratum solve should use non-covariate read_data.
     assert all(c is None for c in read_covariates_args[1:])
 
 
