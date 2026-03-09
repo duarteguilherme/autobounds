@@ -669,6 +669,7 @@ class causalProblem:
 
     def _run_subsampling_replication(
         self,
+        replay_context,
         rep_seed,
         maxtime,
         theta,
@@ -681,6 +682,7 @@ class causalProblem:
         from .Bounder import Bounder
 
         res, rep_n_total, rep_m_total, rep_subsample_df = self._solve_from_operation_log(
+            replay_context=replay_context,
             maxtime=maxtime,
             theta=theta,
             verbose_optimizer=verbose_optimizer,
@@ -747,7 +749,161 @@ class causalProblem:
             "point ub primal": point_ub_primal,
         }
 
-    def _solve_from_operation_log(
+    def _prepare_replay_context(self):
+        from .Bounder import Bounder
+
+        data_seen = False
+        fast_path_ok = True
+        for step in self._operation_log:
+            method = step["method"]
+            if method in {"load_data", "read_data"}:
+                data_seen = True
+                continue
+            if data_seen:
+                fast_path_ok = False
+                break
+
+        if not fast_path_ok:
+            return {"fast_path": False}
+
+        prototype = Bounder(
+            deepcopy(self._default_bounder.dag),
+            deepcopy(self._default_bounder.number_values),
+        )
+        data_steps = []
+        for step in self._operation_log:
+            method = step["method"]
+            call_args = deepcopy(step["args"])
+            call_kwargs = deepcopy(step["kwargs"])
+            if method in {"load_data", "read_data"}:
+                data_steps.append(
+                    {
+                        "method": method,
+                        "args": call_args,
+                        "kwargs": call_kwargs,
+                    }
+                )
+                continue
+            getattr(prototype, method)(*call_args, **call_kwargs)
+
+        return {
+            "fast_path": True,
+            "prototype": prototype,
+            "data_steps": data_steps,
+        }
+
+    def _solve_from_operation_log_fast(
+        self,
+        replay_context,
+        maxtime,
+        theta,
+        verbose_optimizer,
+        limits,
+        subsample,
+        subsample_rate,
+        subsample_size,
+        rep_seed,
+        return_subsample_df=False,
+    ):
+        replay_bounder = deepcopy(replay_context["prototype"])
+        rep_n_total = 0
+        rep_m_total = 0
+        rep_subsample_df = None
+        rng = np.random.default_rng(int(rep_seed))
+        covariate_read_payload = None
+
+        for step in replay_context["data_steps"]:
+            method = step["method"]
+            call_kwargs = deepcopy(step["kwargs"])
+
+            if method == "load_data":
+                if call_kwargs.get("raw") is None and call_kwargs.get("summary") is None:
+                    raise ValueError("Subsampling CI requires load_data with raw or summary data.")
+                if call_kwargs.get("raw") is not None and subsample:
+                    raw_df = call_kwargs["raw"]
+                    sub_df = self._subsample_rows(
+                        raw_df,
+                        subsample_rate,
+                        subsample_size,
+                        random_state=int(rng.integers(0, 2**32 - 1)),
+                    ).reset_index(drop=True)
+                    rep_n_total += int(raw_df.shape[0])
+                    rep_m_total += int(sub_df.shape[0])
+                    if return_subsample_df and rep_subsample_df is None:
+                        rep_subsample_df = sub_df.copy(deep=True)
+                    call_kwargs["raw"] = sub_df
+                elif call_kwargs.get("summary") is not None:
+                    call_kwargs["summary"] = call_kwargs["summary"].copy(deep=True)
+                replay_bounder.load_data(**call_kwargs)
+                continue
+
+            if method == "read_data":
+                if call_kwargs.get("raw") is None:
+                    raise ValueError("Subsampling CI with read_data requires raw data.")
+                raw_df = call_kwargs["raw"]
+                covariates = call_kwargs.get("covariates", None)
+                cond = call_kwargs.get("cond", [])
+
+                work_df = raw_df
+                if subsample:
+                    if covariates is not None and len(covariates) > 0:
+                        work_df = self._subsample_rows_stratified(
+                            raw_df,
+                            covariates=covariates,
+                            subsample_rate=subsample_rate,
+                            subsample_size=subsample_size,
+                            random_state=int(rng.integers(0, 2**32 - 1)),
+                        ).reset_index(drop=True)
+                    else:
+                        work_df = self._subsample_rows(
+                            raw_df,
+                            subsample_rate,
+                            subsample_size,
+                            random_state=int(rng.integers(0, 2**32 - 1)),
+                        ).reset_index(drop=True)
+                    rep_n_total += int(raw_df.shape[0])
+                    rep_m_total += int(work_df.shape[0])
+                    if return_subsample_df and rep_subsample_df is None:
+                        rep_subsample_df = work_df.copy(deep=True)
+                elif rep_n_total == 0:
+                    rep_n_total += int(raw_df.shape[0])
+                    rep_m_total += int(work_df.shape[0])
+
+                if covariates is not None and len(covariates) > 0:
+                    covariate_read_payload = {
+                        "raw_df": work_df,
+                        "covariates": covariates,
+                        "cond": cond,
+                    }
+                else:
+                    replay_bounder.load_data(raw=work_df, cond=cond)
+                continue
+
+            raise ValueError(f"Unexpected method in fast replay context: {method}")
+
+        if covariate_read_payload is not None:
+            res = self._solve_covariate_read_data_by_strata(
+                base_bounder=replay_bounder,
+                raw_df=covariate_read_payload["raw_df"],
+                covariates=covariate_read_payload["covariates"],
+                cond=covariate_read_payload["cond"],
+                maxtime=maxtime,
+                theta=theta,
+                verbose_optimizer=verbose_optimizer,
+                limits=limits,
+            )
+        else:
+            res = replay_bounder.solve(
+                ci=False,
+                maxtime=maxtime,
+                theta=theta,
+                verbose_optimizer=verbose_optimizer,
+                verbose_result=False,
+                limits=limits,
+            )
+        return res, rep_n_total, rep_m_total, rep_subsample_df
+
+    def _solve_from_operation_log_slow(
         self,
         maxtime,
         theta,
@@ -863,6 +1019,44 @@ class causalProblem:
             )
         return res, rep_n_total, rep_m_total, rep_subsample_df
 
+    def _solve_from_operation_log(
+        self,
+        replay_context,
+        maxtime,
+        theta,
+        verbose_optimizer,
+        limits,
+        subsample,
+        subsample_rate,
+        subsample_size,
+        rep_seed,
+        return_subsample_df=False,
+    ):
+        if replay_context is not None and replay_context.get("fast_path", False):
+            return self._solve_from_operation_log_fast(
+                replay_context=replay_context,
+                maxtime=maxtime,
+                theta=theta,
+                verbose_optimizer=verbose_optimizer,
+                limits=limits,
+                subsample=subsample,
+                subsample_rate=subsample_rate,
+                subsample_size=subsample_size,
+                rep_seed=rep_seed,
+                return_subsample_df=return_subsample_df,
+            )
+        return self._solve_from_operation_log_slow(
+            maxtime=maxtime,
+            theta=theta,
+            verbose_optimizer=verbose_optimizer,
+            limits=limits,
+            subsample=subsample,
+            subsample_rate=subsample_rate,
+            subsample_size=subsample_size,
+            rep_seed=rep_seed,
+            return_subsample_df=return_subsample_df,
+        )
+
     def _solve_with_subsampling_ci(self, *args, **kwargs):
         if len(args) > 0:
             raise ValueError("Use keyword arguments when ci=True in causalProblem.solve().")
@@ -886,8 +1080,10 @@ class causalProblem:
             raise ValueError(
                 "Unsupported ci_method. Only 'recentered_subsampling' is available."
             )
+        replay_context = self._prepare_replay_context()
 
         point_result, _, _, _ = self._solve_from_operation_log(
+            replay_context=replay_context,
             maxtime=maxtime,
             theta=theta,
             verbose_optimizer=verbose_optimizer,
@@ -921,6 +1117,7 @@ class causalProblem:
         if ci_workers == 1:
             for rep_seed in rep_seeds:
                 out = self._run_subsampling_replication(
+                    replay_context=replay_context,
                     rep_seed=rep_seed,
                     maxtime=maxtime,
                     theta=theta,
@@ -947,6 +1144,7 @@ class causalProblem:
                 futures = [
                     ex.submit(
                         self._run_subsampling_replication,
+                        replay_context,
                         rep_seed=rep_seed,
                         maxtime=maxtime,
                         theta=theta,
@@ -1201,7 +1399,9 @@ class causalProblem:
             if ci:
                 return self._solve_with_subsampling_ci(*args, **kwargs)
             if any(step["method"] == "read_data" for step in self._operation_log):
+                replay_context = self._prepare_replay_context()
                 point_result, _, _, _ = self._solve_from_operation_log(
+                    replay_context=replay_context,
                     maxtime=kwargs.get("maxtime", None),
                     theta=kwargs.get("theta", 0.01),
                     verbose_optimizer=kwargs.get("verbose_optimizer", False),
