@@ -152,7 +152,7 @@ def _one_rep(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--r", type=int, default=75, help="Number of Monte Carlo datasets.")
-    parser.add_argument("--n", type=int, default=600, help="Rows per Monte Carlo dataset.")
+    parser.add_argument("--n", type=int, default=1500, help="Rows per Monte Carlo dataset.")
     parser.add_argument("--b", type=int, default=500, help="Subsampling reps per dataset.")
     parser.add_argument("--nsamples", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) // 2))
@@ -194,6 +194,7 @@ def main() -> None:
         for x in x_levels
     }
     rep_rows = {}
+    recent_rows = []
     done = 0
     t0 = time.monotonic()
     try:
@@ -221,6 +222,7 @@ def main() -> None:
                 cover_ub += ub_i
                 cover_joint += both_i
                 rep_rows[rid] = (lb, ub, bool(both_i))
+                recent_rows.append((rid, lb, ub, bool(both_i)))
                 for x, cov in x_results.items():
                     x_cov[int(x)]["lb"] += int(cov["lb"])
                     x_cov[int(x)]["ub"] += int(cov["ub"])
@@ -235,6 +237,15 @@ def main() -> None:
                         f"elapsed={elapsed:.1f}s",
                         flush=True,
                     )
+                    print("----- CHECKPOINT CIs -----")
+                    for rrid, rlb, rub, rboth in sorted(recent_rows, key=lambda x: x[0]):
+                        print(
+                            f"rep={rrid:04d} "
+                            f"CI=[{rlb:.6f}, {rub:.6f}] "
+                            f"true=[{true_lb:.6f}, {true_ub:.6f}] "
+                            f"cover={rboth}"
+                        )
+                    recent_rows = []
     except PermissionError:
         print("Parallel pool unavailable in this environment. Falling back to serial.", flush=True)
         for r in range(args.r):
@@ -255,6 +266,7 @@ def main() -> None:
             cover_ub += ub_i
             cover_joint += both_i
             rep_rows[rid] = (lb, ub, bool(both_i))
+            recent_rows.append((rid, lb, ub, bool(both_i)))
             for x, cov in x_results.items():
                 x_cov[int(x)]["lb"] += int(cov["lb"])
                 x_cov[int(x)]["ub"] += int(cov["ub"])
@@ -269,6 +281,15 @@ def main() -> None:
                     f"elapsed={elapsed:.1f}s",
                     flush=True,
                 )
+                print("----- CHECKPOINT CIs -----")
+                for rrid, rlb, rub, rboth in sorted(recent_rows, key=lambda x: x[0]):
+                    print(
+                        f"rep={rrid:04d} "
+                        f"CI=[{rlb:.6f}, {rub:.6f}] "
+                        f"true=[{true_lb:.6f}, {true_ub:.6f}] "
+                        f"cover={rboth}"
+                    )
+                recent_rows = []
 
     if args.print_cis:
         print("----- PER-REPLICATE CIs -----")
