@@ -6,32 +6,18 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import os
 import sys
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-
-import numpy as np
-import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from autobounds import DAG, causalProblem
-
-
-def simulate_iv_data(n: int, seed: int = 2026) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
-
-    u = rng.binomial(1, 0.5, size=n)
-    z = rng.binomial(1, 0.5, size=n)
-
-    p_x = np.clip(0.10 + 0.45 * z + 0.25 * u, 0.01, 0.99)
-    x = rng.binomial(1, p_x, size=n)
-
-    p_y = np.clip(0.05 + 0.35 * x + 0.25 * u, 0.01, 0.99)
-    y = rng.binomial(1, p_y, size=n)
-
-    return pd.DataFrame({"Z": z, "X": x, "Y": y})
+from examples.iv_ate_ci_subsampling import simulate_iv_data
 
 
 def build_problem(df):
@@ -77,11 +63,38 @@ def solve_ci(
         )
 
 
+def _one_rep(
+    rep_id: int,
+    n: int,
+    b: int,
+    ci_workers: int,
+    subsample_rate: float,
+    maxtime: float,
+    seed_base: int,
+    true_lb: float,
+    true_ub: float,
+):
+    df = simulate_iv_data(n, seed=seed_base + rep_id)
+    out = solve_ci(
+        build_problem(df),
+        b=b,
+        ci_workers=ci_workers,
+        subsample_rate=subsample_rate,
+        maxtime=maxtime,
+    )
+    lb = float(out["2.5% lb bounds"])
+    ub = float(out["97.5% ub bounds"])
+    lb_ok = lb <= true_lb
+    ub_ok = ub >= true_ub
+    return rep_id, lb, ub, int(lb_ok), int(ub_ok), int(lb_ok and ub_ok)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--r", type=int, default=75, help="Number of Monte Carlo datasets.")
     parser.add_argument("--n", type=int, default=600, help="Rows per Monte Carlo dataset.")
     parser.add_argument("--b", type=int, default=500, help="Subsampling reps per dataset.")
+    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) // 2))
     parser.add_argument("--ci-workers", type=int, default=16, help="Parallel workers inside each CI solve.")
     parser.add_argument("--subsample-rate", type=float, default=(2.0 / 3.0))
     parser.add_argument("--true-n", type=int, default=120000, help="Rows for true-bound proxy.")
@@ -99,35 +112,73 @@ def main() -> None:
     print(f"true_lb={true_lb:.8f} true_ub={true_ub:.8f}", flush=True)
 
     cover_lb = cover_ub = cover_joint = 0
-    rep_rows = []
-    for r in range(args.r):
-        df = simulate_iv_data(args.n, seed=args.rep_seed_base + r)
-        out = solve_ci(
-            build_problem(df),
-            b=args.b,
-            ci_workers=args.ci_workers,
-            subsample_rate=args.subsample_rate,
-            maxtime=args.maxtime,
-        )
-        lb = float(out["2.5% lb bounds"])
-        ub = float(out["97.5% ub bounds"])
-        lb_ok = lb <= true_lb
-        ub_ok = ub >= true_ub
-        both = lb_ok and ub_ok
-        cover_lb += int(lb_ok)
-        cover_ub += int(ub_ok)
-        cover_joint += int(both)
-        rep_rows.append((r, lb, ub, both))
-        if (r + 1) % 10 == 0 or (r + 1) == args.r:
-            print(
-                f"progress {r+1}/{args.r} "
-                f"lb={cover_lb/(r+1):.4f} ub={cover_ub/(r+1):.4f} joint={cover_joint/(r+1):.4f}",
-                flush=True,
+    rep_rows = {}
+    done = 0
+    t0 = time.monotonic()
+    try:
+        with ProcessPoolExecutor(max_workers=args.workers) as ex:
+            futs = [
+                ex.submit(
+                    _one_rep,
+                    rep_id=r,
+                    n=args.n,
+                    b=args.b,
+                    ci_workers=args.ci_workers,
+                    subsample_rate=args.subsample_rate,
+                    maxtime=args.maxtime,
+                    seed_base=args.rep_seed_base,
+                    true_lb=true_lb,
+                    true_ub=true_ub,
+                )
+                for r in range(args.r)
+            ]
+            for fut in as_completed(futs):
+                rid, lb, ub, lb_i, ub_i, both_i = fut.result()
+                cover_lb += lb_i
+                cover_ub += ub_i
+                cover_joint += both_i
+                rep_rows[rid] = (lb, ub, bool(both_i))
+                done += 1
+                if done % 10 == 0 or done == args.r:
+                    elapsed = time.monotonic() - t0
+                    print(
+                        f"progress {done}/{args.r} "
+                        f"lb={cover_lb/done:.4f} ub={cover_ub/done:.4f} joint={cover_joint/done:.4f} "
+                        f"elapsed={elapsed:.1f}s",
+                        flush=True,
+                    )
+    except PermissionError:
+        print("Parallel pool unavailable in this environment. Falling back to serial.", flush=True)
+        for r in range(args.r):
+            rid, lb, ub, lb_i, ub_i, both_i = _one_rep(
+                rep_id=r,
+                n=args.n,
+                b=args.b,
+                ci_workers=args.ci_workers,
+                subsample_rate=args.subsample_rate,
+                maxtime=args.maxtime,
+                seed_base=args.rep_seed_base,
+                true_lb=true_lb,
+                true_ub=true_ub,
             )
+            cover_lb += lb_i
+            cover_ub += ub_i
+            cover_joint += both_i
+            rep_rows[rid] = (lb, ub, bool(both_i))
+            done += 1
+            if done % 10 == 0 or done == args.r:
+                elapsed = time.monotonic() - t0
+                print(
+                    f"progress {done}/{args.r} "
+                    f"lb={cover_lb/done:.4f} ub={cover_ub/done:.4f} joint={cover_joint/done:.4f} "
+                    f"elapsed={elapsed:.1f}s",
+                    flush=True,
+                )
 
     if args.print_cis:
         print("----- PER-REPLICATE CIs -----")
-        for rid, lb, ub, both in rep_rows:
+        for rid in sorted(rep_rows):
+            lb, ub, both = rep_rows[rid]
             print(
                 f"rep={rid:04d} "
                 f"CI=[{lb:.6f}, {ub:.6f}] "

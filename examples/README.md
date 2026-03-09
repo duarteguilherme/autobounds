@@ -7,7 +7,7 @@ This folder keeps only the two coverage scripts:
 Use this for coverage checks when `read_data(..., covariates=[...])` is used.
 
 ```bash
-python covariate_ate_ci_coverage.py --r 20 --n 1200 --b 500 --ci-workers 16 --subsample-rate 0.6666667 --print-cis
+python covariate_ate_ci_coverage.py --r 20 --n 1200 --b 500 --workers 16 --ci-workers 16 --subsample-rate 0.6666667 --print-cis
 ```
 
 Notes:
