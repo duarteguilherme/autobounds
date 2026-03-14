@@ -425,6 +425,76 @@ class causalProblem:
             "nk": local_kwargs.get("nk", 200),
         }
 
+    def _threshold_raw_data(self, datam, outcome, cutoff, direction):
+        if outcome not in datam.columns:
+            raise KeyError(f"Outcome '{outcome}' not found in data columns.")
+        out = datam.copy(deep=True)
+        if direction == "geq":
+            out[outcome] = (out[outcome] >= cutoff).astype(int)
+        elif direction == "leq":
+            out[outcome] = (out[outcome] <= cutoff).astype(int)
+        else:
+            raise ValueError("direction must be either 'geq' or 'leq'.")
+        return out
+
+    def _threshold_summary_data(self, datam, outcome, cutoff, direction):
+        if "prob" not in datam.columns:
+            raise ValueError("Summary data must include a 'prob' column.")
+        out = self._threshold_raw_data(datam, outcome, cutoff, direction)
+        group_cols = [c for c in out.columns if c != "prob"]
+        return out.groupby(group_cols, dropna=False, sort=False, as_index=False)["prob"].sum()
+
+    def _get_threshold_source_values(self, outcome):
+        for step in self._operation_log:
+            if step["method"] == "read_data":
+                raw = step["kwargs"].get("raw")
+                if raw is not None and outcome in raw.columns:
+                    return sorted(pd.Series(raw[outcome]).dropna().unique().tolist())
+            if step["method"] == "load_data":
+                raw = step["kwargs"].get("raw")
+                summary = step["kwargs"].get("summary")
+                if raw is not None and outcome in raw.columns:
+                    return sorted(pd.Series(raw[outcome]).dropna().unique().tolist())
+                if summary is not None and outcome in summary.columns:
+                    return sorted(pd.Series(summary[outcome]).dropna().unique().tolist())
+        raise ValueError(f"Could not infer thresholds because no data source contains outcome '{outcome}'.")
+
+    def _build_threshold_problem(self, ind, dep, cutoff, direction):
+        threshold_number_values = deepcopy(self._default_bounder.number_values)
+        threshold_number_values[dep] = 2
+        threshold_problem = causalProblem(
+            deepcopy(self._default_bounder.dag),
+            threshold_number_values,
+        )
+
+        for step in self._operation_log:
+            method = step["method"]
+            if method in {"set_estimand", "set_ate", "load_data", "read_data"}:
+                continue
+            getattr(threshold_problem, method)(*deepcopy(step["args"]), **deepcopy(step["kwargs"]))
+
+        threshold_problem.set_ate(ind, dep)
+
+        for step in self._operation_log:
+            method = step["method"]
+            call_kwargs = deepcopy(step["kwargs"])
+            if method == "load_data":
+                if call_kwargs.get("raw") is not None:
+                    call_kwargs["raw"] = self._threshold_raw_data(call_kwargs["raw"], dep, cutoff, direction)
+                elif call_kwargs.get("summary") is not None:
+                    call_kwargs["summary"] = self._threshold_summary_data(
+                        call_kwargs["summary"], dep, cutoff, direction
+                    )
+                threshold_problem.load_data(**call_kwargs)
+            elif method == "read_data":
+                raw = call_kwargs.get("raw")
+                if raw is None:
+                    raise ValueError("Threshold outcome simplification requires read_data(raw=...).")
+                call_kwargs["raw"] = self._threshold_raw_data(raw, dep, cutoff, direction)
+                threshold_problem.read_data(**call_kwargs)
+
+        return threshold_problem
+
     def _record_read_data_operation(self, args, kwargs):
         if self._is_replaying:
             return
@@ -1383,6 +1453,37 @@ class causalProblem:
             },
         )
         return None
+
+    def solve_discrete_outcome_thresholds(
+        self,
+        ind,
+        dep,
+        thresholds=None,
+        direction="geq",
+        **solve_kwargs,
+    ):
+        support = self._get_threshold_source_values(dep)
+        if len(support) < 2:
+            raise ValueError(f"Outcome '{dep}' must have at least two support points.")
+        if thresholds is None:
+            thresholds = support[1:] if direction == "geq" else support[:-1]
+        thresholds = list(thresholds)
+        if len(thresholds) == 0:
+            raise ValueError("No thresholds available for the requested direction.")
+
+        results = {}
+        for cutoff in thresholds:
+            threshold_problem = self._build_threshold_problem(ind, dep, cutoff, direction)
+            results[cutoff] = threshold_problem.solve(**deepcopy(solve_kwargs))
+
+        return {
+            "treatment": ind,
+            "outcome": dep,
+            "direction": direction,
+            "support": support,
+            "thresholds": thresholds,
+            "results": results,
+        }
 
     def write_program(self, *args, **kwargs):
         return self._default_bounder.write_program(*args, **kwargs)

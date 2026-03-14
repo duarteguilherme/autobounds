@@ -307,3 +307,47 @@ def test_stratified_subsample_preserves_covariate_support():
     assert len(sub) == 40
     levels = set(sub["X"].unique().tolist())
     assert levels == {0, 1}
+
+
+def test_solve_discrete_outcome_thresholds_replays_binary_outcomes(monkeypatch):
+    seen_outcome_supports = []
+
+    def _fake_load_data_threshold(self, summary=None, raw=None, **kwargs):
+        if raw is not None:
+            df = raw if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
+        elif summary is not None:
+            df = summary if isinstance(summary, pd.DataFrame) else pd.read_csv(summary)
+        else:
+            raise ValueError("Missing data.")
+        seen_outcome_supports.append(tuple(sorted(pd.Series(df["Y"]).dropna().unique().tolist())))
+        return None
+
+    monkeypatch.setattr(Bounder, "load_data", _fake_load_data_threshold)
+    monkeypatch.setattr(Bounder, "set_ate", lambda self, *args, **kwargs: None)
+    monkeypatch.setattr(
+        Bounder,
+        "solve",
+        lambda self, **kwargs: {
+            "point lb dual": 0.0,
+            "point ub dual": 1.0,
+            "point lb primal": 0.0,
+            "point ub primal": 1.0,
+        },
+    )
+
+    problem = causalProblem(DAG("D -> Y"))
+    problem.set_ate("D", "Y")
+    problem.load_data(
+        raw=pd.DataFrame(
+            {
+                "D": [0, 1] * 6,
+                "Y": [0, 1, 2, 3] * 3,
+            }
+        )
+    )
+
+    out = problem.solve_discrete_outcome_thresholds("D", "Y", direction="geq", verbose_result=False)
+
+    assert out["thresholds"] == [1, 2, 3]
+    assert seen_outcome_supports[0] == (0, 1, 2, 3)
+    assert set(seen_outcome_supports[1:]) == {(0, 1)}
