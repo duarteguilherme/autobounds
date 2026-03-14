@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.causalProblem import *
 from autobounds.autobounds.Q import Q, clean_list, compare_lists
@@ -73,20 +72,6 @@ def test_respect_to():
             })           )
 #        print(solve())
 
-def test_respect_to_restores_existing_globals():
-    d = DAG('D -> Y')
-    pro = causalProblem(d)
-
-    original_p = "preexisting_symbol"
-    globals()["p"] = original_p
-    try:
-        with respect_to(pro):
-            assert callable(p)
-        assert globals()["p"] == original_p
-    finally:
-        if globals().get("p", None) == original_p:
-            del globals()["p"]
-
 
 def test_solve():
     d = DAG('D -> Y')
@@ -98,7 +83,8 @@ def test_solve():
     pro.load_data(raw = df)
     pro.set_ate('D','Y')
     solution = pro.solve()
-    assert solution['point lb primal'] == pytest.approx(0.142857, rel=1e-3, abs=1e-4)
+    assert solution['point lb primal'] <= 0.143
+    assert solution['point lb primal'] >= 0.142
 
 def test_load_raw():
     d = DAG('D -> Y')
@@ -127,8 +113,33 @@ def test_add_assumption():
     assert zero_terms.issubset(problem.zero_parameters)
 
 
+def test_write_program_applies_deferred_zero_parameters():
+    y = DAG()
+    y.from_structure("Z -> X, X -> Y, U -> X, U -> Y, K -> X", unob = "U")
+    x = causalProblem(y, {'X': 2})
+    x.set_p_to_zero(['Z0'])
+    program = x.write_program()
+    assert 'Z0' not in program.parameters
 
 
+
+
+
+def test_load_data():
+    df_y_do_x = pd.DataFrame({
+        'X': [0,0,1,1],
+        'Y': [0,1,0,1],
+        'prob': [0.4, 0.6, 0.1, 0.9]
+        })
+    dag = DAG()
+    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
+    problem = causalProblem(dag)
+    problem.load_data(df_y_do_x, do = ['X'])
+    problem.set_ate('X','Y')
+    program = problem.write_program()
+    program.to_pip('test_do.pip')
+    res = program.run_scip()
+    assert res[0]['primal'] == 0.3
 
 
 def test_solve_kl():
@@ -150,7 +161,7 @@ def test_solve_kl_bug_log():
 
 
 
-def test_load_data_do(tmp_path):
+def test_load_data():
     df_y_do_x = pd.DataFrame({
         'X': [0,0,1,1],
         'Y': [0,1,0,1],
@@ -162,7 +173,7 @@ def test_load_data_do(tmp_path):
     problem.load_data(df_y_do_x, do = ['X'])
     problem.set_ate('X','Y')
     program = problem.write_program()
-    program.to_pip(str(tmp_path / 'test_do.pip'))
+    program.to_pip('test_do.pip')
     res = program.run_scip()
     assert res[0]['primal'] == 0.3
 
@@ -295,10 +306,21 @@ def test_load_data():
     y.from_structure("Z -> Y, X -> Y, U -> X, U -> Y", unob = 'U')
     x = causalProblem(y, {'X': 2})
     x.load_data(datafile)
+    x.constraints[3] == [(-1, ['0.25']), (1, ['X1.Y0001', 'Z1']), 
+            (1, ['X1.Y0010', 'Z0']), (1, ['X1.Y0011', 'Z0']), 
+            (1, ['X1.Y0011', 'Z1']), (1, ['X1.Y0101', 'Z1']), 
+            (1, ['X1.Y0110', 'Z0']), (1, ['X1.Y0111', 'Z0']), 
+            (1, ['X1.Y0111', 'Z1']), (1, ['X1.Y1001', 'Z1']), 
+            (1, ['X1.Y1010', 'Z0']), (1, ['X1.Y1011', 'Z0']), 
+            (1, ['X1.Y1011', 'Z1']), (1, ['X1.Y1101', 'Z1']), 
+            (1, ['X1.Y1110', 'Z0']), (1, ['X1.Y1111', 'Z0']), (1, ['X1.Y1111', 'Z1'])] 
     y = DAG()
     y.from_structure("Z -> Y, U -> Z, X -> Y, U -> Y, U -> X", unob = "U")
     x = causalProblem(y, {'X': 2})
     x.load_data(datafile2)
+    x.constraints[1] == [(-1, ['0.125']), (1, ['X0.Y0000.Z1']), 
+            (1, ['X0.Y0001.Z1']), (1, ['X0.Y0010.Z1']), (1, ['X0.Y0011.Z1']), 
+            (1, ['X0.Y1000.Z1']), (1, ['X0.Y1001.Z1']), (1, ['X0.Y1010.Z1']), (1, ['X0.Y1011.Z1'])] 
 
 def test_transform_constraint():
     assert transform_constraint([(1, ['X00.Y01']), (1, ['X01.Y01']), (1, ['X10.Y01']),

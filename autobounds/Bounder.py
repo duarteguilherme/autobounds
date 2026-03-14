@@ -54,6 +54,7 @@ class Bounder:
         self.estimand = None
         self.constraints = [ ]
         self.unconf_first_nodes = [ ]
+        self.zero_parameters = set()
         self.safe_min = 0.0001 # This is a safe minimum to avoid division by zero
         self.maxtime, self.theta = None, 0.01  # There is no maximum time a program will be running
 
@@ -174,14 +175,13 @@ class Bounder:
         """
         program = Program()
         self.check_constraints()
-        program.parameters = [ x[1] 
-                for x in self.parameters 
-                if x[0] == 1 ] + [ 'objvar']
-        zero_parameters = [ x[1] 
-                for x in self.parameters 
-                if x[0] == 0 ] 
+        program.parameters = [
+                x[1]
+                for x in self.parameters
+                if x[1] not in self.zero_parameters
+            ] + [ 'objvar']
         program.constraints = [
-                transform_constraint(x, zero_parameters )
+                transform_constraint(x, self.zero_parameters )
                 for x in self.constraints
                 ]
         program.optimize_remove_numeric_lines()
@@ -208,7 +208,7 @@ class Bounder:
         # handles the simplification everytime the first ancestrals
         # are not confounded (they are divided)
         unconf_nodes = [ x[0] for x in self.unconf_first_nodes ] 
-        not_0_parameters = [ x[1] for x in self.parameters if x[0] != 0 ]
+        not_0_parameters = [ x[1] for x in self.parameters if x[1] not in self.zero_parameters ]
         for c in self.Parser.c_parameters:
             # Iterative over c_components
             prob_constraints = [ (1, [ x ]) 
@@ -364,18 +364,30 @@ class Bounder:
         because it allows to remove not only parameters, but also constraints
         """
         if isinstance(parameter_list, Q):
-            parameter_list = [ k[1][0] for k in parameter_list._event ]
-            self.parameters = [ (x[0], x[1])
-                    for x in self.parameters  
-                    if x[1] not in parameter_list ] + [ (0, x) 
-                            for x in parameter_list ]
+            parameter_list = [ k[1][0] for k in parameter_list._event if len(k[1]) == 1 ]
         elif isinstance(parameter_list, list):
-            self.parameters = [ (x[0], x[1])
-                    for x in self.parameters  
-                    if x[1] not in parameter_list ] + [ (0, x) 
-                            for x in parameter_list ]
+            parameter_list = list(parameter_list)
         else:
             raise Exception('Type error - cannot set it to 0')
+        self.zero_parameters.update(parameter_list)
+
+    def _constraint_implies_zero_parameters(self, constraint, symbol):
+        if symbol != '==':
+            return None
+        if constraint._cond is not None:
+            return None
+        if len(constraint._event) == 0:
+            return None
+        if any(term[1] == ['1'] or term[1] == [1] for term in constraint._event):
+            return None
+        if any(len(term[1]) != 1 for term in constraint._event):
+            return None
+        scalars = [term[0] for term in constraint._event]
+        if any(s == 0 for s in scalars):
+            return None
+        if not (all(s > 0 for s in scalars) or all(s < 0 for s in scalars)):
+            return None
+        return [term[1][0] for term in constraint._event]
 
     def add_assumption(self, constraint, symbol = "==", constraint2 = None):
         if constraint2 is not None:
@@ -394,6 +406,10 @@ class Bounder:
             raise TypeError('Constraint must be a Q object')
         if constraint2 is not None:
             constraint -= constraint2 
+        implied_zero_parameters = self._constraint_implies_zero_parameters(constraint, symbol)
+        if implied_zero_parameters is not None:
+            self.set_p_to_zero(implied_zero_parameters)
+            return None
         # After right-hand side is 0, then the denominator can be ignored
         self.constraints.append(constraint._event + [ (1, [ symbol ] )])
         if constraint._cond is not None:
