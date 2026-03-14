@@ -778,6 +778,7 @@ class causalProblem:
         theta,
         verbose_optimizer,
         limits,
+        return_dgps=False,
     ):
         if raw_df is None or raw_df.shape[0] == 0:
             raise ValueError("Covariate read_data requires non-empty raw data.")
@@ -788,6 +789,12 @@ class causalProblem:
         point_ub_dual = 0.0
         point_lb_primal = 0.0
         point_ub_primal = 0.0
+        dgps = None
+        if return_dgps:
+            dgps = {
+                "lower": {"status": "aggregated", "strata": []},
+                "upper": {"status": "aggregated", "strata": []},
+            }
 
         total_n = float(raw_df.shape[0])
         for _, gdf in raw_df.groupby(covariates, sort=False, dropna=False):
@@ -801,18 +808,41 @@ class causalProblem:
                 verbose_optimizer=verbose_optimizer,
                 verbose_result=False,
                 limits=limits,
+                return_dgps=return_dgps,
             )
             point_lb_dual += float(out["point lb dual"]) * w
             point_ub_dual += float(out["point ub dual"]) * w
             point_lb_primal += float(out["point lb primal"]) * w
             point_ub_primal += float(out["point ub primal"]) * w
+            if return_dgps:
+                covariate_values = {
+                    col: gdf.iloc[0][col]
+                    for col in covariates
+                }
+                dgps["lower"]["strata"].append(
+                    {
+                        "covariates": covariate_values,
+                        "weight": w,
+                        "dgps": out["dgps"]["lower"],
+                    }
+                )
+                dgps["upper"]["strata"].append(
+                    {
+                        "covariates": covariate_values,
+                        "weight": w,
+                        "dgps": out["dgps"]["upper"],
+                    }
+                )
 
-        return {
+        result = {
             "point lb dual": point_lb_dual,
             "point ub dual": point_ub_dual,
             "point lb primal": point_lb_primal,
             "point ub primal": point_ub_primal,
         }
+        if return_dgps:
+            result["dgps"] = dgps
+        return result
 
     def _prepare_replay_context(self):
         from .Bounder import Bounder
@@ -869,6 +899,7 @@ class causalProblem:
         subsample_size,
         rep_seed,
         return_subsample_df=False,
+        return_dgps=False,
     ):
         replay_bounder = deepcopy(replay_context["prototype"])
         rep_n_total = 0
@@ -956,6 +987,7 @@ class causalProblem:
                 theta=theta,
                 verbose_optimizer=verbose_optimizer,
                 limits=limits,
+                return_dgps=return_dgps,
             )
         else:
             res = replay_bounder.solve(
@@ -965,6 +997,7 @@ class causalProblem:
                 verbose_optimizer=verbose_optimizer,
                 verbose_result=False,
                 limits=limits,
+                return_dgps=return_dgps,
             )
         return res, rep_n_total, rep_m_total, rep_subsample_df
 
@@ -979,6 +1012,7 @@ class causalProblem:
         subsample_size,
         rep_seed,
         return_subsample_df=False,
+        return_dgps=False,
     ):
         from .Bounder import Bounder
 
@@ -1072,6 +1106,7 @@ class causalProblem:
                 theta=theta,
                 verbose_optimizer=verbose_optimizer,
                 limits=limits,
+                return_dgps=return_dgps,
             )
         else:
             res = replay_bounder.solve(
@@ -1081,6 +1116,7 @@ class causalProblem:
                 verbose_optimizer=verbose_optimizer,
                 verbose_result=False,
                 limits=limits,
+                return_dgps=return_dgps,
             )
         return res, rep_n_total, rep_m_total, rep_subsample_df
 
@@ -1096,6 +1132,7 @@ class causalProblem:
         subsample_size,
         rep_seed,
         return_subsample_df=False,
+        return_dgps=False,
     ):
         if replay_context is not None and replay_context.get("fast_path", False):
             return self._solve_from_operation_log_fast(
@@ -1109,6 +1146,7 @@ class causalProblem:
                 subsample_size=subsample_size,
                 rep_seed=rep_seed,
                 return_subsample_df=return_subsample_df,
+                return_dgps=return_dgps,
             )
         return self._solve_from_operation_log_slow(
             maxtime=maxtime,
@@ -1120,6 +1158,7 @@ class causalProblem:
             subsample_size=subsample_size,
             rep_seed=rep_seed,
             return_subsample_df=return_subsample_df,
+            return_dgps=return_dgps,
         )
 
     def _solve_with_subsampling_ci(self, *args, **kwargs):
@@ -1506,6 +1545,7 @@ class causalProblem:
                     subsample_rate=kwargs.get("subsample_rate", 0.7),
                     subsample_size=kwargs.get("subsample_size", None),
                     rep_seed=0,
+                    return_dgps=kwargs.get("return_dgps", False),
                 )
                 if kwargs.get("verbose_result", True):
                     print("Point estimates\n")

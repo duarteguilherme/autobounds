@@ -92,20 +92,27 @@ class Bounder:
         params = [ Query(i) for i in self.Parser.is_active(expr, ind, dep) ]
         return reduce(lambda a,b : a + b, params)
 
-    def solve(self, ci = False, nsamples = 10, maxtime = None, theta = 0.01, 
-              verbose_optimizer = False, verbose_result = True, limits = [None, None]):
+    def solve(self, ci = False, nsamples = 10, maxtime = None, theta = 0.01,
+              verbose_optimizer = False, verbose_result = True, limits = [None, None],
+              return_dgps = False):
         """ Wrapper for causalProblem.write_program().solve()
         """
         if maxtime is not None:
             self.maxtime = maxtime
         if self.estimand is None:
             raise ValueError("Estimand is not set. Please set an estimand using set_estimand() method.")
-        point_bounds = self.write_program().run_scip(
+        point_output = self.write_program().run_scip(
             maxtime=maxtime,
             theta=theta,
             verbose=verbose_optimizer,
             limits=limits,
+            return_dgps=return_dgps,
         )
+        if return_dgps:
+            point_bounds, dgps = point_output
+        else:
+            point_bounds = point_output
+            dgps = None
         try:
             self.point_lb_dual = point_bounds[0]['dual']
             self.point_ub_dual = point_bounds[1]['dual']
@@ -119,12 +126,15 @@ class Bounder:
             print(f"Dual: [{self.point_lb_dual}, {self.point_ub_dual}]")
             print(f"Primal: [{self.point_lb_primal}, {self.point_ub_primal}]")
         if not ci:
-            return {
+            result = {
                 "point lb dual": self.point_lb_dual,
                 "point ub dual": self.point_ub_dual,
                 "point lb primal": self.point_lb_primal,
                 "point ub primal": self.point_ub_primal
             }
+            if return_dgps:
+                result["dgps"] = dgps
+            return result
         if ci:
             raise NotImplementedError(
                 "Confidence intervals are handled by causalProblem. Use causalProblem.solve(ci=True)."

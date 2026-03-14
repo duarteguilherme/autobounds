@@ -100,6 +100,42 @@ def test_solve():
     solution = pro.solve()
     assert solution['point lb primal'] == pytest.approx(0.142857, rel=1e-3, abs=1e-4)
 
+
+def test_solve_return_dgps():
+    d = DAG('D -> Y')
+    pro = causalProblem(d)
+    df = pd.DataFrame({
+        'D': [0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 1],
+        'Y': [0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1],
+    })
+    pro.load_data(raw=df)
+    pro.set_ate('D', 'Y')
+    solution = pro.solve(return_dgps=True, verbose_result=False, verbose_optimizer=False)
+    assert "dgps" in solution
+    assert solution["dgps"]["lower"]["status"] == "ok"
+    assert solution["dgps"]["upper"]["status"] == "ok"
+    assert "objvar" in solution["dgps"]["lower"]["values"]
+    assert "objvar" in solution["dgps"]["upper"]["values"]
+
+
+def test_solve_return_dgps_read_data():
+    dag = DAG()
+    dag.from_structure("Z -> D, D -> Y, U -> D, U -> Y", unob="U")
+    pro = causalProblem(dag)
+    df = pd.DataFrame({
+        "Z": [0, 0, 0, 0, 1, 1, 1, 1],
+        "D": [0, 0, 1, 1, 0, 1, 0, 1],
+        "Y": [0, 1, 0, 1, 0, 1, 1, 1],
+    })
+    pro.read_data(raw=df)
+    pro.set_ate("D", "Y")
+    solution = pro.solve(return_dgps=True, verbose_result=False, verbose_optimizer=False)
+    assert "dgps" in solution
+    assert solution["dgps"]["lower"]["status"] == "ok"
+    assert solution["dgps"]["upper"]["status"] == "ok"
+    assert "objvar" in solution["dgps"]["lower"]["values"]
+    assert "objvar" in solution["dgps"]["upper"]["values"]
+
 def test_load_raw():
     d = DAG('D -> Y')
     pro = causalProblem(d)
