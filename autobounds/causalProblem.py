@@ -513,7 +513,7 @@ class causalProblem:
             bins = pd.Series(np.zeros(raw_df.shape[0], dtype=int))
 
         n = int(raw_df.shape[0])
-        b = max(2, min(n, int(np.floor(n ** 0.7))))
+        b = max(1, min(n, int(np.floor(n ** 0.7))))
         theta_n_lb = float(point_result["point lb dual"])
         theta_n_ub = float(point_result["point ub dual"])
 
@@ -571,10 +571,7 @@ class causalProblem:
         if n == 0:
             raise ValueError("Cannot subsample empty dataset.")
         if subsample_size is None:
-            if n < 120:
-                m = n
-            else:
-                m = min(n, max(80, int(np.floor(n ** subsample_rate))))
+            m = min(n, max(1, int(np.floor(n ** subsample_rate))))
         else:
             m = min(n, int(subsample_size))
         return df.sample(n=m, replace=False, random_state=random_state)
@@ -584,9 +581,7 @@ class causalProblem:
         if n == 0:
             raise ValueError("Cannot subsample empty dataset.")
         if subsample_size is None:
-            if n < 120:
-                return n
-            return min(n, max(80, int(np.floor(n ** subsample_rate))))
+            return min(n, max(1, int(np.floor(n ** subsample_rate))))
         return min(n, int(subsample_size))
 
     def _allocate_strata_counts(self, counts, m):
