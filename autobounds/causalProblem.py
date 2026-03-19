@@ -1217,7 +1217,7 @@ class causalProblem:
                 return
             if done == nsamples or done % progress_step == 0:
                 pct = int(round(100 * done / nsamples)) if nsamples > 0 else 100
-                print(f"CI subsampling {done}/{nsamples} ({pct}%)")
+                print(f"CI subsampling {done}/{nsamples} ({pct}%)", flush=True)
 
         if rep_seeds is None:
             rep_seeds = np.random.default_rng().integers(0, 2**32 - 1, size=nsamples)
