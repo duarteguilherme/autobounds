@@ -13,7 +13,7 @@ version = "0.0.2"
 description = "AUTOBOUNDS — software for calculating causal inference bounds"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
