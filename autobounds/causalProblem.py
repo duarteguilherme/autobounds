@@ -1165,7 +1165,8 @@ class causalProblem:
         if len(args) > 0:
             raise ValueError("Use keyword arguments when ci=True in causalProblem.solve().")
 
-        nsamples = int(kwargs.pop("nsamples", 200))
+        nsamples = int(kwargs.pop("nsamples", 1000))
+        progress = bool(kwargs.pop("progress", False))
         return_rep_seeds = bool(kwargs.pop("return_rep_seeds", False))
         return_subsample_dfs = bool(kwargs.pop("return_subsample_dfs", False))
         rep_seeds = kwargs.pop("rep_seeds", None)
@@ -1209,6 +1210,15 @@ class causalProblem:
         subsample_dfs = []
         n_eff_total = 0
         m_eff_total = 0
+        progress_step = max(1, nsamples // 10) if nsamples > 0 else 1
+
+        def _maybe_report_progress(done):
+            if not progress:
+                return
+            if done == nsamples or done % progress_step == 0:
+                pct = int(round(100 * done / nsamples)) if nsamples > 0 else 100
+                print(f"CI subsampling {done}/{nsamples} ({pct}%)")
+
         if rep_seeds is None:
             rep_seeds = np.random.default_rng().integers(0, 2**32 - 1, size=nsamples)
         else:
@@ -1219,7 +1229,7 @@ class causalProblem:
                 raise ValueError("rep_seeds length must match nsamples.")
 
         if ci_workers == 1:
-            for rep_seed in rep_seeds:
+            for idx, rep_seed in enumerate(rep_seeds, start=1):
                 out = self._run_subsampling_replication(
                     replay_context=replay_context,
                     rep_seed=rep_seed,
@@ -1243,6 +1253,7 @@ class causalProblem:
                 ub_samples.append(ub)
                 if return_subsample_dfs:
                     subsample_dfs.append(rep_subsample_df)
+                _maybe_report_progress(idx)
         else:
             with ThreadPoolExecutor(max_workers=ci_workers) as ex:
                 futures = [
@@ -1260,6 +1271,7 @@ class causalProblem:
                     )
                     for rep_seed in rep_seeds
                 ]
+                completed = 0
                 for fut in as_completed(futures):
                     out = fut.result()
                     if return_subsample_dfs:
@@ -1274,6 +1286,8 @@ class causalProblem:
                     ub_samples.append(ub)
                     if return_subsample_dfs:
                         subsample_dfs.append(rep_subsample_df)
+                    completed += 1
+                    _maybe_report_progress(completed)
 
         lb_arr = np.asarray(lb_samples, dtype=float)
         ub_arr = np.asarray(ub_samples, dtype=float)
