@@ -308,10 +308,31 @@ class causalProblem:
         "main_model",
         "_used_discrete_covariate_path",
         "_covariate_support_size",
+        "continuous_outcome",
+        "continuous_bins",
+        "continuous_method",
+        "_continuous_outcome_name",
+        "_continuous_estimand",
+        "_continuous_bin_specs",
     }
 
-    def __init__(self, dag, number_values = {}):
+    def __init__(
+        self,
+        dag,
+        number_values = {},
+        continuous_outcome = False,
+        continuous_bins = 4,
+        continuous_method = "quantile",
+    ):
         from .Bounder import Bounder
+        if continuous_method != "quantile":
+            raise ValueError("Only continuous_method='quantile' is currently supported.")
+        if isinstance(continuous_outcome, str):
+            continuous_outcome_name = continuous_outcome
+            continuous_outcome_flag = True
+        else:
+            continuous_outcome_name = None
+            continuous_outcome_flag = bool(continuous_outcome)
         object.__setattr__(self, "_default_bounder", Bounder(dag, number_values))
         object.__setattr__(self, "_bounders", {})
         object.__setattr__(self, "_bounder_order", [])
@@ -327,6 +348,12 @@ class causalProblem:
         object.__setattr__(self, "main_model", None)
         object.__setattr__(self, "_used_discrete_covariate_path", False)
         object.__setattr__(self, "_covariate_support_size", None)
+        object.__setattr__(self, "continuous_outcome", continuous_outcome_flag)
+        object.__setattr__(self, "continuous_bins", int(continuous_bins))
+        object.__setattr__(self, "continuous_method", continuous_method)
+        object.__setattr__(self, "_continuous_outcome_name", continuous_outcome_name)
+        object.__setattr__(self, "_continuous_estimand", None)
+        object.__setattr__(self, "_continuous_bin_specs", None)
 
     def _freeze_tabular(self, obj):
         if obj is None:
@@ -366,6 +393,260 @@ class causalProblem:
                 "kwargs": deepcopy(kwargs),
             }
         )
+
+    def _continuous_outcome_matches(self, dep=None):
+        if not self.continuous_outcome:
+            return False
+        if self._continuous_outcome_name is None:
+            return dep is None
+        return dep == self._continuous_outcome_name
+
+    def _resolve_continuous_outcome_name(self):
+        if not self.continuous_outcome:
+            return None
+        if self._continuous_outcome_name is None:
+            raise ValueError(
+                "continuous_outcome=True requires calling set_ate(..., dep=...) before loading data, "
+                "or passing continuous_outcome='<outcome_name>' in the constructor."
+            )
+        return self._continuous_outcome_name
+
+    def _digitize_continuous_outcome(self, datam, outcome):
+        if outcome not in datam.columns:
+            raise KeyError(f"Continuous outcome '{outcome}' not found in data columns.")
+        if "prob" in datam.columns:
+            raise NotImplementedError(
+                "Continuous-outcome discretization currently requires raw row-level data, not summary data."
+            )
+
+        out = datam.copy(deep=True)
+        values = pd.to_numeric(out[outcome], errors="raise")
+        non_missing = values.dropna()
+        if non_missing.shape[0] == 0:
+            raise ValueError(f"Continuous outcome '{outcome}' has no observed values.")
+        y_min = float(non_missing.min())
+        y_max = float(non_missing.max())
+        if np.isclose(y_min, y_max):
+            normalized = pd.Series(np.zeros(out.shape[0], dtype=float), index=out.index)
+        else:
+            normalized = (values - y_min) / (y_max - y_min)
+
+        n_unique = int(non_missing.nunique())
+        n_bins_target = max(1, min(int(self.continuous_bins), n_unique))
+        if n_bins_target == 1:
+            codes = pd.Series(np.zeros(out.shape[0], dtype=int), index=out.index)
+        else:
+            try:
+                codes = pd.qcut(normalized.rank(method="first"), q=n_bins_target, labels=False, duplicates="drop")
+            except ValueError:
+                codes = pd.Series(np.zeros(out.shape[0], dtype=int), index=out.index)
+        codes = pd.Series(codes, index=out.index).astype("Int64")
+        unique_codes = sorted(codes.dropna().unique().tolist())
+        if len(unique_codes) == 0:
+            raise ValueError(f"Failed to construct bins for continuous outcome '{outcome}'.")
+
+        code_map = {int(raw_code): idx for idx, raw_code in enumerate(unique_codes)}
+        remapped = codes.map(code_map).astype(int)
+        out[outcome] = remapped
+
+        bin_specs = []
+        for raw_code in unique_codes:
+            new_code = code_map[int(raw_code)]
+            mask = remapped == new_code
+            orig_vals = values.loc[mask]
+            norm_vals = normalized.loc[mask]
+            bin_specs.append(
+                {
+                    "bin": int(new_code),
+                    "ymin": float(orig_vals.min()),
+                    "ymax": float(orig_vals.max()),
+                    "normalized_ymin": float(norm_vals.min()),
+                    "normalized_ymax": float(norm_vals.max()),
+                }
+            )
+
+        object.__setattr__(self, "_continuous_bin_specs", bin_specs)
+        return out
+
+    def _prepare_continuous_loaded_data(self, raw=None, summary=None):
+        if raw is not None and summary is not None:
+            raise ValueError("Provide only one of raw or summary data.")
+        if summary is not None:
+            raise NotImplementedError(
+                "Continuous-outcome mode currently supports raw row-level data only."
+            )
+        if raw is None:
+            return raw, summary
+        datam = deepcopy(raw) if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
+        transformed = self._digitize_continuous_outcome(datam, self._resolve_continuous_outcome_name())
+        self._ensure_default_bounder_number_values(
+            outcome=self._resolve_continuous_outcome_name(),
+            n_bins=len(self._continuous_bin_specs),
+        )
+        return transformed, None
+
+    def _ensure_default_bounder_number_values(self, outcome, n_bins):
+        from .Bounder import Bounder
+
+        if self._default_bounder.number_values.get(outcome, 2) == int(n_bins):
+            return
+
+        number_values = deepcopy(self._default_bounder.number_values)
+        number_values[outcome] = int(n_bins)
+        new_bounder = Bounder(
+            deepcopy(self._default_bounder.dag),
+            number_values,
+        )
+        for step in self._operation_log:
+            method = step["method"]
+            if method in {"load_data", "read_data", "set_ate", "set_estimand"}:
+                continue
+            getattr(new_bounder, method)(*deepcopy(step["args"]), **deepcopy(step["kwargs"]))
+        object.__setattr__(self, "_default_bounder", new_bounder)
+
+    def _threshold_bin_raw_data(self, datam, outcome, bin_id):
+        if outcome not in datam.columns:
+            raise KeyError(f"Outcome '{outcome}' not found in data columns.")
+        out = datam.copy(deep=True)
+        out[outcome] = (out[outcome] == bin_id).astype(int)
+        return out
+
+    def _threshold_bin_summary_data(self, datam, outcome, bin_id):
+        if "prob" not in datam.columns:
+            raise ValueError("Summary data must include a 'prob' column.")
+        out = self._threshold_bin_raw_data(datam, outcome, bin_id)
+        group_cols = [c for c in out.columns if c != "prob"]
+        return out.groupby(group_cols, dropna=False, sort=False, as_index=False)["prob"].sum()
+
+    def _build_category_problem(self, ind, dep, bin_id):
+        number_values = deepcopy(self._default_bounder.number_values)
+        number_values[dep] = 2
+        category_problem = causalProblem(
+            deepcopy(self._default_bounder.dag),
+            number_values,
+        )
+
+        for step in self._operation_log:
+            method = step["method"]
+            if method in {"set_estimand", "set_ate", "load_data", "read_data"}:
+                continue
+            getattr(category_problem, method)(*deepcopy(step["args"]), **deepcopy(step["kwargs"]))
+
+        category_problem.set_ate(ind, dep)
+
+        for step in self._operation_log:
+            method = step["method"]
+            call_kwargs = deepcopy(step["kwargs"])
+            if method == "load_data":
+                if call_kwargs.get("raw") is not None:
+                    call_kwargs["raw"] = self._threshold_bin_raw_data(call_kwargs["raw"], dep, bin_id)
+                elif call_kwargs.get("summary") is not None:
+                    call_kwargs["summary"] = self._threshold_bin_summary_data(
+                        call_kwargs["summary"], dep, bin_id
+                    )
+                category_problem.load_data(**call_kwargs)
+            elif method == "read_data":
+                raw = call_kwargs.get("raw")
+                if raw is None:
+                    raise ValueError("Continuous-outcome binning requires read_data(raw=...).")
+                call_kwargs["raw"] = self._threshold_bin_raw_data(raw, dep, bin_id)
+                category_problem.read_data(**call_kwargs)
+
+        return category_problem
+
+    def _solve_continuous_outcome_ate(self, **solve_kwargs):
+        if self._continuous_estimand is None or self._continuous_estimand.get("kind") != "ate":
+            raise ValueError("Continuous-outcome solve currently supports set_ate(...) only.")
+        want_ci = bool(solve_kwargs.get("ci", False))
+        want_dgps = bool(solve_kwargs.get("return_dgps", False))
+        if self._continuous_bin_specs is None:
+            raise ValueError("Load data before solving a continuous outcome problem.")
+
+        ind = self._continuous_estimand["ind"]
+        dep = self._continuous_estimand["dep"]
+        subsolve_kwargs = deepcopy(solve_kwargs)
+        subsolve_kwargs["verbose_result"] = False
+        results = {}
+        point_lb_dual = 0.0
+        point_ub_dual = 0.0
+        point_lb_primal = 0.0
+        point_ub_primal = 0.0
+        ci_method = None
+        ci_workers = None
+        ci_lb_025 = 0.0
+        ci_lb_01 = 0.0
+        ci_ub_975 = 0.0
+        ci_ub_99 = 0.0
+        dgps = None
+        if want_dgps:
+            dgps = {
+                "lower": {"status": "continuous_bin_aggregate", "bins": []},
+                "upper": {"status": "continuous_bin_aggregate", "bins": []},
+            }
+
+        for spec in self._continuous_bin_specs:
+            bin_id = int(spec["bin"])
+            category_problem = self._build_category_problem(ind, dep, bin_id)
+            bin_result = category_problem.solve(**deepcopy(subsolve_kwargs))
+            results[bin_id] = {
+                **spec,
+                "result": bin_result,
+            }
+            point_lb_dual += float(spec["ymin"]) * float(bin_result["point lb dual"])
+            point_ub_dual += float(spec["ymax"]) * float(bin_result["point ub dual"])
+            point_lb_primal += float(spec["ymin"]) * float(bin_result["point lb primal"])
+            point_ub_primal += float(spec["ymax"]) * float(bin_result["point ub primal"])
+            if want_ci:
+                ci_lb_025 += float(spec["ymin"]) * float(bin_result["2.5% lb bounds"])
+                ci_lb_01 += float(spec["ymin"]) * float(bin_result["1% lb bounds"])
+                ci_ub_975 += float(spec["ymax"]) * float(bin_result["97.5% ub bounds"])
+                ci_ub_99 += float(spec["ymax"]) * float(bin_result["99% ub bounds"])
+                if ci_method is None:
+                    ci_method = bin_result.get("ci method")
+                if ci_workers is None and "ci workers" in bin_result:
+                    ci_workers = bin_result.get("ci workers")
+            if want_dgps:
+                dgps["lower"]["bins"].append(
+                    {
+                        "bin": bin_id,
+                        "ymin": float(spec["ymin"]),
+                        "ymax": float(spec["ymax"]),
+                        "dgps": bin_result["dgps"]["lower"],
+                    }
+                )
+                dgps["upper"]["bins"].append(
+                    {
+                        "bin": bin_id,
+                        "ymin": float(spec["ymin"]),
+                        "ymax": float(spec["ymax"]),
+                        "dgps": bin_result["dgps"]["upper"],
+                    }
+                )
+
+        out = {
+            "point lb dual": point_lb_dual,
+            "point ub dual": point_ub_dual,
+            "point lb primal": point_lb_primal,
+            "point ub primal": point_ub_primal,
+            "continuous_outcome": True,
+            "continuous_method": self.continuous_method,
+            "continuous_bins": int(self.continuous_bins),
+            "outcome": dep,
+            "treatment": ind,
+            "bin_results": results,
+        }
+        if want_ci:
+            out["2.5% lb bounds"] = ci_lb_025
+            out["1% lb bounds"] = ci_lb_01
+            out["97.5% ub bounds"] = ci_ub_975
+            out["99% ub bounds"] = ci_ub_99
+            if ci_method is not None:
+                out["ci method"] = ci_method
+            if ci_workers is not None:
+                out["ci workers"] = ci_workers
+        if want_dgps:
+            out["dgps"] = dgps
+        return out
 
     def _record_load_data_operation(self, args, kwargs):
         if self._is_replaying:
@@ -1411,10 +1692,33 @@ class causalProblem:
 
     def set_estimand(self, *args, **kwargs):
         out = self._default_bounder.set_estimand(*args, **kwargs)
+        object.__setattr__(self, "_continuous_estimand", None)
         self._record_operation("set_estimand", args, kwargs)
         return out
 
     def set_ate(self, *args, **kwargs):
+        if len(args) >= 2:
+            ind, dep = args[0], args[1]
+        else:
+            ind = kwargs.get("ind")
+            dep = kwargs.get("dep")
+        cond = kwargs.get("cond", None)
+        if len(args) >= 3:
+            cond = args[2]
+
+        if self.continuous_outcome:
+            if self._continuous_outcome_name is None:
+                object.__setattr__(self, "_continuous_outcome_name", dep)
+            if self._continuous_outcome_matches(dep):
+                object.__setattr__(
+                    self,
+                    "_continuous_estimand",
+                    {"kind": "ate", "ind": ind, "dep": dep, "cond": cond},
+                )
+                object.__setattr__(self._default_bounder, "estimand", None)
+                self._record_operation("set_ate", args, kwargs)
+                return None
+
         out = self._default_bounder.set_ate(*args, **kwargs)
         self._record_operation("set_ate", args, kwargs)
         return out
@@ -1435,8 +1739,17 @@ class causalProblem:
         return out
 
     def load_data(self, *args, **kwargs):
-        self._record_load_data_operation(args, kwargs)
-        return self._default_bounder.load_data(*args, **kwargs)
+        sig = inspect.signature(self._default_bounder.load_data)
+        bound = sig.bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        call_kwargs = deepcopy(bound.arguments)
+        if self.continuous_outcome:
+            call_kwargs["raw"], call_kwargs["summary"] = self._prepare_continuous_loaded_data(
+                raw=call_kwargs.get("raw"),
+                summary=call_kwargs.get("summary"),
+            )
+        self._record_load_data_operation(tuple(), call_kwargs)
+        return self._default_bounder.load_data(**call_kwargs)
 
     def load_data_do(self, *args, **kwargs):
         return self._default_bounder.load_data_do(*args, **kwargs)
@@ -1448,12 +1761,15 @@ class causalProblem:
         return self._default_bounder.load_data_gaussian(*args, **kwargs)
 
     def read_data(self, *args, **kwargs):
-        self._record_read_data_operation(args, kwargs)
         data_kwargs = self._normalize_read_data_args(args, kwargs)
         raw = data_kwargs["raw"]
         if raw is None:
             raise Exception("Data was not introduced!")
         datam = deepcopy(raw) if isinstance(raw, pd.DataFrame) else pd.read_csv(raw)
+        if self.continuous_outcome:
+            datam, _ = self._prepare_continuous_loaded_data(raw=datam, summary=None)
+            data_kwargs["raw"] = datam
+        self._record_read_data_operation(tuple(), data_kwargs)
         covariates = data_kwargs["covariates"]
         cond = list(data_kwargs["cond"])
         categorical = bool(data_kwargs["categorical"])
@@ -1545,6 +1861,13 @@ class causalProblem:
         # Simple path: one internal bounder, no orchestration requested.
         ci = kwargs.get("ci", False)
         if len(self._bounders) == 0:
+            if self.continuous_outcome:
+                point_result = self._solve_continuous_outcome_ate(**kwargs)
+                if kwargs.get("verbose_result", True):
+                    print("Point estimates\n")
+                    print(f"Dual: [{point_result['point lb dual']}, {point_result['point ub dual']}]")
+                    print(f"Primal: [{point_result['point lb primal']}, {point_result['point ub primal']}]")
+                return point_result
             if ci:
                 return self._solve_with_subsampling_ci(*args, **kwargs)
             if any(step["method"] == "read_data" for step in self._operation_log):
