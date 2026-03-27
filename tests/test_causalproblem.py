@@ -163,36 +163,31 @@ def test_add_assumption():
     assert zero_terms.issubset(problem.zero_parameters)
 
 
-def test_continuous_outcome_load_data_discretizes_to_four_bins():
+def test_continuous_outcome_load_data_discretizes_to_five_bins():
     problem = causalProblem(DAG("D -> Y"), continuous_outcome="Y")
     problem.set_ate("D", "Y")
-    df = pd.DataFrame(
-        {
-            "D": [0, 1] * 8,
-            "Y": np.linspace(10.0, 25.0, 16),
-        }
-    )
+    df = pd.DataFrame({"D": [0, 1] * 10, "Y": np.linspace(10.0, 29.0, 20)})
 
     problem.load_data(raw=df)
 
-    assert problem.get_bounder("default").number_values["Y"] == 4
-    assert sorted(problem.get_bounder("default").datam["Y"].unique().tolist()) == [0, 1, 2, 3]
+    assert problem.get_bounder("default").number_values["Y"] == 5
+    assert sorted(problem.get_bounder("default").datam["Y"].unique().tolist()) == [0, 1, 2, 3, 4]
     specs = problem._continuous_bin_specs
-    assert len(specs) == 4
-    assert [spec["bin"] for spec in specs] == [0, 1, 2, 3]
-    assert [spec["ymin"] for spec in specs] == pytest.approx([10.0, 14.0, 18.0, 22.0])
-    assert [spec["ymax"] for spec in specs] == pytest.approx([13.0, 17.0, 21.0, 25.0])
+    assert len(specs) == 5
+    assert [spec["bin"] for spec in specs] == [0, 1, 2, 3, 4]
+    assert [spec["ymin"] for spec in specs] == pytest.approx([10.0, 14.0, 18.0, 22.0, 26.0])
+    assert [spec["ymax"] for spec in specs] == pytest.approx([13.0, 17.0, 21.0, 25.0, 29.0])
     assert specs[0]["normalized_ymin"] == pytest.approx(0.0)
     assert specs[-1]["normalized_ymax"] == pytest.approx(1.0)
 
 
-def test_continuous_outcome_solve_aggregates_back_to_original_scale(monkeypatch):
-    class _FakeCategoryProblem:
-        def __init__(self, bin_id):
-            self.bin_id = bin_id
+def test_continuous_outcome_solve_aggregates_thresholds_with_endpoint_gaps(monkeypatch):
+    class _FakeThresholdProblem:
+        def __init__(self, cutoff):
+            self.cutoff = cutoff
 
         def solve(self, **kwargs):
-            base = 0.1 * (self.bin_id + 1)
+            base = 0.1 * self.cutoff
             return {
                 "point lb dual": base,
                 "point ub dual": base + 0.05,
@@ -202,38 +197,39 @@ def test_continuous_outcome_solve_aggregates_back_to_original_scale(monkeypatch)
 
     monkeypatch.setattr(
         causalProblem,
-        "_build_category_problem",
-        lambda self, ind, dep, bin_id: _FakeCategoryProblem(bin_id),
+        "_build_threshold_problem",
+        lambda self, ind, dep, cutoff, direction: _FakeThresholdProblem(cutoff),
     )
 
     problem = causalProblem(DAG("D -> Y"), continuous_outcome=True)
     problem.set_ate("D", "Y")
-    df = pd.DataFrame(
-        {
-            "D": [0, 1] * 8,
-            "Y": np.linspace(10.0, 25.0, 16),
-        }
-    )
+    df = pd.DataFrame({"D": [0, 1] * 10, "Y": np.linspace(10.0, 29.0, 20)})
     problem.load_data(raw=df)
     out = problem.solve(verbose_result=False)
 
-    expected_lb = 10.0 * 0.1 + 14.0 * 0.2 + 18.0 * 0.3 + 22.0 * 0.4
-    expected_ub = 13.0 * 0.15 + 17.0 * 0.25 + 21.0 * 0.35 + 25.0 * 0.45
+    expected_lower_weights = [4.0, 4.0, 4.0, 4.0]
+    expected_upper_weights = [4.0, 4.0, 4.0, 4.0]
+    expected_lb = sum(w * 0.1 * cutoff for cutoff, w in zip([1, 2, 3, 4], expected_lower_weights))
+    expected_ub = sum(w * (0.1 * cutoff + 0.05) for cutoff, w in zip([1, 2, 3, 4], expected_upper_weights))
     assert out["point lb dual"] == pytest.approx(expected_lb)
     assert out["point ub dual"] == pytest.approx(expected_ub)
     assert out["point lb primal"] == pytest.approx(expected_lb)
     assert out["point ub primal"] == pytest.approx(expected_ub)
     assert out["continuous_outcome"] is True
-    assert len(out["bin_results"]) == 4
+    assert out["continuous_lower_representatives"] == pytest.approx([10.0, 14.0, 18.0, 22.0, 26.0])
+    assert out["continuous_upper_representatives"] == pytest.approx([13.0, 17.0, 21.0, 25.0, 29.0])
+    assert sorted(out["threshold_results"].keys()) == [1, 2, 3, 4]
+    assert out["threshold_results"][1]["lower_weight"] == pytest.approx(4.0)
+    assert out["threshold_results"][1]["upper_weight"] == pytest.approx(4.0)
 
 
 def test_continuous_outcome_solve_aggregates_ci_and_dgps(monkeypatch):
-    class _FakeCategoryProblem:
-        def __init__(self, bin_id):
-            self.bin_id = bin_id
+    class _FakeThresholdProblem:
+        def __init__(self, cutoff):
+            self.cutoff = cutoff
 
         def solve(self, **kwargs):
-            base = 0.1 * (self.bin_id + 1)
+            base = 0.1 * self.cutoff
             out = {
                 "point lb dual": base,
                 "point ub dual": base + 0.05,
@@ -249,39 +245,38 @@ def test_continuous_outcome_solve_aggregates_ci_and_dgps(monkeypatch):
                 out["ci workers"] = 2
             if kwargs.get("return_dgps", False):
                 out["dgps"] = {
-                    "lower": {"status": f"lower_{self.bin_id}"},
-                    "upper": {"status": f"upper_{self.bin_id}"},
+                    "lower": {"status": f"lower_{self.cutoff}"},
+                    "upper": {"status": f"upper_{self.cutoff}"},
                 }
             return out
 
     monkeypatch.setattr(
         causalProblem,
-        "_build_category_problem",
-        lambda self, ind, dep, bin_id: _FakeCategoryProblem(bin_id),
+        "_build_threshold_problem",
+        lambda self, ind, dep, cutoff, direction: _FakeThresholdProblem(cutoff),
     )
 
     problem = causalProblem(DAG("D -> Y"), continuous_outcome=True)
     problem.set_ate("D", "Y")
-    df = pd.DataFrame(
-        {
-            "D": [0, 1] * 8,
-            "Y": np.linspace(10.0, 25.0, 16),
-        }
-    )
+    df = pd.DataFrame({"D": [0, 1] * 10, "Y": np.linspace(10.0, 29.0, 20)})
     problem.load_data(raw=df)
     out = problem.solve(ci=True, return_dgps=True, verbose_result=False)
 
-    expected_lb_ci = 10.0 * 0.09 + 14.0 * 0.19 + 18.0 * 0.29 + 22.0 * 0.39
-    expected_ub_ci = 13.0 * 0.16 + 17.0 * 0.26 + 21.0 * 0.36 + 25.0 * 0.46
+    expected_lower_weights = [4.0, 4.0, 4.0, 4.0]
+    expected_upper_weights = [4.0, 4.0, 4.0, 4.0]
+    expected_lb_ci = sum(w * (0.1 * cutoff - 0.01) for cutoff, w in zip([1, 2, 3, 4], expected_lower_weights))
+    expected_ub_ci = sum(w * (0.1 * cutoff + 0.06) for cutoff, w in zip([1, 2, 3, 4], expected_upper_weights))
     assert out["2.5% lb bounds"] == pytest.approx(expected_lb_ci)
     assert out["97.5% ub bounds"] == pytest.approx(expected_ub_ci)
     assert out["ci method"] == "recentered_subsampling"
     assert out["ci workers"] == 2
-    assert out["dgps"]["lower"]["status"] == "continuous_bin_aggregate"
-    assert out["dgps"]["upper"]["status"] == "continuous_bin_aggregate"
-    assert len(out["dgps"]["lower"]["bins"]) == 4
-    assert out["dgps"]["lower"]["bins"][0]["dgps"]["status"] == "lower_0"
-    assert out["dgps"]["upper"]["bins"][-1]["dgps"]["status"] == "upper_3"
+    assert out["dgps"]["lower"]["status"] == "continuous_threshold_aggregate"
+    assert out["dgps"]["upper"]["status"] == "continuous_threshold_aggregate"
+    assert len(out["dgps"]["lower"]["thresholds"]) == 4
+    assert out["dgps"]["lower"]["thresholds"][0]["dgps"]["status"] == "lower_1"
+    assert out["dgps"]["upper"]["thresholds"][-1]["dgps"]["status"] == "upper_4"
+    assert out["dgps"]["lower"]["thresholds"][0]["weight"] == pytest.approx(4.0)
+    assert out["dgps"]["upper"]["thresholds"][0]["weight"] == pytest.approx(4.0)
 
 
 

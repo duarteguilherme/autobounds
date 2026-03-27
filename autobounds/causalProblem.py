@@ -321,7 +321,7 @@ class causalProblem:
         dag,
         number_values = {},
         continuous_outcome = False,
-        continuous_bins = 4,
+        continuous_bins = 5,
         continuous_method = "quantile",
     ):
         from .Bounder import Bounder
@@ -554,6 +554,25 @@ class causalProblem:
 
         return category_problem
 
+    def _continuous_threshold_weights(self):
+        if self._continuous_bin_specs is None or len(self._continuous_bin_specs) < 2:
+            raise ValueError("Continuous-outcome threshold aggregation requires at least two bins.")
+
+        lower_representatives = [float(spec["ymin"]) for spec in self._continuous_bin_specs]
+        upper_representatives = [float(spec["ymax"]) for spec in self._continuous_bin_specs]
+        weights = []
+        for idx in range(1, len(lower_representatives)):
+            weights.append(
+                {
+                    "threshold": idx,
+                    "lower_weight": float(lower_representatives[idx] - lower_representatives[idx - 1]),
+                    "upper_weight": float(upper_representatives[idx] - upper_representatives[idx - 1]),
+                    "lower_bin": idx - 1,
+                    "upper_bin": idx,
+                }
+            )
+        return lower_representatives, upper_representatives, weights
+
     def _solve_continuous_outcome_ate(self, **solve_kwargs):
         if self._continuous_estimand is None or self._continuous_estimand.get("kind") != "ate":
             raise ValueError("Continuous-outcome solve currently supports set_ate(...) only.")
@@ -566,6 +585,7 @@ class causalProblem:
         dep = self._continuous_estimand["dep"]
         subsolve_kwargs = deepcopy(solve_kwargs)
         subsolve_kwargs["verbose_result"] = False
+        lower_representatives, upper_representatives, threshold_weights = self._continuous_threshold_weights()
         results = {}
         point_lb_dual = 0.0
         point_ub_dual = 0.0
@@ -580,46 +600,50 @@ class causalProblem:
         dgps = None
         if want_dgps:
             dgps = {
-                "lower": {"status": "continuous_bin_aggregate", "bins": []},
-                "upper": {"status": "continuous_bin_aggregate", "bins": []},
+                "lower": {"status": "continuous_threshold_aggregate", "thresholds": []},
+                "upper": {"status": "continuous_threshold_aggregate", "thresholds": []},
             }
 
-        for spec in self._continuous_bin_specs:
-            bin_id = int(spec["bin"])
-            category_problem = self._build_category_problem(ind, dep, bin_id)
-            bin_result = category_problem.solve(**deepcopy(subsolve_kwargs))
-            results[bin_id] = {
-                **spec,
-                "result": bin_result,
+        for spec in threshold_weights:
+            cutoff = int(spec["threshold"])
+            threshold_problem = self._build_threshold_problem(ind, dep, cutoff, "geq")
+            threshold_result = threshold_problem.solve(**deepcopy(subsolve_kwargs))
+            results[cutoff] = {
+                "threshold": cutoff,
+                "lower_weight": float(spec["lower_weight"]),
+                "upper_weight": float(spec["upper_weight"]),
+                "lower_bin": int(spec["lower_bin"]),
+                "upper_bin": int(spec["upper_bin"]),
+                "result": threshold_result,
             }
-            point_lb_dual += float(spec["ymin"]) * float(bin_result["point lb dual"])
-            point_ub_dual += float(spec["ymax"]) * float(bin_result["point ub dual"])
-            point_lb_primal += float(spec["ymin"]) * float(bin_result["point lb primal"])
-            point_ub_primal += float(spec["ymax"]) * float(bin_result["point ub primal"])
+            lower_weight = float(spec["lower_weight"])
+            upper_weight = float(spec["upper_weight"])
+            point_lb_dual += lower_weight * float(threshold_result["point lb dual"])
+            point_ub_dual += upper_weight * float(threshold_result["point ub dual"])
+            point_lb_primal += lower_weight * float(threshold_result["point lb primal"])
+            point_ub_primal += upper_weight * float(threshold_result["point ub primal"])
             if want_ci:
-                ci_lb_025 += float(spec["ymin"]) * float(bin_result["2.5% lb bounds"])
-                ci_lb_01 += float(spec["ymin"]) * float(bin_result["1% lb bounds"])
-                ci_ub_975 += float(spec["ymax"]) * float(bin_result["97.5% ub bounds"])
-                ci_ub_99 += float(spec["ymax"]) * float(bin_result["99% ub bounds"])
+                ci_lb_025 += lower_weight * float(threshold_result["2.5% lb bounds"])
+                ci_lb_01 += lower_weight * float(threshold_result["1% lb bounds"])
+                ci_ub_975 += upper_weight * float(threshold_result["97.5% ub bounds"])
+                ci_ub_99 += upper_weight * float(threshold_result["99% ub bounds"])
                 if ci_method is None:
-                    ci_method = bin_result.get("ci method")
-                if ci_workers is None and "ci workers" in bin_result:
-                    ci_workers = bin_result.get("ci workers")
+                    ci_method = threshold_result.get("ci method")
+                if ci_workers is None and "ci workers" in threshold_result:
+                    ci_workers = threshold_result.get("ci workers")
             if want_dgps:
-                dgps["lower"]["bins"].append(
+                dgps["lower"]["thresholds"].append(
                     {
-                        "bin": bin_id,
-                        "ymin": float(spec["ymin"]),
-                        "ymax": float(spec["ymax"]),
-                        "dgps": bin_result["dgps"]["lower"],
+                        "threshold": cutoff,
+                        "weight": lower_weight,
+                        "dgps": threshold_result["dgps"]["lower"],
                     }
                 )
-                dgps["upper"]["bins"].append(
+                dgps["upper"]["thresholds"].append(
                     {
-                        "bin": bin_id,
-                        "ymin": float(spec["ymin"]),
-                        "ymax": float(spec["ymax"]),
-                        "dgps": bin_result["dgps"]["upper"],
+                        "threshold": cutoff,
+                        "weight": upper_weight,
+                        "dgps": threshold_result["dgps"]["upper"],
                     }
                 )
 
@@ -633,7 +657,9 @@ class causalProblem:
             "continuous_bins": int(self.continuous_bins),
             "outcome": dep,
             "treatment": ind,
-            "bin_results": results,
+            "continuous_lower_representatives": lower_representatives,
+            "continuous_upper_representatives": upper_representatives,
+            "threshold_results": results,
         }
         if want_ci:
             out["2.5% lb bounds"] = ci_lb_025
