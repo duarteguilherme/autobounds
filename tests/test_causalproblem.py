@@ -292,10 +292,10 @@ def test_continuous_outcome_conservative_ate_combines_components(monkeypatch):
     out = problem.solve(verbose_result=False)
 
     weights = [4.0, 4.0, 4.0, 4.0]
-    ey1_lb = sum(w * (0.2 * cutoff + 0.5) for cutoff, w in zip([1, 2, 3, 4], weights))
-    ey1_ub = sum(w * (0.2 * cutoff + 0.6) for cutoff, w in zip([1, 2, 3, 4], weights))
-    ey0_lb = sum(w * (0.2 * cutoff + 0.0) for cutoff, w in zip([1, 2, 3, 4], weights))
-    ey0_ub = sum(w * (0.2 * cutoff + 0.1) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey1_lb = 10.0 + sum(w * (0.2 * cutoff + 0.5) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey1_ub = 13.0 + sum(w * (0.2 * cutoff + 0.6) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey0_lb = 10.0 + sum(w * (0.2 * cutoff + 0.0) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey0_ub = 13.0 + sum(w * (0.2 * cutoff + 0.1) for cutoff, w in zip([1, 2, 3, 4], weights))
 
     assert out["point lb dual"] == pytest.approx(ey1_lb - ey0_ub)
     assert out["point ub dual"] == pytest.approx(ey1_ub - ey0_lb)
@@ -348,10 +348,10 @@ def test_continuous_outcome_conservative_ate_combines_ci_and_dgps(monkeypatch):
     out = problem.solve(ci=True, return_dgps=True, verbose_result=False)
 
     weights = [4.0, 4.0, 4.0, 4.0]
-    ey1_lb_ci = sum(w * (0.2 * cutoff + 0.5 - 0.01) for cutoff, w in zip([1, 2, 3, 4], weights))
-    ey1_ub_ci = sum(w * (0.2 * cutoff + 0.5 + 0.11) for cutoff, w in zip([1, 2, 3, 4], weights))
-    ey0_lb_ci = sum(w * (0.2 * cutoff - 0.01) for cutoff, w in zip([1, 2, 3, 4], weights))
-    ey0_ub_ci = sum(w * (0.2 * cutoff + 0.11) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey1_lb_ci = 10.0 + sum(w * (0.2 * cutoff + 0.5 - 0.01) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey1_ub_ci = 13.0 + sum(w * (0.2 * cutoff + 0.5 + 0.11) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey0_lb_ci = 10.0 + sum(w * (0.2 * cutoff - 0.01) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey0_ub_ci = 13.0 + sum(w * (0.2 * cutoff + 0.11) for cutoff, w in zip([1, 2, 3, 4], weights))
 
     assert out["2.5% lb bounds"] == pytest.approx(ey1_lb_ci - ey0_ub_ci)
     assert out["97.5% ub bounds"] == pytest.approx(ey1_ub_ci - ey0_lb_ci)

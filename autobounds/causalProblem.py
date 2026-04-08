@@ -743,17 +743,17 @@ class causalProblem:
         components = {}
         for treatment_value in [0, 1]:
             components[treatment_value] = {
-                "point lb dual": 0.0,
-                "point ub dual": 0.0,
-                "point lb primal": 0.0,
-                "point ub primal": 0.0,
+                "point lb dual": float(lower_representatives[0]),
+                "point ub dual": float(upper_representatives[0]),
+                "point lb primal": float(lower_representatives[0]),
+                "point ub primal": float(upper_representatives[0]),
                 "threshold_results": {},
             }
             if want_ci:
-                components[treatment_value]["2.5% lb bounds"] = 0.0
-                components[treatment_value]["1% lb bounds"] = 0.0
-                components[treatment_value]["97.5% ub bounds"] = 0.0
-                components[treatment_value]["99% ub bounds"] = 0.0
+                components[treatment_value]["2.5% lb bounds"] = float(lower_representatives[0])
+                components[treatment_value]["1% lb bounds"] = float(lower_representatives[0])
+                components[treatment_value]["97.5% ub bounds"] = float(upper_representatives[0])
+                components[treatment_value]["99% ub bounds"] = float(upper_representatives[0])
             if want_dgps:
                 components[treatment_value]["dgps"] = {
                     "lower": {"status": f"continuous_component_{treatment_value}_lower", "thresholds": []},
