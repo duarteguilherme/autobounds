@@ -201,7 +201,7 @@ def test_continuous_outcome_solve_aggregates_thresholds_with_endpoint_gaps(monke
         lambda self, ind, dep, cutoff, direction: _FakeThresholdProblem(cutoff),
     )
 
-    problem = causalProblem(DAG("D -> Y"), continuous_outcome=True)
+    problem = causalProblem(DAG("D -> Y"), continuous_outcome=True, continuous_method="ymax_ymin")
     problem.set_ate("D", "Y")
     df = pd.DataFrame({"D": [0, 1] * 10, "Y": np.linspace(10.0, 29.0, 20)})
     problem.load_data(raw=df)
@@ -221,6 +221,144 @@ def test_continuous_outcome_solve_aggregates_thresholds_with_endpoint_gaps(monke
     assert sorted(out["threshold_results"].keys()) == [1, 2, 3, 4]
     assert out["threshold_results"][1]["lower_weight"] == pytest.approx(4.0)
     assert out["threshold_results"][1]["upper_weight"] == pytest.approx(4.0)
+
+
+def test_continuous_outcome_solve_aggregates_thresholds_with_midpoints(monkeypatch):
+    class _FakeThresholdProblem:
+        def __init__(self, cutoff):
+            self.cutoff = cutoff
+
+        def solve(self, **kwargs):
+            base = 0.1 * self.cutoff
+            return {
+                "point lb dual": base,
+                "point ub dual": base + 0.05,
+                "point lb primal": base,
+                "point ub primal": base + 0.05,
+            }
+
+    monkeypatch.setattr(
+        causalProblem,
+        "_build_threshold_problem",
+        lambda self, ind, dep, cutoff, direction: _FakeThresholdProblem(cutoff),
+    )
+
+    problem = causalProblem(DAG("D -> Y"), continuous_outcome=True, continuous_method="midpoint")
+    problem.set_ate("D", "Y")
+    df = pd.DataFrame({"D": [0, 1] * 10, "Y": np.linspace(10.0, 29.0, 20)})
+    problem.load_data(raw=df)
+    out = problem.solve(verbose_result=False)
+
+    expected_reps = [11.5, 15.5, 19.5, 23.5, 27.5]
+    expected_weights = [4.0, 4.0, 4.0, 4.0]
+    expected_lb = sum(w * 0.1 * cutoff for cutoff, w in zip([1, 2, 3, 4], expected_weights))
+    expected_ub = sum(w * (0.1 * cutoff + 0.05) for cutoff, w in zip([1, 2, 3, 4], expected_weights))
+    assert out["point lb dual"] == pytest.approx(expected_lb)
+    assert out["point ub dual"] == pytest.approx(expected_ub)
+    assert out["continuous_method"] == "midpoint"
+    assert out["continuous_lower_representatives"] == pytest.approx(expected_reps)
+    assert out["continuous_upper_representatives"] == pytest.approx(expected_reps)
+    assert out["threshold_results"][1]["lower_weight"] == pytest.approx(4.0)
+    assert out["threshold_results"][1]["upper_weight"] == pytest.approx(4.0)
+
+
+def test_continuous_outcome_conservative_ate_combines_components(monkeypatch):
+    class _FakeThresholdProblem:
+        def __init__(self, cutoff, treatment_value):
+            self.cutoff = cutoff
+            self.treatment_value = treatment_value
+
+        def solve(self, **kwargs):
+            base = 0.2 * self.cutoff + 0.5 * self.treatment_value
+            return {
+                "point lb dual": base,
+                "point ub dual": base + 0.1,
+                "point lb primal": base,
+                "point ub primal": base + 0.1,
+            }
+
+    monkeypatch.setattr(
+        causalProblem,
+        "_build_threshold_component_problem",
+        lambda self, ind, dep, cutoff, treatment_value, cond=None: _FakeThresholdProblem(
+            cutoff, treatment_value
+        ),
+    )
+
+    problem = causalProblem(DAG("D -> Y"), continuous_outcome=True, continuous_method="conservative")
+    problem.set_ate("D", "Y")
+    df = pd.DataFrame({"D": [0, 1] * 10, "Y": np.linspace(10.0, 29.0, 20)})
+    problem.load_data(raw=df)
+    out = problem.solve(verbose_result=False)
+
+    weights = [4.0, 4.0, 4.0, 4.0]
+    ey1_lb = sum(w * (0.2 * cutoff + 0.5) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey1_ub = sum(w * (0.2 * cutoff + 0.6) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey0_lb = sum(w * (0.2 * cutoff + 0.0) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey0_ub = sum(w * (0.2 * cutoff + 0.1) for cutoff, w in zip([1, 2, 3, 4], weights))
+
+    assert out["point lb dual"] == pytest.approx(ey1_lb - ey0_ub)
+    assert out["point ub dual"] == pytest.approx(ey1_ub - ey0_lb)
+    assert out["point lb primal"] == pytest.approx(ey1_lb - ey0_ub)
+    assert out["point ub primal"] == pytest.approx(ey1_ub - ey0_lb)
+    assert out["continuous_method"] == "conservative"
+    assert set(out["component_results"].keys()) == {0, 1}
+
+
+def test_continuous_outcome_conservative_ate_combines_ci_and_dgps(monkeypatch):
+    class _FakeThresholdProblem:
+        def __init__(self, cutoff, treatment_value):
+            self.cutoff = cutoff
+            self.treatment_value = treatment_value
+
+        def solve(self, **kwargs):
+            base = 0.2 * self.cutoff + 0.5 * self.treatment_value
+            out = {
+                "point lb dual": base,
+                "point ub dual": base + 0.1,
+                "point lb primal": base,
+                "point ub primal": base + 0.1,
+            }
+            if kwargs.get("ci", False):
+                out["2.5% lb bounds"] = base - 0.01
+                out["1% lb bounds"] = base - 0.02
+                out["97.5% ub bounds"] = base + 0.11
+                out["99% ub bounds"] = base + 0.12
+                out["ci method"] = "recentered_subsampling"
+                out["ci workers"] = 3
+            if kwargs.get("return_dgps", False):
+                out["dgps"] = {
+                    "lower": {"status": f"lower_{self.treatment_value}_{self.cutoff}"},
+                    "upper": {"status": f"upper_{self.treatment_value}_{self.cutoff}"},
+                }
+            return out
+
+    monkeypatch.setattr(
+        causalProblem,
+        "_build_threshold_component_problem",
+        lambda self, ind, dep, cutoff, treatment_value, cond=None: _FakeThresholdProblem(
+            cutoff, treatment_value
+        ),
+    )
+
+    problem = causalProblem(DAG("D -> Y"), continuous_outcome=True, continuous_method="conservative")
+    problem.set_ate("D", "Y")
+    df = pd.DataFrame({"D": [0, 1] * 10, "Y": np.linspace(10.0, 29.0, 20)})
+    problem.load_data(raw=df)
+    out = problem.solve(ci=True, return_dgps=True, verbose_result=False)
+
+    weights = [4.0, 4.0, 4.0, 4.0]
+    ey1_lb_ci = sum(w * (0.2 * cutoff + 0.5 - 0.01) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey1_ub_ci = sum(w * (0.2 * cutoff + 0.5 + 0.11) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey0_lb_ci = sum(w * (0.2 * cutoff - 0.01) for cutoff, w in zip([1, 2, 3, 4], weights))
+    ey0_ub_ci = sum(w * (0.2 * cutoff + 0.11) for cutoff, w in zip([1, 2, 3, 4], weights))
+
+    assert out["2.5% lb bounds"] == pytest.approx(ey1_lb_ci - ey0_ub_ci)
+    assert out["97.5% ub bounds"] == pytest.approx(ey1_ub_ci - ey0_lb_ci)
+    assert out["ci method"] == "recentered_subsampling"
+    assert out["ci workers"] == 3
+    assert out["dgps"]["lower"]["status"] == "continuous_conservative_aggregate"
+    assert out["dgps"]["upper"]["status"] == "continuous_conservative_aggregate"
 
 
 def test_continuous_outcome_solve_aggregates_ci_and_dgps(monkeypatch):

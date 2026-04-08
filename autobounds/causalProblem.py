@@ -322,11 +322,13 @@ class causalProblem:
         number_values = {},
         continuous_outcome = False,
         continuous_bins = 5,
-        continuous_method = "quantile",
+        continuous_method = "midpoint",
     ):
         from .Bounder import Bounder
-        if continuous_method != "quantile":
-            raise ValueError("Only continuous_method='quantile' is currently supported.")
+        if continuous_method not in {"ymax_ymin", "midpoint", "conservative"}:
+            raise ValueError(
+                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative'}."
+            )
         if isinstance(continuous_outcome, str):
             continuous_outcome_name = continuous_outcome
             continuous_outcome_flag = True
@@ -557,9 +559,20 @@ class causalProblem:
     def _continuous_threshold_weights(self):
         if self._continuous_bin_specs is None or len(self._continuous_bin_specs) < 2:
             raise ValueError("Continuous-outcome threshold aggregation requires at least two bins.")
-
-        lower_representatives = [float(spec["ymin"]) for spec in self._continuous_bin_specs]
-        upper_representatives = [float(spec["ymax"]) for spec in self._continuous_bin_specs]
+        if self.continuous_method in {"ymax_ymin", "conservative"}:
+            lower_representatives = [float(spec["ymin"]) for spec in self._continuous_bin_specs]
+            upper_representatives = [float(spec["ymax"]) for spec in self._continuous_bin_specs]
+        elif self.continuous_method == "midpoint":
+            midpoints = [
+                0.5 * (float(spec["ymin"]) + float(spec["ymax"]))
+                for spec in self._continuous_bin_specs
+            ]
+            lower_representatives = midpoints
+            upper_representatives = midpoints
+        else:
+            raise ValueError(
+                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative'}."
+            )
         weights = []
         for idx in range(1, len(lower_representatives)):
             weights.append(
@@ -576,6 +589,8 @@ class causalProblem:
     def _solve_continuous_outcome_ate(self, **solve_kwargs):
         if self._continuous_estimand is None or self._continuous_estimand.get("kind") != "ate":
             raise ValueError("Continuous-outcome solve currently supports set_ate(...) only.")
+        if self.continuous_method == "conservative":
+            return self._solve_continuous_outcome_ate_conservative(**solve_kwargs)
         want_ci = bool(solve_kwargs.get("ci", False))
         want_dgps = bool(solve_kwargs.get("return_dgps", False))
         if self._continuous_bin_specs is None:
@@ -672,6 +687,165 @@ class causalProblem:
                 out["ci workers"] = ci_workers
         if want_dgps:
             out["dgps"] = dgps
+        return out
+
+    def _build_threshold_component_problem(self, ind, dep, cutoff, treatment_value, cond=None):
+        number_values = deepcopy(self._default_bounder.number_values)
+        number_values[dep] = 2
+        threshold_problem = causalProblem(
+            deepcopy(self._default_bounder.dag),
+            number_values,
+        )
+
+        for step in self._operation_log:
+            method = step["method"]
+            if method in {"set_estimand", "set_ate", "load_data", "read_data"}:
+                continue
+            getattr(threshold_problem, method)(*deepcopy(step["args"]), **deepcopy(step["kwargs"]))
+
+        threshold_problem.set_estimand(
+            threshold_problem.p(f"{dep}({ind}={treatment_value})=1", cond=cond)
+        )
+
+        for step in self._operation_log:
+            method = step["method"]
+            call_kwargs = deepcopy(step["kwargs"])
+            if method == "load_data":
+                if call_kwargs.get("raw") is not None:
+                    call_kwargs["raw"] = self._threshold_raw_data(call_kwargs["raw"], dep, cutoff, "geq")
+                elif call_kwargs.get("summary") is not None:
+                    call_kwargs["summary"] = self._threshold_summary_data(
+                        call_kwargs["summary"], dep, cutoff, "geq"
+                    )
+                threshold_problem.load_data(**call_kwargs)
+            elif method == "read_data":
+                raw = call_kwargs.get("raw")
+                if raw is None:
+                    raise ValueError("Continuous-outcome thresholding requires read_data(raw=...).")
+                call_kwargs["raw"] = self._threshold_raw_data(raw, dep, cutoff, "geq")
+                threshold_problem.read_data(**call_kwargs)
+
+        return threshold_problem
+
+    def _solve_continuous_outcome_ate_conservative(self, **solve_kwargs):
+        want_ci = bool(solve_kwargs.get("ci", False))
+        want_dgps = bool(solve_kwargs.get("return_dgps", False))
+        if self._continuous_bin_specs is None:
+            raise ValueError("Load data before solving a continuous outcome problem.")
+
+        ind = self._continuous_estimand["ind"]
+        dep = self._continuous_estimand["dep"]
+        cond = self._continuous_estimand.get("cond")
+        subsolve_kwargs = deepcopy(solve_kwargs)
+        subsolve_kwargs["verbose_result"] = False
+        lower_representatives, upper_representatives, threshold_weights = self._continuous_threshold_weights()
+
+        components = {}
+        for treatment_value in [0, 1]:
+            components[treatment_value] = {
+                "point lb dual": 0.0,
+                "point ub dual": 0.0,
+                "point lb primal": 0.0,
+                "point ub primal": 0.0,
+                "threshold_results": {},
+            }
+            if want_ci:
+                components[treatment_value]["2.5% lb bounds"] = 0.0
+                components[treatment_value]["1% lb bounds"] = 0.0
+                components[treatment_value]["97.5% ub bounds"] = 0.0
+                components[treatment_value]["99% ub bounds"] = 0.0
+            if want_dgps:
+                components[treatment_value]["dgps"] = {
+                    "lower": {"status": f"continuous_component_{treatment_value}_lower", "thresholds": []},
+                    "upper": {"status": f"continuous_component_{treatment_value}_upper", "thresholds": []},
+                }
+
+        ci_method = None
+        ci_workers = None
+        for spec in threshold_weights:
+            cutoff = int(spec["threshold"])
+            lower_weight = float(spec["lower_weight"])
+            upper_weight = float(spec["upper_weight"])
+            for treatment_value in [0, 1]:
+                threshold_problem = self._build_threshold_component_problem(
+                    ind,
+                    dep,
+                    cutoff,
+                    treatment_value,
+                    cond=cond,
+                )
+                threshold_result = threshold_problem.solve(**deepcopy(subsolve_kwargs))
+                components[treatment_value]["threshold_results"][cutoff] = {
+                    "threshold": cutoff,
+                    "lower_weight": lower_weight,
+                    "upper_weight": upper_weight,
+                    "result": threshold_result,
+                }
+                components[treatment_value]["point lb dual"] += lower_weight * float(threshold_result["point lb dual"])
+                components[treatment_value]["point ub dual"] += upper_weight * float(threshold_result["point ub dual"])
+                components[treatment_value]["point lb primal"] += lower_weight * float(threshold_result["point lb primal"])
+                components[treatment_value]["point ub primal"] += upper_weight * float(threshold_result["point ub primal"])
+                if want_ci:
+                    components[treatment_value]["2.5% lb bounds"] += lower_weight * float(threshold_result["2.5% lb bounds"])
+                    components[treatment_value]["1% lb bounds"] += lower_weight * float(threshold_result["1% lb bounds"])
+                    components[treatment_value]["97.5% ub bounds"] += upper_weight * float(threshold_result["97.5% ub bounds"])
+                    components[treatment_value]["99% ub bounds"] += upper_weight * float(threshold_result["99% ub bounds"])
+                    if ci_method is None:
+                        ci_method = threshold_result.get("ci method")
+                    if ci_workers is None and "ci workers" in threshold_result:
+                        ci_workers = threshold_result.get("ci workers")
+                if want_dgps:
+                    components[treatment_value]["dgps"]["lower"]["thresholds"].append(
+                        {
+                            "threshold": cutoff,
+                            "weight": lower_weight,
+                            "dgps": threshold_result["dgps"]["lower"],
+                        }
+                    )
+                    components[treatment_value]["dgps"]["upper"]["thresholds"].append(
+                        {
+                            "threshold": cutoff,
+                            "weight": upper_weight,
+                            "dgps": threshold_result["dgps"]["upper"],
+                        }
+                    )
+
+        y1 = components[1]
+        y0 = components[0]
+        out = {
+            "point lb dual": float(y1["point lb dual"] - y0["point ub dual"]),
+            "point ub dual": float(y1["point ub dual"] - y0["point lb dual"]),
+            "point lb primal": float(y1["point lb primal"] - y0["point ub primal"]),
+            "point ub primal": float(y1["point ub primal"] - y0["point lb primal"]),
+            "continuous_outcome": True,
+            "continuous_method": self.continuous_method,
+            "continuous_bins": int(self.continuous_bins),
+            "outcome": dep,
+            "treatment": ind,
+            "continuous_lower_representatives": lower_representatives,
+            "continuous_upper_representatives": upper_representatives,
+            "component_results": components,
+        }
+        if want_ci:
+            out["2.5% lb bounds"] = float(y1["2.5% lb bounds"] - y0["97.5% ub bounds"])
+            out["1% lb bounds"] = float(y1["1% lb bounds"] - y0["99% ub bounds"])
+            out["97.5% ub bounds"] = float(y1["97.5% ub bounds"] - y0["2.5% lb bounds"])
+            out["99% ub bounds"] = float(y1["99% ub bounds"] - y0["1% lb bounds"])
+            if ci_method is not None:
+                out["ci method"] = ci_method
+            if ci_workers is not None:
+                out["ci workers"] = ci_workers
+        if want_dgps:
+            out["dgps"] = {
+                "lower": {
+                    "status": "continuous_conservative_aggregate",
+                    "components": {"treated": y1["dgps"]["lower"], "control": y0["dgps"]["upper"]},
+                },
+                "upper": {
+                    "status": "continuous_conservative_aggregate",
+                    "components": {"treated": y1["dgps"]["upper"], "control": y0["dgps"]["lower"]},
+                },
+            }
         return out
 
     def _record_load_data_operation(self, args, kwargs):
