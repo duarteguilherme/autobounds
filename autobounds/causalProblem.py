@@ -586,6 +586,38 @@ class causalProblem:
             )
         return lower_representatives, upper_representatives, weights
 
+    def _build_continuous_weighted_problem(self, ind, dep, representatives, cond=None):
+        number_values = deepcopy(self._default_bounder.number_values)
+        weighted_problem = causalProblem(
+            deepcopy(self._default_bounder.dag),
+            number_values,
+        )
+
+        for step in self._operation_log:
+            method = step["method"]
+            if method in {"set_estimand", "set_ate", "load_data", "read_data"}:
+                continue
+            getattr(weighted_problem, method)(*deepcopy(step["args"]), **deepcopy(step["kwargs"]))
+
+        query = None
+        for level, weight in enumerate(representatives):
+            term = (
+                float(weight) * weighted_problem.p(f"{dep}({ind}=1)={level}", cond=cond)
+                - float(weight) * weighted_problem.p(f"{dep}({ind}=0)={level}", cond=cond)
+            )
+            query = term if query is None else query + term
+        weighted_problem.set_estimand(query)
+
+        for step in self._operation_log:
+            method = step["method"]
+            call_kwargs = deepcopy(step["kwargs"])
+            if method == "load_data":
+                weighted_problem.load_data(**call_kwargs)
+            elif method == "read_data":
+                weighted_problem.read_data(**call_kwargs)
+
+        return weighted_problem
+
     def _solve_continuous_outcome_ate(self, **solve_kwargs):
         if self._continuous_estimand is None or self._continuous_estimand.get("kind") != "ate":
             raise ValueError("Continuous-outcome solve currently supports set_ate(...) only.")
@@ -598,75 +630,71 @@ class causalProblem:
 
         ind = self._continuous_estimand["ind"]
         dep = self._continuous_estimand["dep"]
+        cond = self._continuous_estimand.get("cond")
         subsolve_kwargs = deepcopy(solve_kwargs)
         subsolve_kwargs["verbose_result"] = False
-        lower_representatives, upper_representatives, threshold_weights = self._continuous_threshold_weights()
-        results = {}
-        point_lb_dual = 0.0
-        point_ub_dual = 0.0
-        point_lb_primal = 0.0
-        point_ub_primal = 0.0
-        ci_method = None
-        ci_workers = None
-        ci_lb_025 = 0.0
-        ci_lb_01 = 0.0
-        ci_ub_975 = 0.0
-        ci_ub_99 = 0.0
-        dgps = None
-        if want_dgps:
-            dgps = {
-                "lower": {"status": "continuous_threshold_aggregate", "thresholds": []},
-                "upper": {"status": "continuous_threshold_aggregate", "thresholds": []},
-            }
+        lower_representatives, upper_representatives, _ = self._continuous_threshold_weights()
 
-        for spec in threshold_weights:
-            cutoff = int(spec["threshold"])
-            threshold_problem = self._build_threshold_problem(ind, dep, cutoff, "geq")
-            threshold_result = threshold_problem.solve(**deepcopy(subsolve_kwargs))
-            results[cutoff] = {
-                "threshold": cutoff,
-                "lower_weight": float(spec["lower_weight"]),
-                "upper_weight": float(spec["upper_weight"]),
-                "lower_bin": int(spec["lower_bin"]),
-                "upper_bin": int(spec["upper_bin"]),
-                "result": threshold_result,
+        if self.continuous_method == "midpoint":
+            weighted_problem = self._build_continuous_weighted_problem(
+                ind,
+                dep,
+                lower_representatives,
+                cond=cond,
+            )
+            weighted_result = weighted_problem.solve(**deepcopy(subsolve_kwargs))
+            out = {
+                "point lb dual": float(weighted_result["point lb dual"]),
+                "point ub dual": float(weighted_result["point ub dual"]),
+                "point lb primal": float(weighted_result["point lb primal"]),
+                "point ub primal": float(weighted_result["point ub primal"]),
+                "continuous_outcome": True,
+                "continuous_method": self.continuous_method,
+                "continuous_bins": int(self.continuous_bins),
+                "outcome": dep,
+                "treatment": ind,
+                "continuous_lower_representatives": lower_representatives,
+                "continuous_upper_representatives": upper_representatives,
+                "weighted_results": {"midpoint": weighted_result},
             }
-            lower_weight = float(spec["lower_weight"])
-            upper_weight = float(spec["upper_weight"])
-            point_lb_dual += lower_weight * float(threshold_result["point lb dual"])
-            point_ub_dual += upper_weight * float(threshold_result["point ub dual"])
-            point_lb_primal += lower_weight * float(threshold_result["point lb primal"])
-            point_ub_primal += upper_weight * float(threshold_result["point ub primal"])
             if want_ci:
-                ci_lb_025 += lower_weight * float(threshold_result["2.5% lb bounds"])
-                ci_lb_01 += lower_weight * float(threshold_result["1% lb bounds"])
-                ci_ub_975 += upper_weight * float(threshold_result["97.5% ub bounds"])
-                ci_ub_99 += upper_weight * float(threshold_result["99% ub bounds"])
-                if ci_method is None:
-                    ci_method = threshold_result.get("ci method")
-                if ci_workers is None and "ci workers" in threshold_result:
-                    ci_workers = threshold_result.get("ci workers")
+                out["2.5% lb bounds"] = float(weighted_result["2.5% lb bounds"])
+                out["1% lb bounds"] = float(weighted_result["1% lb bounds"])
+                out["97.5% ub bounds"] = float(weighted_result["97.5% ub bounds"])
+                out["99% ub bounds"] = float(weighted_result["99% ub bounds"])
+                if "ci method" in weighted_result:
+                    out["ci method"] = weighted_result["ci method"]
+                if "ci workers" in weighted_result:
+                    out["ci workers"] = weighted_result["ci workers"]
             if want_dgps:
-                dgps["lower"]["thresholds"].append(
-                    {
-                        "threshold": cutoff,
-                        "weight": lower_weight,
-                        "dgps": threshold_result["dgps"]["lower"],
-                    }
-                )
-                dgps["upper"]["thresholds"].append(
-                    {
-                        "threshold": cutoff,
-                        "weight": upper_weight,
-                        "dgps": threshold_result["dgps"]["upper"],
-                    }
-                )
+                out["dgps"] = weighted_result["dgps"]
+            return out
+
+        if self.continuous_method != "ymax_ymin":
+            raise ValueError(
+                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative'}."
+            )
+
+        lower_problem = self._build_continuous_weighted_problem(
+            ind,
+            dep,
+            lower_representatives,
+            cond=cond,
+        )
+        upper_problem = self._build_continuous_weighted_problem(
+            ind,
+            dep,
+            upper_representatives,
+            cond=cond,
+        )
+        lower_result = lower_problem.solve(**deepcopy(subsolve_kwargs))
+        upper_result = upper_problem.solve(**deepcopy(subsolve_kwargs))
 
         out = {
-            "point lb dual": point_lb_dual,
-            "point ub dual": point_ub_dual,
-            "point lb primal": point_lb_primal,
-            "point ub primal": point_ub_primal,
+            "point lb dual": float(lower_result["point lb dual"]),
+            "point ub dual": float(upper_result["point ub dual"]),
+            "point lb primal": float(lower_result["point lb primal"]),
+            "point ub primal": float(upper_result["point ub primal"]),
             "continuous_outcome": True,
             "continuous_method": self.continuous_method,
             "continuous_bins": int(self.continuous_bins),
@@ -674,19 +702,26 @@ class causalProblem:
             "treatment": ind,
             "continuous_lower_representatives": lower_representatives,
             "continuous_upper_representatives": upper_representatives,
-            "threshold_results": results,
+            "weighted_results": {"lower": lower_result, "upper": upper_result},
         }
         if want_ci:
-            out["2.5% lb bounds"] = ci_lb_025
-            out["1% lb bounds"] = ci_lb_01
-            out["97.5% ub bounds"] = ci_ub_975
-            out["99% ub bounds"] = ci_ub_99
-            if ci_method is not None:
-                out["ci method"] = ci_method
-            if ci_workers is not None:
-                out["ci workers"] = ci_workers
+            out["2.5% lb bounds"] = float(lower_result["2.5% lb bounds"])
+            out["1% lb bounds"] = float(lower_result["1% lb bounds"])
+            out["97.5% ub bounds"] = float(upper_result["97.5% ub bounds"])
+            out["99% ub bounds"] = float(upper_result["99% ub bounds"])
+            if "ci method" in lower_result:
+                out["ci method"] = lower_result["ci method"]
+            elif "ci method" in upper_result:
+                out["ci method"] = upper_result["ci method"]
+            if "ci workers" in lower_result:
+                out["ci workers"] = lower_result["ci workers"]
+            elif "ci workers" in upper_result:
+                out["ci workers"] = upper_result["ci workers"]
         if want_dgps:
-            out["dgps"] = dgps
+            out["dgps"] = {
+                "lower": lower_result["dgps"]["lower"],
+                "upper": upper_result["dgps"]["upper"],
+            }
         return out
 
     def _build_threshold_component_problem(self, ind, dep, cutoff, treatment_value, cond=None):
