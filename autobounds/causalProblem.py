@@ -602,8 +602,8 @@ class causalProblem:
         query = None
         for level, weight in enumerate(representatives):
             term = (
-                float(weight) * weighted_problem.p(f"{dep}({ind}=1)={level}", cond=cond)
-                - float(weight) * weighted_problem.p(f"{dep}({ind}=0)={level}", cond=cond)
+                weighted_problem.p(f"{dep}({ind}=1)={level}", cond=cond) * float(weight)
+                - weighted_problem.p(f"{dep}({ind}=0)={level}", cond=cond) * float(weight)
             )
             query = term if query is None else query + term
         weighted_problem.set_estimand(query)

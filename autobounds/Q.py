@@ -269,7 +269,11 @@ class Q():
                 return Q(mul_list(self._event, q2._event), self._cond)
             else:
                 return Q(mul_list(self._event, q2._event), mul_list(self._cond, q2._cond))
-    
+
+    def __rmul__(self, q2):
+        """Support scalar-left multiplication such as 2 * Q('X')."""
+        return self.__mul__(q2)
+
     def clean(self):
         self._event = clean_list(self._event)
         if self._cond is not None:
@@ -277,4 +281,3 @@ class Q():
 
 
 Query = Q    
-
