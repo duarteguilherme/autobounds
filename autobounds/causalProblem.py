@@ -325,9 +325,11 @@ class causalProblem:
         continuous_method = "midpoint",
     ):
         from .Bounder import Bounder
-        if continuous_method not in {"ymax_ymin", "midpoint", "conservative"}:
+        if continuous_method == "conservative_binarized":
+            continuous_method = "conservative_threshold"
+        if continuous_method not in {"ymax_ymin", "midpoint", "conservative", "conservative_threshold"}:
             raise ValueError(
-                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative'}."
+                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative', 'conservative_threshold'}."
             )
         if isinstance(continuous_outcome, str):
             continuous_outcome_name = continuous_outcome
@@ -559,7 +561,7 @@ class causalProblem:
     def _continuous_threshold_weights(self):
         if self._continuous_bin_specs is None or len(self._continuous_bin_specs) < 2:
             raise ValueError("Continuous-outcome threshold aggregation requires at least two bins.")
-        if self.continuous_method in {"ymax_ymin", "conservative"}:
+        if self.continuous_method in {"ymax_ymin", "conservative", "conservative_threshold"}:
             lower_representatives = [float(spec["ymin"]) for spec in self._continuous_bin_specs]
             upper_representatives = [float(spec["ymax"]) for spec in self._continuous_bin_specs]
         elif self.continuous_method == "midpoint":
@@ -571,7 +573,7 @@ class causalProblem:
             upper_representatives = midpoints
         else:
             raise ValueError(
-                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative'}."
+                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative', 'conservative_threshold'}."
             )
         weights = []
         for idx in range(1, len(lower_representatives)):
@@ -618,11 +620,42 @@ class causalProblem:
 
         return weighted_problem
 
+    def _build_continuous_component_problem(self, ind, dep, treatment_value, representatives, cond=None):
+        number_values = deepcopy(self._default_bounder.number_values)
+        component_problem = causalProblem(
+            deepcopy(self._default_bounder.dag),
+            number_values,
+        )
+
+        for step in self._operation_log:
+            method = step["method"]
+            if method in {"set_estimand", "set_ate", "load_data", "read_data"}:
+                continue
+            getattr(component_problem, method)(*deepcopy(step["args"]), **deepcopy(step["kwargs"]))
+
+        query = None
+        for level, weight in enumerate(representatives):
+            term = component_problem.p(f"{dep}({ind}={treatment_value})={level}", cond=cond) * float(weight)
+            query = term if query is None else query + term
+        component_problem.set_estimand(query)
+
+        for step in self._operation_log:
+            method = step["method"]
+            call_kwargs = deepcopy(step["kwargs"])
+            if method == "load_data":
+                component_problem.load_data(**call_kwargs)
+            elif method == "read_data":
+                component_problem.read_data(**call_kwargs)
+
+        return component_problem
+
     def _solve_continuous_outcome_ate(self, **solve_kwargs):
         if self._continuous_estimand is None or self._continuous_estimand.get("kind") != "ate":
             raise ValueError("Continuous-outcome solve currently supports set_ate(...) only.")
         if self.continuous_method == "conservative":
             return self._solve_continuous_outcome_ate_conservative(**solve_kwargs)
+        if self.continuous_method == "conservative_threshold":
+            return self._solve_continuous_outcome_ate_conservative_threshold(**solve_kwargs)
         want_ci = bool(solve_kwargs.get("ci", False))
         want_dgps = bool(solve_kwargs.get("return_dgps", False))
         if self._continuous_bin_specs is None:
@@ -670,9 +703,9 @@ class causalProblem:
                 out["dgps"] = weighted_result["dgps"]
             return out
 
-        if self.continuous_method != "ymax_ymin":
+        if self.continuous_method not in {"ymax_ymin", "conservative"}:
             raise ValueError(
-                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative'}."
+                "continuous_method must be one of {'ymax_ymin', 'midpoint', 'conservative', 'conservative_threshold'}."
             )
 
         lower_problem = self._build_continuous_weighted_problem(
@@ -724,6 +757,84 @@ class causalProblem:
             }
         return out
 
+    def _solve_continuous_outcome_ate_conservative(self, **solve_kwargs):
+        want_ci = bool(solve_kwargs.get("ci", False))
+        want_dgps = bool(solve_kwargs.get("return_dgps", False))
+        if self._continuous_bin_specs is None:
+            raise ValueError("Load data before solving a continuous outcome problem.")
+
+        ind = self._continuous_estimand["ind"]
+        dep = self._continuous_estimand["dep"]
+        cond = self._continuous_estimand.get("cond")
+        subsolve_kwargs = deepcopy(solve_kwargs)
+        subsolve_kwargs["verbose_result"] = False
+        lower_representatives, upper_representatives, _ = self._continuous_threshold_weights()
+
+        component_problems = {
+            "ey1_lower": self._build_continuous_component_problem(ind, dep, 1, lower_representatives, cond=cond),
+            "ey1_upper": self._build_continuous_component_problem(ind, dep, 1, upper_representatives, cond=cond),
+            "ey0_lower": self._build_continuous_component_problem(ind, dep, 0, lower_representatives, cond=cond),
+            "ey0_upper": self._build_continuous_component_problem(ind, dep, 0, upper_representatives, cond=cond),
+        }
+        component_results = {
+            name: problem.solve(**deepcopy(subsolve_kwargs))
+            for name, problem in component_problems.items()
+        }
+
+        out = {
+            "point lb dual": float(component_results["ey1_lower"]["point lb dual"] - component_results["ey0_upper"]["point ub dual"]),
+            "point ub dual": float(component_results["ey1_upper"]["point ub dual"] - component_results["ey0_lower"]["point lb dual"]),
+            "point lb primal": float(component_results["ey1_lower"]["point lb primal"] - component_results["ey0_upper"]["point ub primal"]),
+            "point ub primal": float(component_results["ey1_upper"]["point ub primal"] - component_results["ey0_lower"]["point lb primal"]),
+            "continuous_outcome": True,
+            "continuous_method": self.continuous_method,
+            "continuous_bins": int(self.continuous_bins),
+            "outcome": dep,
+            "treatment": ind,
+            "continuous_lower_representatives": lower_representatives,
+            "continuous_upper_representatives": upper_representatives,
+            "component_results": component_results,
+        }
+        if want_ci:
+            out["2.5% lb bounds"] = float(component_results["ey1_lower"]["2.5% lb bounds"] - component_results["ey0_upper"]["97.5% ub bounds"])
+            out["1% lb bounds"] = float(component_results["ey1_lower"]["1% lb bounds"] - component_results["ey0_upper"]["99% ub bounds"])
+            out["97.5% ub bounds"] = float(component_results["ey1_upper"]["97.5% ub bounds"] - component_results["ey0_lower"]["2.5% lb bounds"])
+            out["99% ub bounds"] = float(component_results["ey1_upper"]["99% ub bounds"] - component_results["ey0_lower"]["1% lb bounds"])
+            if "ci method" in component_results["ey1_lower"]:
+                out["ci method"] = component_results["ey1_lower"]["ci method"]
+            elif "ci method" in component_results["ey1_upper"]:
+                out["ci method"] = component_results["ey1_upper"]["ci method"]
+            elif "ci method" in component_results["ey0_lower"]:
+                out["ci method"] = component_results["ey0_lower"]["ci method"]
+            elif "ci method" in component_results["ey0_upper"]:
+                out["ci method"] = component_results["ey0_upper"]["ci method"]
+            if "ci workers" in component_results["ey1_lower"]:
+                out["ci workers"] = component_results["ey1_lower"]["ci workers"]
+            elif "ci workers" in component_results["ey1_upper"]:
+                out["ci workers"] = component_results["ey1_upper"]["ci workers"]
+            elif "ci workers" in component_results["ey0_lower"]:
+                out["ci workers"] = component_results["ey0_lower"]["ci workers"]
+            elif "ci workers" in component_results["ey0_upper"]:
+                out["ci workers"] = component_results["ey0_upper"]["ci workers"]
+        if want_dgps:
+            out["dgps"] = {
+                "lower": {
+                    "status": "continuous_conservative_aggregate",
+                    "components": {
+                        "treated": component_results["ey1_lower"]["dgps"]["lower"],
+                        "control": component_results["ey0_upper"]["dgps"]["upper"],
+                    },
+                },
+                "upper": {
+                    "status": "continuous_conservative_aggregate",
+                    "components": {
+                        "treated": component_results["ey1_upper"]["dgps"]["upper"],
+                        "control": component_results["ey0_lower"]["dgps"]["lower"],
+                    },
+                },
+            }
+        return out
+
     def _build_threshold_component_problem(self, ind, dep, cutoff, treatment_value, cond=None):
         number_values = deepcopy(self._default_bounder.number_values)
         number_values[dep] = 2
@@ -762,7 +873,7 @@ class causalProblem:
 
         return threshold_problem
 
-    def _solve_continuous_outcome_ate_conservative(self, **solve_kwargs):
+    def _solve_continuous_outcome_ate_conservative_threshold(self, **solve_kwargs):
         want_ci = bool(solve_kwargs.get("ci", False))
         want_dgps = bool(solve_kwargs.get("return_dgps", False))
         if self._continuous_bin_specs is None:
@@ -873,11 +984,11 @@ class causalProblem:
         if want_dgps:
             out["dgps"] = {
                 "lower": {
-                    "status": "continuous_conservative_aggregate",
+                    "status": "continuous_conservative_threshold_aggregate",
                     "components": {"treated": y1["dgps"]["lower"], "control": y0["dgps"]["upper"]},
                 },
                 "upper": {
-                    "status": "continuous_conservative_aggregate",
+                    "status": "continuous_conservative_threshold_aggregate",
                     "components": {"treated": y1["dgps"]["upper"], "control": y0["dgps"]["lower"]},
                 },
             }
