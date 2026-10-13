@@ -21,9 +21,97 @@ Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai
 ## API structure
 
 - `Bounder`: single bounds problem engine (one model/estimand/data solve flow).
+- `SymbolicProblem`: exact symbolic bounds for supported linear response models.
 - `causalProblem`: orchestrator that can manage one or more bounders.
   - For backward compatibility, single-problem calls on `causalProblem` still work via an implicit default bounder.
   - New code should prefer explicit `Bounder` usage when solving a single problem.
+
+## Symbolic linear bounds
+
+Install the optional exact polyhedral backend (the source build requires
+cddlib and GMP development headers):
+
+```bash
+python -m pip install -e '.[symbolic]'
+```
+
+Declare the available distributions without supplying numerical probabilities:
+
+```python
+from autobounds import DAG, SymbolicProblem
+
+dag = DAG("Z -> X, X -> Y, U -> X, U -> Y", unob="U")
+problem = SymbolicProblem(dag)
+problem.load_data("X,Y", cond="Z")  # Every cell of P(X,Y | Z=z).
+problem.set_estimand(problem.p("Y(X=1)=1") - problem.p("Y(X=0)=1"))
+
+model = problem.write_program()  # Explicit M, c, and symbolic data labels.
+bounds = problem.solve()
+print(bounds.lower)  # SymPy Max of affine expressions in the data probabilities.
+print(bounds.upper)  # SymPy Min of affine expressions in the data probabilities.
+```
+
+`load_data("X,Y")` declares a joint observational distribution;
+`load_data("Y", do="X=0")` declares an experimental distribution. Declarations
+accumulate, so observational and experimental data can be combined. Use
+`add_data(problem.p("Y(X=1)=1"), label="trial")` for a single named probability.
+`set_p_to_zero(problem.p("X(Z=0)=1&X(Z=1)=0"))` excludes IV defiers, imposing
+monotonicity. Cardinalities are supplied as in `Bounder`, for example
+`SymbolicProblem(dag, number_values={"Z": 3})`.
+
+The graph adapter currently requires data and estimands to involve one
+unrestricted response component. Each nonsingleton component must have a latent
+parent shared by all its variables. Conditioning is supported on independent
+observed roots, where conditional cells can be represented by intervention
+events; these conditional distributions must exist. Nonlinear queries,
+conditional ratios, and declarations spanning multiple independent components
+are rejected. In particular, the adapter does not silently pool independent
+latent variables. For other already-derived linear models, construct
+`LinearResponseModel(matrix, target, labels=...)` directly: its model is
+`q >= 0`, `sum(q) = 1`, `matrix @ q = p`, with target `target @ q`.
+
+The exact GMP/cdd solver computes the convex hull of the response points
+`(matrix[:, s], target[s])` using pycddlib's exact GMP rational arithmetic.
+It removes dependent observable coordinates, converts the hull to inequalities,
+and extracts both sharp endpoint envelopes. Identified targets are recovered
+from their affine relation to the data. Every bound certificate is checked
+exactly against all response types; the backend never falls back to floats.
+
+The complete sharp envelopes include negative and fractional coefficients and
+support signed estimands such as ATEs. `lower_certificates` and
+`upper_certificates` give coefficients multiplying `(1, *model.symbols)`;
+`compatibility_equalities` records data identities, and
+`compatibility_inequalities` contains target-free hull inequalities. These
+conditions, together with `bounds.lower <= bounds.upper`, describe the
+observable compatibility region.
+Sharpness assumes population data compatible with the model. Optional
+`bounds.evaluate({label: probability, ...})` substitutes numerical values but
+does not check compatibility. Expressions may be redundant on the compatibility
+region; completeness does not imply an irredundant facet list.
+
+The solver returns complete sharp envelopes. Hull enumeration can still be
+expensive on models with many facets; a failed conversion raises an error
+instead of returning a partial family labeled complete.
+
+For the binary factorial example, combine observational and experimental data:
+
+```python
+from itertools import product
+
+dag = DAG("A -> Y, B -> Y, U -> A, U -> B, U -> Y", unob="U")
+problem = SymbolicProblem(dag)
+problem.load_data("A,B,Y")
+for a, b in product(range(2), repeat=2):
+    problem.load_data("Y", do=f"A={a},B={b}")
+problem.set_estimand(problem.p("Y(A=1)=1"))  # Y_1B, with B natural.
+bounds = problem.solve()
+```
+
+This graph assumes that intervening on A does not change B. The shared latent
+parent permits an unrestricted distribution over the 64 response types.
+Additional observational margins are already implied by the joint distribution.
+A runnable example printing the complete formulas and solve time is available
+in [examples/symbolic_factorial.py](examples/symbolic_factorial.py).
 
 ## Confidence Intervals (Subsampling)
 

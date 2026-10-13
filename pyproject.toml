@@ -37,6 +37,9 @@ dependencies = [
     "scipy"
 ]
 
+[project.optional-dependencies]
+symbolic = ["pycddlib>=3.0.2,<4"]
+
 [project.urls]
 Homepage = "https://github.com/duarteguilherme/autobounds"
 "Bug Tracker" = "https://github.com/duarteguilherme/autobounds/issues"

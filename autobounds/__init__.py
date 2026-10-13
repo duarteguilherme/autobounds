@@ -4,6 +4,8 @@ from .bounder import Bounder
 from .Parser import Parser
 from .Program import Program
 from .Q import Q, Query
+from .SymbolicProblem import SymbolicProblem
+from .linear_response import LinearResponseModel, SymbolicBounds
 from collections import namedtuple
 import platform
 
@@ -18,4 +20,5 @@ __all__ = [
     "version",
     "version_info",
     "__version__",
-           "DAG", "Bounder", "causalProblem", "Parser", "Program", "Query", "Q", "respect_to" ]
+           "DAG", "Bounder", "causalProblem", "Parser", "Program", "Query", "Q", "respect_to",
+           "SymbolicProblem", "LinearResponseModel", "SymbolicBounds" ]
