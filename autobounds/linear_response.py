@@ -61,10 +61,15 @@ class LinearResponseModel:
     Rows of ``matrix`` are observable event indicators. ``target`` accepts
     signed rational coefficients. Every distribution over the supplied
     response types must be admissible apart from these linear equations.
-    No independence constraints on q are implicit.
+    Optional ``constraints`` are additional signed rational rows with
+    symbolic right-hand sides named by ``constraint_labels``. They encode
+    equalities, not inequalities. ``matrix`` and ``labels`` on the compiled
+    model include both data and constraint rows. No independence constraints
+    on q are implicit.
     """
 
-    def __init__(self, matrix, target, labels=None, response_types=None):
+    def __init__(self, matrix, target, labels=None, response_types=None, *,
+                 constraints=(), constraint_labels=None):
         self.target = tuple(sp.Rational(value) for value in target)
         if not self.target:
             raise ValueError("At least one admissible response type is required.")
@@ -78,6 +83,22 @@ class LinearResponseModel:
         self.labels = tuple(map(str, labels))
         if len(self.labels) != len(self.matrix) or len(set(self.labels)) != len(self.labels):
             raise ValueError("Provide one distinct label per data row.")
+        constraints = tuple(tuple(sp.Rational(value) for value in row)
+                            for row in constraints)
+        if any(len(row) != len(self.target) for row in constraints):
+            raise ValueError("Every constraint row must match the target length.")
+        if any(not value.is_finite for row in constraints for value in row):
+            raise ValueError("Constraint coefficients must be finite rationals.")
+        if constraint_labels is None:
+            constraint_labels = [f"t{i}" for i in range(len(constraints))]
+        constraint_labels = tuple(map(str, constraint_labels))
+        if (len(constraint_labels) != len(constraints)
+                or any(not label.strip() for label in constraint_labels)
+                or len(set(self.labels + constraint_labels))
+                != len(self.labels) + len(constraint_labels)):
+            raise ValueError("Provide one distinct label per data or constraint row.")
+        self.matrix += constraints
+        self.labels += constraint_labels
         self.symbols = tuple(sp.Symbol(label, real=True) for label in self.labels)
         self.response_types = tuple(range(len(self.target)) if response_types is None
                                     else response_types)

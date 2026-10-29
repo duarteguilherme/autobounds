@@ -67,6 +67,7 @@ class SymbolicProblem:
                                1 - sum(self._symbols[p] for p in c[:-1])
                                for c in self._components}
         self._data = {}
+        self._constraints = {}
         self._zero_events = []
         self.estimand = None
 
@@ -180,9 +181,40 @@ class SymbolicProblem:
             raise ValueError("Data labels cannot be empty.")
         query = self.p(event) if isinstance(event, str) else event
         expression = self._linear_expression(query)
+        if label in self._constraints:
+            raise ValueError(f"Label {label!r} already denotes a constraint.")
         if label in self._data and self._data[label] != expression:
             raise ValueError(f"Label {label!r} already denotes a different event.")
         self._data[label] = expression
+        return self
+
+    def add_constraint(self, expression, label):
+        """Declare a linear equality ``expression = label``.
+
+        ``expression`` is a Q query (including signed rational contrasts),
+        an event string, or a rational constant. ``label`` names a symbolic
+        right-hand side, not a formula to parse. For example::
+
+            problem.add_constraint(numerator0, label="t")
+            problem.set_estimand(numerator1)
+            bounds = problem.solve()
+
+        Substitute a previously computed bound for t in the resulting
+        envelopes AND compatibility conditions. Only compatible values of t
+        describe feasible distributions. Piecewise bounds require their
+        corresponding parameter regions. Inequalities, nonlinear queries,
+        and symbolic coefficients of response probabilities are unsupported.
+        """
+        label = str(label)
+        if not label.strip():
+            raise ValueError("Constraint labels cannot be empty.")
+        if label in self._data:
+            raise ValueError(f"Label {label!r} already denotes data.")
+        query = self.p(expression) if isinstance(expression, str) else expression
+        expression = self._linear_expression(query)
+        if label in self._constraints and self._constraints[label] != expression:
+            raise ValueError(f"Label {label!r} already denotes a different constraint.")
+        self._constraints[label] = expression
         return self
 
     def load_data(self, variables, cond=None, do=None):
@@ -219,6 +251,8 @@ class SymbolicProblem:
                     query, label = self.p(event), f'P({event})'
                 pending.append((label, self._linear_expression(query)))
         for label, expression in pending:
+            if label in self._constraints:
+                raise ValueError(f"Label {label!r} already denotes a constraint.")
             if label in self._data and self._data[label] != expression:
                 raise ValueError(f"Label {label!r} already denotes a different event.")
         self._data.update(pending)
@@ -234,7 +268,8 @@ class SymbolicProblem:
         """Compile declarations into an explicit LinearResponseModel."""
         if self.estimand is None:
             raise ValueError("Set an estimand before generating the problem.")
-        expressions = [self.estimand] + list(self._data.values()) + self._zero_events
+        expressions = ([self.estimand] + list(self._data.values())
+                       + list(self._constraints.values()) + self._zero_events)
         active = {self._component_of[s] for expr in expressions for s in expr.free_symbols}
         if len(active) > 1:
             raise ValueError("Declarations involve multiple independent response components. "
@@ -248,6 +283,7 @@ class SymbolicProblem:
             return tuple(constant + expression.coeff(symbol) for symbol in symbols)
         target = vector(self.estimand)
         matrix = [vector(expr) for expr in self._data.values()]
+        constraints = [vector(expr) for expr in self._constraints.values()]
         zero_events = [vector(expr) for expr in self._zero_events]
         if any(value not in (0, 1) for row in matrix + zero_events for value in row):
             raise ValueError("Data declarations and zero restrictions must be event indicators.")
@@ -255,7 +291,9 @@ class SymbolicProblem:
         return LinearResponseModel(
             [[row[i] for i in retained] for row in matrix],
             [target[i] for i in retained], labels=self._data,
-            response_types=[component[i] for i in retained])
+            response_types=[component[i] for i in retained],
+            constraints=[[row[i] for i in retained] for row in constraints],
+            constraint_labels=self._constraints)
 
     def solve(self):
         """Return complete sharp bounds using the exact GMP/cdd hull solver."""

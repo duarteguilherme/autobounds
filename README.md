@@ -213,3 +213,37 @@ Publish to PyPI (requires a PyPI token):
 ```bash
 python -m twine upload dist/*
 ```
+
+### Direct symbolic linear equalities
+
+`add_constraint(expression, label="t")` declares `expression = t`, where `t`
+is a symbolic right-hand side. Unlike event data, the expression may be a
+signed rational contrast of queries:
+
+```python
+n0 = problem.p('Y(X=1)=1') - problem.p('Y(X=0)=1')
+n1 = problem.p('Y(X=0)=1')
+problem.set_estimand(n0)
+first = problem.solve()
+problem.add_constraint(n0, label="t")
+problem.set_estimand(n1)
+second = problem.solve()
+t = next(symbol for symbol in second.symbols if str(symbol) == "t")
+sequential_lower = second.lower.subs(t, first.lower)
+```
+
+Here `problem` must use a graph containing `X,Y` and supported by the symbolic
+adapter. Substitute `t` in the compatibility conditions as well as the bounds;
+formulas describe feasible distributions only on that compatibility region.
+A maximum of several first-stage expressions can be treated one active piece
+at a time. The label is a name, not a parsed formula or a numeric right-hand
+side. Substitute numeric values after solving.
+
+This is lexicographic optimization. It certifies simultaneous minimizers only
+if the second-stage minimum equals the unrestricted minimum of `n1`; it does
+not generally minimize a weighted sum. Repeat with maxima for upper bounds.
+The interface currently supports equalities with rational coefficients, not
+inequalities, nonlinear constraints, or symbolic objective coefficients.
+At the matrix level, `LinearResponseModel(..., constraints=[row],
+constraint_labels=["t"])` provides the same functionality. Exact certificates
+refer to the concatenated data and constraint rows.

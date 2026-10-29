@@ -285,3 +285,81 @@ def test_backend_errors_do_not_return_partial_bounds(monkeypatch):
     monkeypatch.setattr(cdd, 'polyhedron_from_matrix', fail_conversion)
     with pytest.raises(RuntimeError, match='conversion failed'):
         model.solve()
+
+
+def test_signed_constraint_has_exact_envelopes_and_primal_attainment(cdd_backend):
+    model = LinearResponseModel([], [0, 1, 0],
+                                constraints=[[-1, 1, 0]], constraint_labels=['t'])
+    result = model.solve()
+    t, = model.symbols
+    assert result.lower == sp.Max(0, t)
+    assert sp.expand(result.upper - (1+t)/2) == 0
+    assert_certificates(model, result)
+    for q in (np.array([.2, .5, .3]), np.array([1., 0., 0.]),
+              np.array([0., 1., 0.])):
+        assert_primal_dual_agree(model, result, q)
+
+
+def test_graph_constraint_supports_sequential_symbolic_optimization(cdd_backend):
+    problem = SymbolicProblem(DAG('X -> Y, U -> X, U -> Y', unob='U'))
+    n0 = problem.p('Y(X=1)=1') - problem.p('Y(X=0)=1')
+    n1 = problem.p('Y(X=0)=1')
+    problem.set_estimand(n0)
+    first = problem.solve()
+    assert first.lower == -1
+    assert problem.add_constraint(n0, label='t') is problem
+    problem.set_estimand(n1)
+    model = problem.write_program()
+    second = model.solve()
+    t = sp.Symbol('t', real=True)
+    assert second.lower == sp.Max(0, -t)
+    assert second.upper == sp.Min(1, 1-t)
+    assert second.lower.subs(t, first.lower) == 1
+    assert second.upper.subs(t, first.lower) == 1
+    assert_certificates(model, second)
+    assert_primal_dual_agree(model, second, np.ones(len(model.target))/len(model.target))
+
+
+def test_constraint_labels_and_invalid_queries_are_rejected(iv_problem):
+    event = iv_problem.p('Y(X=1)=1')
+    iv_problem.add_constraint(event, 't').add_constraint(event, 't')
+    with pytest.raises(ValueError, match='different constraint'):
+        iv_problem.add_constraint(iv_problem.p('Y(X=0)=1'), 't')
+    with pytest.raises(ValueError, match='already denotes a constraint'):
+        iv_problem.add_data(event, 't')
+    with pytest.raises(ValueError, match='empty'):
+        iv_problem.add_constraint(event, ' ')
+    iv_problem.add_data(event, 'p')
+    with pytest.raises(ValueError, match='already denotes data'):
+        iv_problem.add_constraint(event, 'p')
+    with pytest.raises(ValueError, match='nonlinear'):
+        iv_problem.add_constraint(event * event, 'square')
+    with pytest.raises(ValueError, match='constraint row'):
+        LinearResponseModel([], [0, 1], constraints=[[1]])
+    with pytest.raises(ValueError, match='distinct label'):
+        LinearResponseModel([[1, 0]], [0, 1], ['t'],
+                            constraints=[[-1, 1]], constraint_labels=['t'])
+
+
+def test_constraints_preserve_component_and_event_restrictions(iv_problem):
+    iv_problem.set_estimand('Y(X=1)=1')
+    iv_problem.add_constraint(iv_problem.p('Z=1'), 'z')
+    with pytest.raises(ValueError, match='multiple independent'):
+        iv_problem.write_program()
+    problem = SymbolicProblem(DAG('X -> Y, U -> X, U -> Y', unob='U'))
+    problem.add_constraint(problem.p('Y=1'), 'P(X=0)')
+    with pytest.raises(ValueError, match='already denotes a constraint'):
+        problem.load_data('X')
+
+
+def test_signed_constraints_respect_excluded_types(iv_problem, cdd_backend):
+    iv_problem.load_data('X,Y', cond='Z')
+    iv_problem.set_p_to_zero('X(Z=0)=1&X(Z=1)=0')
+    contrast = iv_problem.p('Y(X=1)=1') - iv_problem.p('Y(X=0)=1')
+    iv_problem.add_constraint(contrast, 't').set_estimand(contrast)
+    model = iv_problem.write_program()
+    assert len(model.target) == 12
+    result = model.solve()
+    assert result.lower == result.upper == sp.Symbol('t', real=True)
+    assert_certificates(model, result)
+    assert_primal_dual_agree(model, result, np.ones(12)/12)
