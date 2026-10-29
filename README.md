@@ -26,7 +26,38 @@ Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai
   - For backward compatibility, single-problem calls on `causalProblem` still work via an implicit default bounder.
   - New code should prefer explicit `Bounder` usage when solving a single problem.
 
+## Traditional numerical workflow
+
+Define a causal graph, load observed probabilities, and optimize a causal
+estimand. Here X and Y are binary, and U is an unobserved common cause:
+
+```python
+import pandas as pd
+from autobounds import DAG, causalProblem
+
+dag = DAG("X -> Y, U -> X, U -> Y", unob="U")
+problem = causalProblem(dag)
+problem.load_data(pd.DataFrame({
+    "X": [0, 0, 1, 1],
+    "Y": [0, 1, 0, 1],
+    "prob": [0.3, 0.2, 0.1, 0.4],  # Joint probabilities P(X,Y).
+}))
+problem.add_prob_constraints()
+problem.set_ate("X", "Y")  # E[Y(X=1)] - E[Y(X=0)].
+program = problem.write_program()
+result = program.run_scip(verbose=False)
+print(result[0]["dual"], result[1]["dual"])  # Approximately -0.3, 0.7.
+```
+
+This numerical workflow requires SCIP and `pyscipopt`. For new single-problem
+code, `Bounder` can replace `causalProblem` in this example.
+
 ## Symbolic linear bounds
+
+For supported linear models, `SymbolicProblem` returns exact bound formulas
+in the observed probabilities. Declare which distributions are available, set
+the estimand, and call `solve()`. The lower bound is a maximum of affine
+expressions in those probabilities; the upper bound is a minimum.
 
 Install the optional exact polyhedral backend (the source build requires
 cddlib and GMP development headers):
