@@ -13,8 +13,8 @@ import scipy
 from numpy import log
 import statsmodels.stats.proportion
 
-# Shared helper functions currently live in causalProblem.py
-from .causalProblem import (
+# Shared helpers are independent of the orchestration facade.
+from .data_utils import (
     generate_posterior_beta,
     generate_mn_sample,
     solve_gaussian,
@@ -211,6 +211,10 @@ class Bounder:
     def add_parameter(self, param_name):
         self.parameters += [(1, param_name)] 
     
+    def compile(self):
+        """Compile the declared numerical problem into an immutable model."""
+        return self.write_program().compile()
+
     def check_constraints(self):
         """ 
         Check all constraints 

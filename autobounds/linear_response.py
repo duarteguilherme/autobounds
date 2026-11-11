@@ -1,103 +1,6 @@
-"""Exact symbolic LP bounds for finite, unrestricted response distributions."""
-
-from dataclasses import dataclass
-from fractions import Fraction
-from functools import cached_property
-
-import numpy as np
+"""Graph-independent declaration of linear response-distribution models."""
 import sympy as sp
-
-
-@dataclass(frozen=True)
-class SymbolicBounds:
-    """Complete sharp envelopes on the model's observable compatibility region.
-
-    Certificate entries multiply (1, p0, ..., pr). All coefficients and
-    response-wise inequalities are exact. A complete envelope can still
-    contain expressions redundant on the observable compatibility region.
-    Compatibility equalities and target-free inequalities
-    together with lower <= upper characterize the observable region.
-    """
-
-    lower_expressions: tuple
-    upper_expressions: tuple
-    symbols: tuple
-    lower_certificates: tuple
-    upper_certificates: tuple
-    compatibility_equalities: tuple = ()
-    sharp: bool = True
-    complete: bool = True
-    method: str = "exact_cdd_hull"
-    compatibility_inequalities: tuple = ()
-
-    @cached_property
-    def lower(self):
-        return sp.Max(*self.lower_expressions)
-
-    @cached_property
-    def upper(self):
-        return sp.Min(*self.upper_expressions)
-
-    @cached_property
-    def _evaluation_symbols(self):
-        return tuple(sorted(self.lower.free_symbols | self.upper.free_symbols,
-                            key=sp.default_sort_key))
-
-    @cached_property
-    def _numeric_envelopes(self):
-        """Compile the simplified affine envelopes without altering exact data."""
-        lower = self.lower.args if isinstance(self.lower, sp.Max) else (self.lower,)
-        upper = self.upper.args if isinstance(self.upper, sp.Min) else (self.upper,)
-        try:
-            matrix, rhs = sp.linear_eq_to_matrix(
-                lower + upper, self._evaluation_symbols)
-            coefficients = np.asarray(matrix, dtype=float)
-            constants = -np.asarray(rhs, dtype=float).ravel()
-        except (ValueError, TypeError, OverflowError):
-            # Preserve symbolic substitution for non-affine or unrepresentable
-            # expressions in manually constructed SymbolicBounds objects.
-            return None
-        if not (np.isfinite(coefficients).all() and np.isfinite(constants).all()):
-            return None
-        coefficients.setflags(write=False)
-        constants.setflags(write=False)
-        return coefficients, constants, len(lower)
-
-    def evaluate(self, probabilities):
-        """Evaluate the formulas, assuming compatible population probabilities.
-
-        Floating-point inputs use cached affine coefficients. Exact inputs
-        retain symbolic substitution before conversion of the bounds to floats.
-        This does not test membership in the observable compatibility polytope.
-        Keys may be symbols or their string labels.
-        """
-        values = {str(key): value for key, value in probabilities.items()}
-        required = self._evaluation_symbols
-        missing = [str(symbol) for symbol in required if str(symbol) not in values]
-        if missing:
-            raise ValueError(f"Missing probabilities: {sorted(missing)}")
-        substitutions = {symbol: values[str(symbol)] for symbol in required}
-        arguments = tuple(substitutions.values())
-        if (any(isinstance(value, (float, np.floating)) for value in arguments)
-                and all(isinstance(value, (int, float, np.integer, np.floating))
-                        for value in arguments)):
-            compiled = self._numeric_envelopes
-            if compiled is not None:
-                coefficients, constants, split = compiled
-                try:
-                    with np.errstate(over='ignore', invalid='ignore'):
-                        evaluated = (coefficients @ np.asarray(arguments, dtype=float)
-                                     + constants)
-                    if np.isfinite(evaluated).all():
-                        return (float(evaluated[:split].max()),
-                                float(evaluated[split:].min()))
-                except OverflowError:
-                    pass  # Large exact integers can still cancel symbolically.
-        return (float(self.lower.subs(substitutions)),
-                float(self.upper.subs(substitutions)))
-
-    def __str__(self):
-        return f"{self.lower} <= estimand <= {self.upper}"
+from .symbolic_results import SymbolicBounds
 
 
 class LinearResponseModel:
@@ -150,102 +53,24 @@ class LinearResponseModel:
         if len(self.response_types) != len(self.target):
             raise ValueError("Response type labels must match the target length.")
 
+    def compile(self):
+        """Compile into the shared polynomial model with explicit data parameters."""
+        from .model import Constraint, MathematicalModel, Polynomial, Term, Variable
+        weights = tuple(Variable(f'q{i}', label=str(label))
+                        for i, label in enumerate(self.response_types))
+        data = tuple(Variable(f'p{i}', None, None, 'parameter', label)
+                     for i, label in enumerate(self.labels))
+        normalization = Constraint(Polynomial(
+            tuple(Term(1, (variable.name,)) for variable in weights) + (Term(-1),)))
+        rows = [normalization]
+        for values, parameter in zip(self.matrix, data):
+            terms = tuple(Term(value, (variable.name,)) for value, variable in zip(values, weights))
+            rows.append(Constraint(Polynomial(terms + (Term(-1, (parameter.name,)),))))
+        objective = Polynomial(tuple(Term(value, (variable.name,))
+                                     for value, variable in zip(self.target, weights)))
+        return MathematicalModel(weights + data, tuple(rows), objective)
+
     def solve(self):
-        """Return complete sharp bounds using the exact GMP/cdd hull solver.
-
-        Install ``autobounds[symbolic]`` to use this solver. Dependent
-        observable coordinates are removed exactly before hull computation.
-
-        Normalized nonnegative mixtures of response points are exactly the
-        feasible (p, theta) pairs. Thus every hull inequality involving theta
-        supplies an endpoint expression, and their envelopes are sharp.
-        If c is in the row span of [1; M], theta is identified and recovered
-        directly from that affine relation instead of treating it as an
-        independent hull coordinate.
-        """
-        try:
-            import cdd.gmp as cdd
-        except ImportError as exc:
-            raise ImportError(
-                "The exact cdd backend requires pycddlib>=3.0.2,<4. "
-                "Install it with: python -m pip install 'autobounds[symbolic]'. "
-            ) from exc
-
-        full = sp.Matrix([(1,) * len(self.target)] + list(self.matrix))
-        augmented = full.col_join(sp.Matrix([self.target]))
-        pivots = augmented.T.rref()[1]
-        target_independent = full.rows in pivots
-        independent = tuple(i for i in pivots if i < full.rows)
-        reduced = full[list(independent), :]
-        rhs = (sp.Integer(1),) + self.symbols
-        equalities = tuple(sp.Eq(sum(v * b for v, b in zip(vector, rhs)), 0)
-                           for vector in full.T.nullspace())
-
-        def lift(values):
-            certificate = [sp.Integer(0)] * full.rows
-            for index, value in zip(independent, values):
-                certificate[index] = value
-            return tuple(certificate)
-
-        lower, upper, compatibility = set(), set(), set()
-        if not target_independent:
-            coefficients, _ = reduced.T.gauss_jordan_solve(sp.Matrix(self.target))
-            certificate = lift(coefficients)
-            lower.add(certificate)
-            upper.add(certificate)
-
-        coordinates = reduced
-        if target_independent:
-            coordinates = coordinates.col_join(sp.Matrix([self.target]))
-        # A singleton in zero-dimensional affine space needs no conversion.
-        if coordinates.rows > 1:
-            points = sorted({tuple(Fraction(int(v.p), int(v.q))
-                                   for v in coordinates[:, s])
-                             for s in range(coordinates.cols)})
-            generators = cdd.matrix_from_array(points, rep_type=cdd.RepType.GENERATOR)
-            polyhedron = cdd.polyhedron_from_matrix(generators)
-            inequalities = cdd.copy_inequalities(polyhedron)
-            if inequalities.lin_set:
-                raise RuntimeError("Unexpected equality after exact affine dimension reduction.")
-            for row in inequalities.array:
-                row = tuple(sp.Rational(value.numerator, value.denominator) for value in row)
-                # cdd's convention is a0 + a'p + b*theta >= 0.
-                coefficient = row[-1] if target_independent else sp.Integer(0)
-                observed = row[:-1] if target_independent else row
-                if coefficient:
-                    certificate = lift(tuple(-v / coefficient for v in observed))
-                    (lower if coefficient > 0 else upper).add(certificate)
-                else:
-                    certificate = lift(observed)
-                    values = full.T * sp.Matrix(certificate)
-                    if any(value < 0 for value in values):
-                        raise RuntimeError("Invalid exact data-compatibility certificate.")
-                    expression = sp.expand(sum(v * b for v, b in zip(certificate, rhs)))
-                    if expression.free_symbols:
-                        compatibility.add(sp.Ge(expression, 0))
-
-        # Independently verify every lifted bound over every response type.
-        target = sp.Matrix(self.target)
-        for certificates, sign in ((lower, -1), (upper, 1)):
-            for certificate in certificates:
-                residual = full.T * sp.Matrix(certificate) - target
-                if any(sign * value < 0 for value in residual):
-                    raise RuntimeError("Invalid exact symbolic bound certificate.")
-        return self._make_bounds(
-            lower, upper, equalities,
-            compatibility=tuple(sorted(compatibility, key=sp.default_sort_key)))
-
-    def _make_bounds(self, lower, upper, equalities, *, compatibility=()):
-        lower, upper = tuple(sorted(lower)), tuple(sorted(upper))
-        if not lower or not upper:
-            raise RuntimeError("Exact symbolic enumeration failed to find both envelopes.")
-        rhs = (sp.Integer(1),) + self.symbols
-
-        def expressions(certificates):
-            return tuple(sp.expand(sum(v * b for v, b in zip(cert, rhs)))
-                         for cert in certificates)
-
-        return SymbolicBounds(
-            expressions(lower), expressions(upper), self.symbols,
-            lower, upper, equalities,
-            compatibility_inequalities=compatibility)
+        """Solve the compiled model with the exact response-mixture backend."""
+        from .backends.cdd import CddBackend
+        return CddBackend().solve(self.compile())

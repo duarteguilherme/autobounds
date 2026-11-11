@@ -22,6 +22,9 @@ Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai
 
 ## API structure
 
+See [architecture and backend contracts](docs/architecture.md) for compilation,
+model ownership, supported backend capabilities, and compatibility boundaries.
+
 - `Bounder`: single bounds problem engine (one model/estimand/data solve flow).
 - `SymbolicProblem`: exact symbolic bounds for supported linear response models.
 - `causalProblem`: orchestrator that can manage one or more bounders.

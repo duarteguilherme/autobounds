@@ -295,6 +295,10 @@ class SymbolicProblem:
             constraints=[[row[i] for i in retained] for row in constraints],
             constraint_labels=self._constraints)
 
+    def compile(self):
+        """Return the shared mathematical model, with symbolic data parameters."""
+        return self.write_program().compile()
+
     def solve(self):
         """Return complete sharp bounds using the exact GMP/cdd hull solver."""
         return self.write_program().solve()

@@ -15,7 +15,9 @@ print(report)
 result = program.run_scip(verbose=False)
 ```
 
-The method changes the program in place and returns before/after constraint and
+The method compiles an immutable `MathematicalModel`, applies
+`polynomial.simplify_model()`, then updates the compatibility rows in place.
+It returns before/after constraint and
 term counts and the names of fixed parameters. It is opt-in; `write_program()`
 and `run_scip()` do not automatically run this pass. They retain their existing
 constant-tautology cleanup.

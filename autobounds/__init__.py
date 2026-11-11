@@ -6,6 +6,8 @@ from .Program import Program
 from .Q import Q, Query
 from .SymbolicProblem import SymbolicProblem
 from .linear_response import LinearResponseModel, SymbolicBounds
+from .model import MathematicalModel, Variable, Term, Polynomial, Constraint
+from .results import EndpointResult, SolverResult
 from collections import namedtuple
 import platform
 
@@ -21,4 +23,6 @@ __all__ = [
     "version_info",
     "__version__",
            "DAG", "Bounder", "causalProblem", "Parser", "Program", "Query", "Q", "respect_to",
-           "SymbolicProblem", "LinearResponseModel", "SymbolicBounds" ]
+           "SymbolicProblem", "LinearResponseModel", "SymbolicBounds",
+           "MathematicalModel", "Variable", "Term", "Polynomial", "Constraint",
+           "EndpointResult", "SolverResult" ]

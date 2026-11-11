@@ -1,16 +1,10 @@
 from fractions import Fraction
-from contextlib import nullcontext
-from functools import reduce
-import io 
 import random
-import tempfile
-from copy import deepcopy, copy
-from multiprocessing import get_context
-import time
-import sys
-from .ProgramUtils import *
+import pandas as pd
+from .ProgramUtils import (
+    change_constraint_parameter_value, parse_whole_file_scip, plot_bounds,
+)
 import os
-import json
 
 
 alphanum = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -26,6 +20,7 @@ class Program:
         self.constraints = [ tuple() ]
         self.res_scip = None
         self._scip_bounds = None
+        self.last_result = None
         self.scip_lower_filename = ''.join(random.choices(alphanum, k = 16)) + '.log2n'
         self.scip_upper_filename = ''.join(random.choices(alphanum, k = 16)) + '.log2n'
 
@@ -45,13 +40,13 @@ class Program:
         rows and propagates single-variable equalities with finite decimal
         solutions. It does not perform general linear elimination.
         """
-        from .polynomial import simplify_constraints
+        from .polynomial import simplify_model
         before_constraints = len(self.constraints)
         before_terms = sum(max(0, len(row) - 1) for row in self.constraints)
-        constraints, fixed = simplify_constraints(self.constraints, self.parameters)
-        self.constraints = constraints
-        self.optimize_remove_numeric_lines()
+        model, fixed = simplify_model(self.compile())
+        self.constraints = model.legacy_constraints()
         self._scip_bounds = None
+        self.last_result = None
         return {
             "constraints_before": before_constraints,
             "constraints_after": len(self.constraints),
@@ -89,31 +84,23 @@ class Program:
         self.res_scip = df_lower.merge(df_upper, how = 'outer')
     
     def optimize_remove_numeric_lines(self):
-        """Remove true constant constraints, preserving exact contradictions.
-
-        Decimal tokens are interpreted exactly when recognizing tautologies.
-        False relations remain unchanged for the solver to evaluate with its
-        numerical feasibility tolerance, including empirical roundoff residuals.
-        Empty products represent one; an empty sum represents zero.
-        """
+        """Remove exact constant tautologies without rescaling contradictions."""
+        from .model import Constraint, Polynomial
         constraints = []
-        for constraint in self.constraints:
-            if not constraint:
+        for row in self.constraints:
+            if not row:
                 continue
-            relation = constraint[-1][0]
-            if relation not in ("==", ">=", "<="):
-                raise ValueError(f"Unsupported constraint relation: {relation}")
+            relation = row[-1][0]
+            if relation not in ('==', '<=', '>='):
+                raise ValueError(f'Unsupported constraint relation: {relation}')
             try:
-                value = sum((reduce(lambda a, b: a * b,
-                                    (Fraction(str(token)) for token in term),
-                                    Fraction(1))
-                             for term in constraint[:-1]), Fraction(0))
+                expression = Polynomial.from_tokens(row[:-1], self.parameters)
             except (ValueError, ZeroDivisionError):
-                # At least one factor is a model parameter, not a constant.
-                constraints.append(constraint)
+                # Legacy callers may declare parameter names after their rows.
+                constraints.append(row)
                 continue
-            if not get_symb_func[relation](value, 0):
-                constraints.append(constraint)
+            if not Constraint(expression, relation).is_tautology:
+                constraints.append(row)
         self.constraints = constraints
 
     def optimize_add_param_value(self, parameter, value):
@@ -127,128 +114,34 @@ class Program:
         constraints.append([[parameter], [decimal_token(-Fraction(token))], ['==']])
         self.constraints = constraints
         self._scip_bounds = None
+        self.last_result = None
 
-    def run_scip(self, verbose = True, epsilon = -10, theta = 0.01, maxtime = None, debug = False, limits = [None, None], return_dgps = False):
-        """ We won't be using to_pip here,
-        because we need the function to save into a .cip file
+    def compile(self, limits=(None, None)):
+        """Snapshot the mutable compatibility lists as an immutable model."""
+        from .model import MathematicalModel
+        return MathematicalModel.from_legacy(self.parameters, self.constraints, limits)
 
-
-        debug = True won't remove files
-        """
-        from pyscipopt import Model, quicksum
+    def run_scip(self, verbose=True, epsilon=-10, theta=0.01, maxtime=None,
+                 debug=False, limits=(None, None), return_dgps=False):
+        """Compile and solve through the SCIP backend; retain legacy return values."""
+        from .backends.scip import ScipBackend
         self._scip_bounds = None
-        try:
-            ctx = get_context('fork')
-        except ValueError as exc:
-            raise NotImplementedError(
-                "run_scip requires multiprocessing fork; spawn is unsupported"
-            ) from exc
-        self.optimize_remove_numeric_lines()
-        self.M_upper = Model()
-        self.M_lower = Model() # Unfortunately we cannot use deepcopy with scip
-        par_dict_upper = { }
-        par_dict_lower = { }
-        for p in self.parameters:
-            if p != 'objvar':
-                par_dict_lower[p] = self.M_lower.addVar(p, lb=0.0, ub=1.0)
-                par_dict_upper[p] = self.M_upper.addVar(p, lb=0.0, ub=1.0)
-            else:
-                par_dict_upper[p] = self.M_upper.addVar(p, lb = limits[0], ub = limits[1])
-                par_dict_lower[p] = self.M_lower.addVar(p, lb = limits[0], ub = limits[1])
-        # Next loop is not elegant, needs refactoring
-        for i, c in enumerate(self.constraints):
-            self.M_upper.addCons(
-                        get_symb_func[c[-1][0]](quicksum(mult_params_scip(k, par_dict_upper) for k in c[:-1]), 0)
-                    )
-            self.M_lower.addCons(
-                        get_symb_func[c[-1][0]](quicksum(mult_params_scip(k, par_dict_lower) for k in c[:-1]), 0)
-                    )
-        self.M_upper.setObjective(par_dict_upper['objvar'], sense = 'maximize')
-        self.M_lower.setObjective(par_dict_lower['objvar'], sense = 'minimize')
-        old_lower, old_upper = self.scip_lower_filename, self.scip_upper_filename
-        dgps_lower_file, dgps_upper_file = None, None
+        self.last_result = None
+        backend = ScipBackend()
+        result = backend.solve(self.compile(limits).without_tautologies(),
+                               verbose=verbose, epsilon=epsilon, theta=theta,
+                               maxtime=maxtime, debug=debug, return_dgps=return_dgps)
+        self.last_result = result
+        self.M_lower, self.M_upper = backend.M_lower, backend.M_upper
         if debug:
-            self.scip_lower_filename = '.lower.log'
-            self.scip_upper_filename = '.upper.log'
-            open(self.scip_lower_filename, 'w').close()
-            open(self.scip_upper_filename, 'w').close()
-            if return_dgps:
-                dgps_lower_file = '.lower.dgps.json'
-                dgps_upper_file = '.upper.dgps.json'
-                open(dgps_lower_file, 'w').close()
-                open(dgps_upper_file, 'w').close()
-        else:
-            # Use temp files to avoid cwd side effects and cross-run collisions.
-            lower_tmp = tempfile.NamedTemporaryFile(suffix='.log2n', delete=False)
-            upper_tmp = tempfile.NamedTemporaryFile(suffix='.log2n', delete=False)
-            lower_tmp.close()
-            upper_tmp.close()
-            self.scip_lower_filename = lower_tmp.name
-            self.scip_upper_filename = upper_tmp.name
-            if return_dgps:
-                dgps_lower_tmp = tempfile.NamedTemporaryFile(suffix='.dgps.json', delete=False)
-                dgps_upper_tmp = tempfile.NamedTemporaryFile(suffix='.dgps.json', delete=False)
-                dgps_lower_tmp.close()
-                dgps_upper_tmp.close()
-                dgps_lower_file = dgps_lower_tmp.name
-                dgps_upper_file = dgps_upper_tmp.name
-        p_lower = ctx.Process(target=solve_scip, args=(self.M_lower, self.scip_lower_filename, False, dgps_lower_file))
-        p_upper = ctx.Process(target=solve_scip, args=(self.M_upper, self.scip_upper_filename, False, dgps_upper_file))
-        try:
-            p_lower.start()
-            p_upper.start()
-            optim_data = parse_bounds_scip(p_lower, p_upper,
-                            filelower = self.scip_lower_filename,
-                            fileupper = self.scip_upper_filename, 
-                                           epsilon = epsilon, theta = theta, maxtime = maxtime, verbose = verbose)
-            if all("dual" in endpoint and "primal" in endpoint
-                   for endpoint in optim_data[:2]):
-                self._scip_bounds = tuple(
-                    {key: endpoint[key] for key in ("dual", "primal")}
-                    for endpoint in optim_data[:2]
-                )
-            if return_dgps:
-                def _safe_load_dgps(path):
-                    if path is None or not os.path.exists(path):
-                        return {"status": "missing", "values": {}}
-                    try:
-                        with open(path, "r") as f:
-                            data = json.load(f)
-                        return data if isinstance(data, dict) else {"status": "invalid_format", "values": {}}
-                    except Exception:
-                        return {"status": "parse_error", "values": {}}
-
-                dgps = {"lower": {}, "upper": {}}
-                dgps["lower"] = _safe_load_dgps(dgps_lower_file)
-                dgps["upper"] = _safe_load_dgps(dgps_upper_file)
-                return (optim_data, dgps)
-            return optim_data
-        except Exception as exc:
-            raise RuntimeError(
-                f"SCIP worker execution failed: {exc}"
-            ) from exc
-        finally:
-            for proc in (p_lower, p_upper):
-                try:
-                    if proc.is_alive():
-                        proc.terminate()
-                    proc.join()
-                except Exception:
-                    pass
-            if not debug:
-                for filename in (self.scip_lower_filename, self.scip_upper_filename):
-                    try:
-                        if os.path.exists(filename):
-                            os.remove(filename)
-                    except Exception:
-                        pass
-                for filename in (dgps_lower_file, dgps_upper_file):
-                    try:
-                        if filename is not None and os.path.exists(filename):
-                            os.remove(filename)
-                    except Exception:
-                        pass
-                self.scip_lower_filename, self.scip_upper_filename = old_lower, old_upper
+            self.scip_lower_filename = backend.scip_lower_filename
+            self.scip_upper_filename = backend.scip_upper_filename
+        bounds = result.legacy_bounds()
+        if all(endpoint.primal is not None and endpoint.dual is not None
+               for endpoint in (result.lower, result.upper)):
+            self._scip_bounds = tuple({key: endpoint[key] for key in ('dual', 'primal')}
+                                      for endpoint in bounds[:2])
+        return result.to_legacy()
     
     def get_bounds_scip(self):
         """Return worker-reported bounds from the most recent successful run."""
@@ -268,32 +161,9 @@ class Program:
         raise NotImplementedError("Pyomo export is unsupported; use to_pip()")
 
     def to_pip(self, filename, sense='max'):
-        """Export the same probability domains and free objective as run_scip."""
-        if sense not in ('max', 'min'):
-            raise ValueError("sense must be 'max' or 'min'")
-        if isinstance(filename, (str, os.PathLike)):
-            destination = open(filename, 'w')
-        elif isinstance(filename, io.StringIO):
-            destination = nullcontext(filename)
-        else:
-            raise TypeError('Expected a path or StringIO')
-        with destination as filep:
-            filep.write(('MAXIMIZE' if sense == 'max' else 'MINIMIZE') + '\n  obj: objvar\n')
-            filep.write('\nSUBJECT TO\n')
-            for i, constraint in enumerate(self.constraints):
-                if not constraint:
-                    continue
-                expression = ' + '.join(pip_join_expr(term, self.parameters)
-                                        for term in constraint[:-1]) or '0'
-                relation = fix_symbol_pip(constraint[-1][0])
-                filep.write(f'a{i}: {expression} {relation} 0\n')
-            filep.write('\nBOUNDS\n')
-            for parameter in self.parameters:
-                if parameter == 'objvar':
-                    filep.write('  objvar free\n')
-                else:
-                    filep.write(f'  0 <= {parameter} <= 1\n')
-            filep.write('\nEND')
+        """Export the same compiled model consumed by the numerical backend."""
+        from .exporters import write_pip
+        write_pip(self.compile(), filename, sense)
 
     def to_cip(self):
         raise NotImplementedError("CIP export is unsupported; use to_pip()")

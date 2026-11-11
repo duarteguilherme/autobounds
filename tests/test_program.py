@@ -10,6 +10,7 @@ import multiprocessing
 import pytest
 
 ProgramModule = importlib.import_module("autobounds.Program")
+ScipModule = importlib.import_module("autobounds.backends.scip")
 
 
 def _worker_without_results(*args):
@@ -29,9 +30,9 @@ def test_failed_workers_are_joined_and_temporary_files_removed(monkeypatch, tmp_
             processes.append(process)
             return process
 
-    monkeypatch.setattr(ProgramModule, 'get_context', lambda *args: RecordingContext())
-    monkeypatch.setattr(ProgramModule, 'solve_scip', _worker_without_results)
-    monkeypatch.setattr(ProgramModule.tempfile, 'tempdir', str(tmp_path))
+    monkeypatch.setattr(ScipModule, 'get_context', lambda *args: RecordingContext())
+    monkeypatch.setattr(ScipModule, 'solve_scip', _worker_without_results)
+    monkeypatch.setattr(ScipModule.tempfile, 'tempdir', str(tmp_path))
     program = ProgramModule.Program()
     program.parameters = ['objvar']
     program.constraints = [[['objvar'], ['==']]]
@@ -320,9 +321,9 @@ def test_run_scip_return_dgps_handles_invalid_json(monkeypatch):
         def Process(self, target=None, args=()):
             return DummyProcess()
 
-    monkeypatch.setattr(ProgramModule, "get_context", lambda *args, **kwargs: DummyContext())
+    monkeypatch.setattr(ScipModule, "get_context", lambda *args, **kwargs: DummyContext())
     monkeypatch.setattr(
-        ProgramModule,
+        ScipModule,
         "parse_bounds_scip",
         lambda *args, **kwargs: (
             {"primal": -0.5, "dual": -0.5, "time": 0.0, "end": 1},
@@ -407,8 +408,8 @@ def test_retired_backends_fail_explicitly(method):
 def test_spawn_only_platform_fails_before_creating_solver_files(monkeypatch, tmp_path):
     def unsupported_context(method):
         raise ValueError('fork unavailable')
-    monkeypatch.setattr(ProgramModule, 'get_context', unsupported_context)
-    monkeypatch.setattr(ProgramModule.tempfile, 'tempdir', str(tmp_path))
+    monkeypatch.setattr(ScipModule, 'get_context', unsupported_context)
+    monkeypatch.setattr(ScipModule.tempfile, 'tempdir', str(tmp_path))
     program = ProgramModule.Program()
     with pytest.raises(NotImplementedError, match='requires multiprocessing fork'):
         program.run_scip(verbose=False)

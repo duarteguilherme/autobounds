@@ -1,7 +1,8 @@
 import math
 import pytest
 
-from autobounds import ProgramUtils as pu
+from autobounds.backends import scip_logs as pu
+from autobounds.ProgramUtils import pip_join_expr
 
 
 class _FakeProcess:
@@ -207,4 +208,22 @@ def test_parse_bounds_scip_infeasible_writes_safe_output(monkeypatch, tmp_path):
     (['x'], 'x'), (['0.5'], '0.5'),
 ])
 def test_pip_export_preserves_numeric_products(term, expected):
-    assert pu.pip_join_expr(term, ['x']) == expected
+    assert pip_join_expr(term, ['x']) == expected
+
+
+def test_missing_dual_bounds_do_not_assume_an_ate_range(monkeypatch):
+    lower, upper = _FakeProcess(), _FakeProcess()
+    clock = [0.0]
+    waited = []
+    monkeypatch.setattr(pu.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(pu, 'parse_particular_bound_scip',
+                        lambda *args: (1, [{'primal': 2.0, 'dual': float('nan'), 'time': 0.0}]))
+    monkeypatch.setattr(pu, 'check_process_end_scip', lambda *args: -1)
+    def wait(handles, timeout):
+        waited.append(timeout)
+        clock[0] += timeout
+    monkeypatch.setattr(pu, 'wait_for_processes', wait)
+    result = pu.parse_bounds_scip(lower, upper, maxtime=.1, theta=3, verbose=False)
+    assert waited  # A fictitious [-1, 1] interval would have stopped immediately.
+    assert result[0]['dual'] == -float('inf')
+    assert result[1]['dual'] == float('inf')
