@@ -48,6 +48,12 @@ at the compilation boundary; solver backends do not interpret those lists.
 
 ## Transformations and exports
 
+`support.eliminate_zero_variables()` proves zero decision variables from exact
+constraints and domains, substitutes them, and records reconstruction metadata.
+It runs automatically for `Program.compile()` and numerical backend solves.
+Ambiguous zero products retain their factors. Successful numerical witnesses
+restore eliminated entries as zeros.
+
 `polynomial.simplify_model()` takes an immutable model and returns a new model
 plus discovered fixed values. It collects terms, removes exact duplicate rows
 and tautologies, and propagates permitted single-variable equalities. Defining

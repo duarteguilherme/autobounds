@@ -121,18 +121,37 @@ class MathematicalModel:
     variables: tuple[Variable, ...]
     constraints: tuple[Constraint, ...]
     objective: Polynomial
+    zero_variables: tuple[Variable, ...] = ()
 
     def __post_init__(self):
         object.__setattr__(self, 'variables', tuple(self.variables))
         object.__setattr__(self, 'constraints', tuple(self.constraints))
+        object.__setattr__(self, 'zero_variables', tuple(self.zero_variables))
         names = [variable.name for variable in self.variables]
         if len(set(names)) != len(names):
             raise ValueError('Variable names must be unique')
+        eliminated_names = [variable.name for variable in self.zero_variables]
+        if len(set(eliminated_names)) != len(eliminated_names) or set(names) & set(eliminated_names):
+            raise ValueError('Eliminated variable names must be unique and absent from the reduced model')
+        for variable in self.zero_variables:
+            if (variable.kind != 'decision' or
+                    (variable.lower is not None and variable.lower > 0) or
+                    (variable.upper is not None and variable.upper < 0)):
+                raise ValueError('Eliminated zero variables must permit zero in their domain')
         declared = set(names)
         for expression in (self.objective, *(row.expression for row in self.constraints)):
             used = {name for term in expression.terms for name in term.variables}
             if used - declared:
                 raise ValueError(f'Undeclared variables: {sorted(used - declared)}')
+
+    @property
+    def eliminated_values(self):
+        """Exact zeros for restoring eliminated decision variables."""
+        return {variable.name: Fraction(0) for variable in self.zero_variables}
+
+    def restore_solution(self, values):
+        """Return a fresh solution dictionary including proven zero variables."""
+        return {**values, **{variable.name: 0.0 for variable in self.zero_variables}}
 
     @property
     def is_linear(self):
@@ -156,6 +175,7 @@ class MathematicalModel:
             tuple(variable for variable in self.variables if variable.kind == 'decision'),
             tuple(Constraint(row.expression.substitute(values), row.relation) for row in self.constraints),
             self.objective.substitute(values),
+            self.zero_variables,
         )
 
     def without_tautologies(self):

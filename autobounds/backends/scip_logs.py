@@ -14,7 +14,9 @@ def solve_scip(model, filename, verbose = False, dgps_filename = None):
         return
     dgps = {"status": "no_solution", "values": {}}
     try:
-        sol = model.getBestSol()
+        # PySCIPOpt can return a wrapper even when SCIP has no solution.
+        # An empty variable list would otherwise make that look like a valid DGP.
+        sol = model.getBestSol() if model.getNSols() > 0 else None
         if sol is not None:
             var_values = {
                 v.name: float(model.getSolVal(sol, v))

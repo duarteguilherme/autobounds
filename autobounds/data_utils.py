@@ -168,7 +168,8 @@ def simplify_first_nodes(problem, dag, datam, cond):
         problem.unconf_first_nodes += [ (k + str(i),
             datam.groupby(k).sum().loc[i]['prob'] )
                 for i in datam.groupby(k).sum().index ]
-    problem.set_p_to_zero([ x[0] for x in problem.unconf_first_nodes ])
+    # These are known root probabilities, not assumptions that they are zero.
+    problem.zero_parameters.update(name for name, _ in problem.unconf_first_nodes)
 
 
 def replace_first_nodes(first_nodes, constraint):

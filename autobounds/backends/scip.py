@@ -60,6 +60,9 @@ class ScipBackend:
     def solve(self, model, *, verbose=True, epsilon=-10, theta=0.01,
               maxtime=None, debug=False, return_dgps=False):
         from contextlib import ExitStack
+        from ..support import eliminate_zero_variables
+        model = eliminate_zero_variables(model)
+        self.compiled_model = model
         if not self.supports(model):
             raise ValueError("SCIP requires a numeric model; bind symbolic parameters first")
         try:
@@ -97,6 +100,9 @@ class ScipBackend:
                 if return_dgps:
                     dgps = {name: self._load_dgp(path)
                             for name, path in zip(('lower', 'upper'), dgp_paths)}
+                    for endpoint in dgps.values():
+                        if endpoint.get('status') == 'ok' and isinstance(endpoint.get('values'), dict):
+                            endpoint['values'] = model.restore_solution(endpoint['values'])
                 return self._result(bounds, dgps)
             except Exception as exc:
                 raise RuntimeError(f"SCIP worker execution failed: {exc}") from exc

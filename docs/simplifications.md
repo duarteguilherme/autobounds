@@ -8,6 +8,46 @@ elimination preserves the feasible set.
 
 ## Using the replacement
 
+### Automatic zero support reduction
+
+`Program.compile()` now removes decision variables that the constraints prove
+are zero. Numerical solves and PIP export use this reduced model automatically;
+direct `ScipBackend.solve(model)` calls apply the same pass.
+
+For nonnegative stratum probabilities, `2*q1 + 3*q2 == 0` or
+`q1 + q2 <= 0` implies both strata are absent. The compiler substitutes zero
+through all constraints and the objective, removes tautologies, and repeats
+until no more zeros follow. It also recognizes powers and products whose other
+factors are provably nonzero from their bounds or scalar equalities.
+
+This is a conservative algebraic test, not a complete classifier of individual
+and population assumptions. In particular:
+
+- `q1 - q2 == 0` permits positive mass on both strata.
+- `q1*q2 == 0` does not identify which independent factor is zero.
+- `q1 + q2 <= theta` with any positive constant `theta` does not eliminate either
+  stratum, even when that constant is very small. Detection uses exact arithmetic.
+- Contradictions survive elimination, including conflicts with observed root
+  probabilities and original variable domains.
+
+Inspect `model.eliminated_values` for the removed names and exact zeros.
+Successful SCIP DGP results restore those entries as zero. Compilation leaves
+the `Program` declarations unchanged, so changing a zero constraint to a positive
+tolerance and recompiling restores its support. Use
+`program.compile(eliminate_zeros=False)` to inspect the unreduced Program;
+this cannot undo exclusions already explicitly made in a causal declaration.
+Similarly, changing an assumption after calling the in-place `simplify()` requires
+retaining the original declarations.
+
+A binary IV regression with uniform observed `(Z,X,Y)` probabilities and
+`P(X(0)=1, X(1)=0) <= 0` removes four defier response types: the compiled
+program shrinks from 17 variables to 13, including the objective variable.
+Both primal and dual ATE endpoints remain `[-0.5, 0.5]`. Smaller support can
+reduce polynomial size and solver work; this test does not establish a runtime
+speedup, and SCIP may itself discover some of the same reductions.
+
+### Optional additional simplification
+
 ```python
 program = problem.write_program()
 report = program.simplify()
@@ -18,9 +58,8 @@ result = program.run_scip(verbose=False)
 The method compiles an immutable `MathematicalModel`, applies
 `polynomial.simplify_model()`, then updates the compatibility rows in place.
 It returns before/after constraint and
-term counts and the names of fixed parameters. It is opt-in; `write_program()`
-and `run_scip()` do not automatically run this pass. They retain their existing
-constant-tautology cleanup.
+term counts and the names of fixed and eliminated parameters. This additional
+pass is opt-in; zero support reduction during compilation is automatic.
 
 The supported transformations are:
 
@@ -38,8 +77,8 @@ These rewrites preserve the exact polynomial model represented by the input
 coefficients. SCIP still solves numerically: degenerate constraints and
 coefficients near its feasibility tolerance can behave differently after
 algebraic rewriting. There is no promise of a speedup on every model; SCIP also
-has its own presolve. Retaining variables preserves their names for returned
-DGPs and keeps their original bounds available to the solver.
+has its own presolve. Nonzero fixed variables retain their defining equations
+and bounds; proven zero variables use the reconstruction mapping described above.
 
 A tested observational model `X -> Y` with monotonicity, joint probabilities
 `[.4, .1, .2, .3]` over `(X,Y) = (0,0),(0,1),(1,0),(1,1)`, and ATE objective
@@ -68,8 +107,18 @@ been independently proved correct.
 
 ## Verification
 
-The full source suite passed 292 tests (21.49 seconds); the final installed
-wheel passed the same 292 tests outside the checkout (21.63 seconds).
-The numerical subsampling example and exact symbolic factorial example also
-completed. These checks used the existing Linux/Python 3.13 environment and
-its dependencies; they do not establish a cross-platform compatibility matrix.
+After expanded zero support verification, the full source suite passed 331 tests
+(20.11 seconds), including 26 support regression cases. Those cases include 450
+seeded polynomial models checked at 25 exact rational points each, population
+monotonicity permitting defiers, sensitivity parameter binding, nonlinear-to-linear
+reduction, and primal/dual agreement. These finite checks supplement the targeted
+regressions; they are not a proof for every polynomial model.
+
+The expanded tests found and fixed a false successful DGP report for infeasible
+models with no variables: the worker now checks SCIP's solution count before
+extracting a witness. Models with and without remaining variables are covered.
+
+Before this follow-up fix, both distribution formats built successfully and the
+then-current 17 support cases passed against the installed wheel outside the checkout.
+These checks used the existing Linux/Python 3.13 environment and its dependencies;
+they do not establish a cross-platform compatibility matrix.

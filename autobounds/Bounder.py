@@ -205,6 +205,14 @@ class Bounder:
                 transform_constraint(x, self.zero_parameters )
                 for x in self.constraints
                 ]
+        from .model import Variable
+        root_values = {}
+        for name, value in self.unconf_first_nodes:
+            root_values.setdefault(name, value)
+        program._zero_variables = tuple(
+            Variable(name) for _, name in self.parameters
+            if name in self.zero_parameters and root_values.get(name, 0) == 0
+        )
         program.optimize_remove_numeric_lines()
         return program
         
@@ -382,19 +390,24 @@ class Bounder:
             simplify_first_nodes(self, self.dag, datam, cond)
     
     def set_p_to_zero(self, parameter_list):
-        """
-        For a particular list  of parameters
-        ['X0111', 'Z0'], set them to 0 (This has to be improved)
+        """Declare an impossible event or explicitly zero named strata.
 
-        This method is pretty useful for efficient programs
-        because it allows to remove not only parameters, but also constraints
+        General Q expressions remain constraints: signed contrasts and products
+        cannot safely be converted into a list of zero marginal probabilities.
         """
         if isinstance(parameter_list, Q):
-            parameter_list = [ k[1][0] for k in parameter_list._event if len(k[1]) == 1 ]
-        elif isinstance(parameter_list, list):
-            parameter_list = list(parameter_list)
-        else:
-            raise Exception('Type error - cannot set it to 0')
+            self.add_constraint(parameter_list, '==')
+            return
+        if not isinstance(parameter_list, list):
+            raise TypeError('Expected a Q expression or a list of stratum names')
+        declared = {name for _, name in self.parameters}
+        unknown = set(parameter_list) - declared
+        if unknown:
+            raise ValueError(f'Unknown strata: {sorted(unknown)}')
+        for name in dict.fromkeys(parameter_list):
+            # Retain the assumption so later root substitution cannot erase
+            # a conflict between an observed marginal and an excluded stratum.
+            self.constraints.append([(1, [name]), (1, ['=='])])
         self.zero_parameters.update(parameter_list)
 
     def _constraint_implies_zero_parameters(self, constraint, symbol):
@@ -407,6 +420,9 @@ class Bounder:
         if any(term[1] == ['1'] or term[1] == [1] for term in constraint._event):
             return None
         if any(len(term[1]) != 1 for term in constraint._event):
+            return None
+        declared = {name for _, name in self.parameters}
+        if any(term[1][0] not in declared for term in constraint._event):
             return None
         scalars = [term[0] for term in constraint._event]
         if any(s == 0 for s in scalars):

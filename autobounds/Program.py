@@ -16,6 +16,7 @@ class Program:
     parameters have probability bounds [0, 1]; objvar carries the objective.
     """
     def __init__(self):
+        self._zero_variables = ()
         self.parameters = [ ]
         self.constraints = [ tuple() ]
         self.res_scip = None
@@ -44,6 +45,8 @@ class Program:
         before_constraints = len(self.constraints)
         before_terms = sum(max(0, len(row) - 1) for row in self.constraints)
         model, fixed = simplify_model(self.compile())
+        self.parameters = [variable.name for variable in model.variables]
+        self._zero_variables = model.zero_variables
         self.constraints = model.legacy_constraints()
         self._scip_bounds = None
         self.last_result = None
@@ -53,6 +56,7 @@ class Program:
             "terms_before": before_terms,
             "terms_after": sum(len(row) - 1 for row in self.constraints),
             "fixed_parameters": tuple(sorted(fixed)),
+            "eliminated_parameters": tuple(model.eliminated_values),
         }
 
     def plot(self):
@@ -116,10 +120,28 @@ class Program:
         self._scip_bounds = None
         self.last_result = None
 
-    def compile(self, limits=(None, None)):
-        """Snapshot the mutable compatibility lists as an immutable model."""
-        from .model import MathematicalModel
-        return MathematicalModel.from_legacy(self.parameters, self.constraints, limits)
+    def compile(self, limits=(None, None), *, eliminate_zeros=True):
+        """Snapshot declarations and automatically remove provably zero variables.
+
+        Set eliminate_zeros=False to inspect the unreduced legacy program.
+        Original declarations remain available for recompilation/relaxation.
+        """
+        from dataclasses import replace
+        from .model import MathematicalModel, Variable, Constraint, Polynomial, Term
+        from .support import eliminate_zero_variables
+        model = MathematicalModel.from_legacy(self.parameters, self.constraints, limits)
+        eliminated = self._zero_variables
+        if any(variable.name == 'objvar' for variable in eliminated):
+            objective_variable = Variable('objvar', *limits)
+            if ((objective_variable.lower is not None and objective_variable.lower > 0)
+                    or (objective_variable.upper is not None and objective_variable.upper < 0)):
+                # Later objective limits can conflict with a previously removed zero.
+                model = replace(model, variables=model.variables + (objective_variable,),
+                                constraints=model.constraints + (
+                                    Constraint(Polynomial((Term(1, ('objvar',)),))),))
+                eliminated = tuple(v for v in eliminated if v.name != 'objvar')
+        model = replace(model, zero_variables=eliminated)
+        return eliminate_zero_variables(model) if eliminate_zeros else model
 
     def run_scip(self, verbose=True, epsilon=-10, theta=0.01, maxtime=None,
                  debug=False, limits=(None, None), return_dgps=False):
