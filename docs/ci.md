@@ -32,3 +32,10 @@ need network access for fresh build/runtime dependency resolution. Temporary
 environments and copied tests are cleaned up after success or failure. These
 jobs test their listed Python/platform combinations; they do not establish
 support for every Python version or hardware architecture.
+
+The [first successful full matrix](https://github.com/duarteguilherme/autobounds/actions/runs/42954997770)
+tested commit `12a7f33`: all seven jobs passed. The symbolic job passed 343 tests;
+numerical installations passed 321 tests and skipped 22 requiring cddlib. This
+run exposed and led to fixes for temporary-path aliases and the case-colliding
+`Bounder.py`/`bounder.py` filenames. The lowercase compatibility import now lives
+in a package directory, preserving both import styles on all tested systems.

@@ -121,8 +121,8 @@ Both runs used spawn and fresh workers for each solve, minimizing/maximizing
 `x` subject to `0.25 <= x <= 0.75`; all primal and dual endpoints agreed.
 These are workload-specific measurements, not a guaranteed speedup for larger
 optimization problems. Some interpreter startup overhead remains; workers are
-not pooled or kept alive between solves. Windows and macOS execution remain
-untested.
+not pooled or kept alive between solves. Platform verification now runs through
+the [clean-install CI matrix](ci.md), including native Windows and macOS solves.
 
 The live-log parser ignores headers and incomplete progress rows; nonnumeric
 bound markers become numeric NaNs rather than leaking strings into the bound
