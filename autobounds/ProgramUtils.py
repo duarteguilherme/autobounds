@@ -2,6 +2,7 @@ from functools import reduce
 import io 
 from copy import deepcopy, copy
 from multiprocessing import Process,Pool,Manager
+from multiprocessing.connection import wait as wait_for_processes
 import time
 import sys
 from plotnine import (ggplot,
@@ -296,20 +297,24 @@ def get_final_bound(filename):
 
 
 def check_process_end_scip(p, filename, verbose = True):
+    # The final status may be printed before the summary and optional DGP
+    # file are written. Only consume final results once the worker exits.
+    if p.is_alive():
+        return -1
+    if p.exitcode != 0:
+        raise RuntimeError(f"SCIP worker exited with code {p.exitcode}.")
     with open(filename,'r') as f: 
         data = f.readlines()
     if any([x for x in data if "[optimal solution found]" in x ]):
         if verbose:
             print("Problem is finished! Returning final values")
-        p.terminate()
         return 1
     if any([x for x in data if 'problem is solved [infeasible]' in x ]):
         if verbose:
             print("Problem is infeasible. Returning without solutions")
-        p.terminate()
         return 0
     else:
-        return -1
+        raise RuntimeError(f"SCIP worker exited without a recognized final status in {filename}.")
 
 def check_process_end(p, filename):
     with open(filename,'r') as f: 
@@ -339,11 +344,12 @@ def change_constraint_parameter_value(constraint, parameter, value):
 
 
 def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, output = None, epsilon = -10, theta = 0.01, maxtime = None, verbose = True):
+    """Monitor bounds, waking on worker exit or a short progress interval.
+
+    Process sentinels avoid delaying completed solves. The progress interval
+    still permits early stopping on bounds while both workers are running.
     """
-    
-    """
-    time.sleep(0.5)
-    init_time = time.time()
+    init_time = time.monotonic()
     i = {'primal': np.nan, 'dual': np.nan, 'time': np.nan}
     j = {'primal': np.nan, 'dual': np.nan, 'time': np.nan}
     total_lower, total_upper = [ ], []
@@ -390,12 +396,17 @@ def parse_bounds_scip(p_lower, p_upper, filelower = None, fileupper = None, outp
                 break
         if end_lower != -1 and end_upper != -1:
             break
+        wait_timeout = 0.1
         if maxtime is not None:
-            if time.time() - init_time > maxtime:
+            remaining = maxtime - (time.monotonic() - init_time)
+            if remaining <= 0:
                 p_lower.terminate()
                 p_upper.terminate()
                 break
-        time.sleep(5)
+            wait_timeout = min(wait_timeout, remaining)
+        active = [p.sentinel for p in (p_lower, p_upper) if p.is_alive()]
+        if active:
+            wait_for_processes(active, timeout=wait_timeout)
     # Checking bounds if problem is finished
     if end_lower == 1 or end_upper == 1: 
         if end_lower == 1:

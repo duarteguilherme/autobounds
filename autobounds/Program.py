@@ -196,17 +196,18 @@ class Program:
             return optim_data
         except Exception as exc:
             raise RuntimeError(
-                "Failed to launch SCIP workers. This can happen with non-fork "
-                "multiprocessing contexts because pyscipopt models are not picklable."
+                f"SCIP worker execution failed: {exc}. Non-fork multiprocessing "
+                "contexts are unsupported because pyscipopt models are not picklable."
             ) from exc
         finally:
+            for proc in (p_lower, p_upper):
+                try:
+                    if proc.is_alive():
+                        proc.terminate()
+                    proc.join()
+                except Exception:
+                    pass
             if not debug:
-                for proc in (p_lower, p_upper):
-                    try:
-                        if proc.is_alive():
-                            proc.terminate()
-                    except Exception:
-                        pass
                 for filename in (self.scip_lower_filename, self.scip_upper_filename):
                     try:
                         if os.path.exists(filename):
