@@ -16,6 +16,20 @@ def test_package_sources_compile():
         compile(path.read_bytes(), str(path), 'exec')
 
 
+def test_package_paths_do_not_collide_on_case_insensitive_filesystems():
+    package = Path(autobounds.__file__).parent
+    paths = [str(path.relative_to(package)).casefold()
+             for path in package.rglob('*') if '__pycache__' not in path.parts]
+    assert len(paths) == len(set(paths))
+
+
+def test_bounder_compatibility_imports_share_the_same_class():
+    from autobounds import Bounder
+    from autobounds.Bounder import Bounder as original
+    from autobounds.bounder import Bounder as lowercase
+    assert Bounder is original is lowercase
+
+
 def test_test_names_are_unique_within_each_scope():
     for path in Path(__file__).parent.glob('test_*.py'):
         tree = ast.parse(path.read_bytes())
