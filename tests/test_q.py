@@ -127,3 +127,8 @@ def test_clean_list():
     assert unordered_query[:] == [(1, ['X00.Y11', 'Z0']), (1, ['X00.Y10', 'Z0'])]
     assert duplicated_query[:] == [(2, ['X00.Y10', 'Z0'])]
     assert zero_query[:] == []
+
+
+def test_clean_list_cancels_terms_with_redundant_unit_factors():
+    assert clean_list([(1, ['1', 'x']), (-1, ['x'])]) == []
+    assert clean_list([(2, ['1', '1']), (-1, ['1'])]) == [(1, ['1'])]

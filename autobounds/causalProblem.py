@@ -233,7 +233,7 @@ def replace_first_nodes(first_nodes, constraint):
     (1, ['X00.Y00', 'Z0']) and if Z0 is in first nodes, 
     it replace Z0 by 1 and it multiplies 1 by the prob
     """
-    coef, var = constraint[0], constraint[1]
+    coef, var = constraint[0], list(constraint[1])
     for i,v in enumerate(var):
         for n in first_nodes:
             if v == n[0]:

@@ -13,10 +13,8 @@ def remove_one(part):
     Returns:
         list: The cleaned list with `1` or `'1'` removed, if present.
     """
-    if len(part) > 1:
-        return [k for k in part if str(k) != '1']
-    else:
-        return part
+    return [k for k in part if str(k) != '1'] or ['1']
+
 
 def remove_zero_scalars(lst):
     """Removes terms with a scalar of 0."""
@@ -40,10 +38,10 @@ def order_internal_lists(lst):
 def clean_list(lst):
     """Cleans the list by removing zero scalars, combining duplicates, 
     ordering internal lists alphabetically, and handling '1'."""
+    lst = [(scalar, remove_one(terms)) for scalar, terms in lst]
     lst = order_internal_lists(lst)  # Order internal lists alphabetically
     lst = remove_duplicates(lst)  # Combine duplicate terms
     lst = remove_zero_scalars(lst)  # Remove terms with zero scalars
-    lst = [(scalar, remove_one(terms)) for scalar, terms in lst]  # Handle '1'
     return lst
 
 def add_list(lst, addlst):

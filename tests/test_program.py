@@ -47,8 +47,8 @@ def test_failed_workers_are_joined_and_temporary_files_removed(monkeypatch, tmp_
 
 def test_optimizers():
     const = [['Y01'], ['-1', 'Y10'], ['X10', 'X11', 'Y11'], ['-1', 'objvar'], ['==']]
-    assert change_constraint_parameter_value(const, 'Y10', 0.20)[1] == ['-0.2']
-    assert change_constraint_parameter_value(const, 'X11', 0.31)[2] == ['0.31', 'X10', 'Y11']
+    assert ['-0.2'] in change_constraint_parameter_value(const, 'Y10', 0.20)
+    assert ['0.31', 'X10', 'Y11'] in change_constraint_parameter_value(const, 'X11', 0.31)
     assert const[1] == ['-1', 'Y10']
     assert const[2] == ['X10', 'X11', 'Y11']
 
@@ -442,3 +442,28 @@ def test_empirical_roundoff_is_evaluated_at_solver_tolerance():
     for endpoint in result[:2]:
         assert endpoint['primal'] == pytest.approx(0.25)
         assert endpoint['dual'] == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize('value', [-2, 2])
+@pytest.mark.parametrize('sense', ['min', 'max'])
+def test_pip_roundtrip_preserves_objectives_outside_ate_range(tmp_path, value, sense):
+    from pyscipopt import Model
+    program = ProgramModule.Program()
+    program.parameters = ['objvar']
+    program.constraints = [[['objvar'], [str(-value)], ['==']]]
+    path = tmp_path / 'bounds.pip'
+    program.to_pip(path, sense=sense)
+    model = Model()
+    model.hideOutput()
+    model.readProblem(str(path))
+    model.optimize()
+    assert model.getPrimalbound() == pytest.approx(value)
+    assert model.getDualbound() == pytest.approx(value)
+
+
+def test_pip_export_preserves_caller_owned_stream():
+    stream = io.StringIO()
+    program = ProgramModule.Program()
+    program.parameters = ['objvar']
+    program.to_pip(stream)
+    assert 'objvar free' in stream.getvalue()

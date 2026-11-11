@@ -59,6 +59,14 @@ Constant tautologies are recognized exactly from their decimal tokens. False
 relations are retained for SCIP to evaluate with its normal feasibility tolerance. For new single-problem
 code, `Bounder` can replace `causalProblem` in this example.
 
+## Polynomial simplification
+
+Use `program.simplify()` before `run_scip()` to collect repeated terms, remove
+exact duplicate constraints, and propagate fixed-variable equalities while
+retaining their equations and domains. It returns a reduction report and is
+opt-in. The old `simplify_linear()` method has been removed.
+See [supported simplifications and audit findings](docs/simplifications.md).
+
 ## Symbolic linear bounds
 
 For supported linear models, `SymbolicProblem` returns exact bound formulas

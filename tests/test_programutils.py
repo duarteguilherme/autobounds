@@ -199,3 +199,12 @@ def test_parse_bounds_scip_infeasible_writes_safe_output(monkeypatch, tmp_path):
     assert lines[2].startswith("ub,")
     assert "nan" in lines[1]
     assert "nan" in lines[2]
+
+
+@pytest.mark.parametrize('term,expected', [
+    ([], '1'), (['0', 'x'], '0'), (['2', '3', 'x'], '6 x'),
+    (['-1', '0.5', 'x', 'x'], '-0.5 x * x'),
+    (['x'], 'x'), (['0.5'], '0.5'),
+])
+def test_pip_export_preserves_numeric_products(term, expected):
+    assert pu.pip_join_expr(term, ['x']) == expected

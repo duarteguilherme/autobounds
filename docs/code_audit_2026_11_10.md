@@ -1,5 +1,9 @@
 # Code and repository audit — 10 November 2026
 
+The subsequent [transformation audit](simplifications.md) removes the unsafe
+`simplify_linear` path and remaining dormant Couenne helpers, and documents
+the conservative replacement and additional expression/export fixes.
+
 ## Follow-up fixes
 
 The concrete defects below have now been addressed:

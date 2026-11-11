@@ -1,4 +1,5 @@
 from fractions import Fraction
+from contextlib import nullcontext
 from functools import reduce
 import io 
 import random
@@ -15,17 +16,10 @@ import json
 alphanum = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 class Program:
-    """ This class
-    will state a optimization program
-    to be translated later to any 
-    language of choice, pyscipopt (pip, pyscipopt(cip),
-    pyomo, among others
-    A program requires first parameters, 
-    an objective function,
-    and constraints
-    Every method name starting with to_obj_ will solve the program directly in python.
-    Method names starting with to_ will write the program to a file, which can 
-    be read in particular solvers.
+    """Polynomial constraints and an objective for SCIP or PIP export.
+
+    Constraint rows are sums of products compared with zero. Ordinary
+    parameters have probability bounds [0, 1]; objvar carries the objective.
     """
     def __init__(self):
         self.parameters = [ ]
@@ -44,19 +38,27 @@ class Program:
         except Exception:
             pass
 
-    def simplify_linear(self):
-        """ Firstly, it divides constraints in linear and nonlinear
-        Then, for each linear constraint, it tries to substitute them 
-        insidee the nonlinear constraints, simplifying them """
-        linear, nonlinear = [ ], [ ]
-        for i in self.constraints:
-            if is_linear(i):
-                linear.append(i)
-            else:
-                nonlinear.append(i)
-        linear, nonlinear = replace_linear(linear, nonlinear)
-        self.constraints = linear + nonlinear
-        
+    def simplify(self):
+        """Simplify in place while retaining fixed-variable equations and domains.
+
+        This opt-in pass collects polynomial terms, removes exact duplicate
+        rows and propagates single-variable equalities with finite decimal
+        solutions. It does not perform general linear elimination.
+        """
+        from .polynomial import simplify_constraints
+        before_constraints = len(self.constraints)
+        before_terms = sum(max(0, len(row) - 1) for row in self.constraints)
+        constraints, fixed = simplify_constraints(self.constraints, self.parameters)
+        self.constraints = constraints
+        self.optimize_remove_numeric_lines()
+        self._scip_bounds = None
+        return {
+            "constraints_before": before_constraints,
+            "constraints_after": len(self.constraints),
+            "terms_before": before_terms,
+            "terms_after": sum(len(row) - 1 for row in self.constraints),
+            "fixed_parameters": tuple(sorted(fixed)),
+        }
 
     def plot(self):
         self.track_result_scip()
@@ -115,17 +117,17 @@ class Program:
         self.constraints = constraints
 
     def optimize_add_param_value(self, parameter, value):
-        """ 
-        Replace directly one of the parameter by a certain value...
-        That's ideal when we want to introduce a value directly
-        """
-        constraints2 = [ ]
-        for i in self.constraints:
-            constraints2.append(
-                    change_constraint_parameter_value(i, parameter, value)
-                    )
-        self.constraints = constraints2
-    
+        """Fix a parameter, preserving its domain and defining equality."""
+        from .polynomial import decimal_token
+        if parameter not in self.parameters:
+            raise ValueError(f"Unknown parameter: {parameter}")
+        token = decimal_token(Fraction(str(value)))
+        constraints = [change_constraint_parameter_value(row, parameter, token)
+                       for row in self.constraints if row]
+        constraints.append([[parameter], [decimal_token(-Fraction(token))], ['==']])
+        self.constraints = constraints
+        self._scip_bounds = None
+
     def run_scip(self, verbose = True, epsilon = -10, theta = 0.01, maxtime = None, debug = False, limits = [None, None], return_dgps = False):
         """ We won't be using to_pip here,
         because we need the function to save into a .cip file
@@ -265,29 +267,33 @@ class Program:
     def to_obj_pyomo(self):
         raise NotImplementedError("Pyomo export is unsupported; use to_pip()")
 
-    def to_pip(self, filename, sense = 'max'):
-        if isinstance(filename, str):
-            filep = open(filename, 'w')
+    def to_pip(self, filename, sense='max'):
+        """Export the same probability domains and free objective as run_scip."""
+        if sense not in ('max', 'min'):
+            raise ValueError("sense must be 'max' or 'min'")
+        if isinstance(filename, (str, os.PathLike)):
+            destination = open(filename, 'w')
         elif isinstance(filename, io.StringIO):
-            filep = filename
+            destination = nullcontext(filename)
         else:
-            raise Exception('Filename type not accepted!')
-        sense = 'MAXIMIZE' if sense == 'max' else 'MINIMIZE'
-        filep.write(sense + '\n' + '  obj: objvar' + '\n')
-        filep.write('\nSUBJECT TO\n')
-        for i, c in enumerate(self.constraints):
-            if len(c) == 0:
-                continue
-            filep.write('a' + str(i) + ': ' + ' + '.join([pip_join_expr(k, self.parameters) 
-                for k in c[:-1] ]) + ' ' + fix_symbol_pip(c[-1][0]) + ' 0\n')
-        filep.write('\nBOUNDS\n')
-        for p in self.parameters:
-            if p != 'objvar':
-                filep.write(f'  0 <= {p} <= 1\n')
-            else:
-                filep.write(f'  -1 <= {p} <= 1\n')
-        filep.write('\nEND')
-        filep.close()
-    
+            raise TypeError('Expected a path or StringIO')
+        with destination as filep:
+            filep.write(('MAXIMIZE' if sense == 'max' else 'MINIMIZE') + '\n  obj: objvar\n')
+            filep.write('\nSUBJECT TO\n')
+            for i, constraint in enumerate(self.constraints):
+                if not constraint:
+                    continue
+                expression = ' + '.join(pip_join_expr(term, self.parameters)
+                                        for term in constraint[:-1]) or '0'
+                relation = fix_symbol_pip(constraint[-1][0])
+                filep.write(f'a{i}: {expression} {relation} 0\n')
+            filep.write('\nBOUNDS\n')
+            for parameter in self.parameters:
+                if parameter == 'objvar':
+                    filep.write('  objvar free\n')
+                else:
+                    filep.write(f'  0 <= {parameter} <= 1\n')
+            filep.write('\nEND')
+
     def to_cip(self):
         raise NotImplementedError("CIP export is unsupported; use to_pip()")
