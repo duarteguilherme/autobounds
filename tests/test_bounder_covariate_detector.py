@@ -1,10 +1,10 @@
 import pandas as pd
 from importlib import import_module
 
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.causalProblem import causalProblem
+from autobounds.DAG import DAG
+from autobounds.causalProblem import causalProblem
 
-causal_problem_module = import_module("autobounds.autobounds.causalProblem")
+causal_problem_module = import_module("autobounds.causalProblem")
 
 
 def _make_dag():

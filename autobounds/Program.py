@@ -30,6 +30,7 @@ class Program:
         self.parameters = [ ]
         self.constraints = [ tuple() ]
         self.res_scip = None
+        self._scip_bounds = None
         self.scip_lower_filename = ''.join(random.choices(alphanum, k = 16)) + '.log2n'
         self.scip_upper_filename = ''.join(random.choices(alphanum, k = 16)) + '.log2n'
 
@@ -117,6 +118,7 @@ class Program:
         """
         from pyscipopt import Model, quicksum
         self.M_upper = Model()
+        self._scip_bounds = None
         self.M_lower = Model() # Unfortunately we cannot use deepcopy with scip
         par_dict_upper = { }
         par_dict_lower = { }
@@ -178,6 +180,12 @@ class Program:
                             filelower = self.scip_lower_filename,
                             fileupper = self.scip_upper_filename, 
                                            epsilon = epsilon, theta = theta, maxtime = maxtime, verbose = verbose)
+            if all("dual" in endpoint and "primal" in endpoint
+                   for endpoint in optim_data[:2]):
+                self._scip_bounds = tuple(
+                    {key: endpoint[key] for key in ("dual", "primal")}
+                    for endpoint in optim_data[:2]
+                )
             if return_dgps:
                 def _safe_load_dgps(path):
                     if path is None or not os.path.exists(path):
@@ -223,11 +231,11 @@ class Program:
                 self.scip_lower_filename, self.scip_upper_filename = old_lower, old_upper
     
     def get_bounds_scip(self):
-        return (
-                {'dual': self.M_lower.getDualbound(), 'primal': self.M_lower.getPrimalbound() },
-                {'dual': self.M_upper.getDualbound(), 'primal': self.M_upper.getPrimalbound() }
-                )
-    
+        """Return worker-reported bounds from the most recent successful run."""
+        if self._scip_bounds is None:
+            raise RuntimeError("Run run_scip successfully before requesting bounds")
+        return tuple(dict(endpoint) for endpoint in self._scip_bounds)
+
     def run_couenne(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
         """ This method runs programs directly in python using pyomo and couenne
         """

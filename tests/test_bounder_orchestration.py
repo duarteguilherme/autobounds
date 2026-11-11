@@ -1,6 +1,6 @@
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.causalProblem import causalProblem
-from autobounds.autobounds.bounder import Bounder
+from autobounds.DAG import DAG
+from autobounds.causalProblem import causalProblem
+from autobounds.bounder import Bounder
 import io
 import numpy as np
 import pytest

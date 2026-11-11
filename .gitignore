@@ -12,3 +12,9 @@ __pycache__/
 # Local comparison scripts
 examples/covariate_ate_ci_method_comparison.py
 examples/no_covariate_ate_ci_method_comparison.py
+
+# Generated metadata and editor state
+*.egg-info/
+.DS_Store
+.ipynb_checkpoints/
+*~

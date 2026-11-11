@@ -6,15 +6,17 @@ Developed by researchers at the University of Pennsylvania, Johns Hopkins Univer
 
 This tool is particularly valuable in fields like economics, political science, and epidemiology, where researchers often face challenges such as confounding, selection bias, measurement error, and noncompliance. By automating the process, Autobounds allows for more precise and reliable estimation of causal relationships, facilitating better-informed decision-making.
 
-To get started, download the software via Docker and run the following command to launch Autobounds:
+Install from source with Python 3.10 or newer:
 
 ```bash
-docker run -p 8888:8888 -it gjardimduarte/autolab:v5
+python -m pip install -e .
 ```
 
-This will allow you to easily integrate Autobounds into your causal inference workflows.
-
-To install it in your machine, clone this repo and use python -m pip install .
+See [examples](examples/README.md) for current entry points. Historical notebooks
+and the old Docker recipe are preserved in [archive](archive/README.md); they
+are not supported setup instructions.
+See the [code audit](docs/code_audit_2026_11_10.md) for validation scope and
+known issues, including constant-constraint simplification.
 
 Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai Cooper. Code contributions were also made by Lisa Schulze-Bergkamen and Jeremy Zucker.
 

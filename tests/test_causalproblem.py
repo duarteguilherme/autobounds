@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.causalProblem import *
-from autobounds.autobounds.Q import Q, clean_list, compare_lists
+from autobounds.DAG import DAG
+from autobounds.causalProblem import *
+from autobounds.Q import Q, clean_list, compare_lists
 import pandas as pd
 import io
 from copy import deepcopy

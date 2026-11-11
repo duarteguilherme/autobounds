@@ -34,10 +34,12 @@ dependencies = [
     "plotnine",
     "pyscipopt",
     "sympy",
-    "scipy"
+    "scipy",
+    "statsmodels"
 ]
 
 [project.optional-dependencies]
+dev = ["pytest", "build"]
 symbolic = ["pycddlib>=3.0.2,<4"]
 
 [project.urls]
@@ -45,6 +47,7 @@ Homepage = "https://github.com/duarteguilherme/autobounds"
 "Bug Tracker" = "https://github.com/duarteguilherme/autobounds/issues"
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 filterwarnings = [
     "ignore:\\[Errno 13\\] Permission denied\\.\\s+joblib will operate in serial mode:UserWarning",
     "ignore:This process \\(pid=.*\\) is multi-threaded, use of fork\\(\\) may lead to deadlocks in the child\\.:DeprecationWarning",

@@ -14,7 +14,7 @@ import pytest
 import sympy as sp
 from scipy.optimize import linprog
 
-from autobounds.autobounds import DAG, LinearResponseModel, SymbolicBounds, SymbolicProblem
+from autobounds import DAG, LinearResponseModel, SymbolicBounds, SymbolicProblem
 
 
 @pytest.mark.parametrize('value', [Fraction(1, 3), sp.Rational(1, 3),

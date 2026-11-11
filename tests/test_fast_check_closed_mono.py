@@ -1,9 +1,9 @@
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.closedProblem import (
+from autobounds.DAG import DAG
+from autobounds.closedProblem import (
      closedProblem, get_cover_addition, is_inconclusive, get_cover_subtraction,
      Gset
 )
-from autobounds.autobounds.Parser import Parser
+from autobounds.Parser import Parser
 import pandas as pd
 import io
 from copy import deepcopy

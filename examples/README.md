@@ -1,6 +1,23 @@
 # Examples
 
-This folder keeps the main coverage and CI comparison scripts:
+This folder keeps the current coverage and CI comparison scripts. Install the
+package first (`python -m pip install -e .` from the repository root).
+Commands below assume the working directory is `examples/`; from the root,
+prefix script paths with `examples/`.
+
+For a small numerical smoke run from the repository root:
+
+```bash
+python examples/iv_ate_ci_subsampling.py --n 200 --nsamples 3 --ci-workers 1
+```
+
+For exact symbolic bounds, install `.[symbolic]` and run
+`python examples/symbolic_factorial.py`. The remaining scripts accept `--help`.
+CLI smoke checks validate imports and argument parsing, not the statistical
+properties of full Monte Carlo experiments. Large defaults can be expensive.
+Historical notebooks and the Docker recipe live in [archive](../archive/README.md).
+
+The scripts include:
 
 ## 1) Coverage with covariates (`covariate_ate_ci_coverage.py`)
 

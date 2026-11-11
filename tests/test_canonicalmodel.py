@@ -1,5 +1,5 @@
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.canonicalModel import canonicalModel
+from autobounds.DAG import DAG
+from autobounds.canonicalModel import canonicalModel
 import numpy as np
 from itertools import product
 import math

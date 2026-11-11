@@ -1,8 +1,8 @@
-from autobounds.autobounds.causalProblem import causalProblem
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.Program import change_constraint_parameter_value
-from autobounds.autobounds.ProgramUtils import is_linear
-from autobounds.autobounds.Q import Q
+from autobounds.causalProblem import causalProblem
+from autobounds.DAG import DAG
+from autobounds.Program import change_constraint_parameter_value
+from autobounds.ProgramUtils import is_linear
+from autobounds.Q import Q
 import io
 import time
 import pandas as pd

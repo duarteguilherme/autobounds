@@ -1,6 +1,6 @@
-from autobounds.autobounds.causalProblem import causalProblem, respect_to
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.Q import Q
+from autobounds.causalProblem import causalProblem, respect_to
+from autobounds.DAG import DAG
+from autobounds.Q import Q
 import pandas as pd
 import numpy as np
 

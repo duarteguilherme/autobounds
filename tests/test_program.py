@@ -1,7 +1,7 @@
-from autobounds.autobounds.causalProblem import causalProblem
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.Program import change_constraint_parameter_value
-from autobounds.autobounds.Q import Q
+from autobounds.causalProblem import causalProblem
+from autobounds.DAG import DAG
+from autobounds.Program import change_constraint_parameter_value
+from autobounds.Q import Q
 import io
 import time
 import pandas as pd
@@ -9,7 +9,7 @@ import importlib
 import multiprocessing
 import pytest
 
-ProgramModule = importlib.import_module("autobounds.autobounds.Program")
+ProgramModule = importlib.import_module("autobounds.Program")
 
 
 def _worker_without_results(*args):
@@ -340,3 +340,20 @@ def test_run_scip_return_dgps_handles_invalid_json(monkeypatch):
     assert bounds[1]["dual"] == 0.5
     assert dgps["lower"]["status"] == "parse_error"
     assert dgps["upper"]["status"] == "parse_error"
+
+
+@pytest.mark.parametrize('return_dgps', [False, True])
+def test_get_bounds_scip_returns_worker_results(return_dgps):
+    program = ProgramModule.Program()
+    program.parameters = ['objvar']
+    program.constraints = [[['objvar'], ['-0.3'], ['==']]]
+    with pytest.raises(RuntimeError, match='Run run_scip'):
+        program.get_bounds_scip()
+    result = program.run_scip(verbose=False, return_dgps=return_dgps)
+    bounds = result[0] if return_dgps else result
+    for actual, expected in zip(program.get_bounds_scip(), bounds[:2]):
+        assert actual['primal'] == pytest.approx(0.3)
+        assert actual['dual'] == pytest.approx(0.3)
+        assert actual == {key: expected[key] for key in ('dual', 'primal')}
+    program.get_bounds_scip()[0]['dual'] = 999
+    assert program.get_bounds_scip()[0]['dual'] == pytest.approx(0.3)

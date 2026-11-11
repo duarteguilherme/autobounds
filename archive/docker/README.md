@@ -1,3 +1,5 @@
+> Historical recipe: unsupported by the current package. See [archive notes](../README.md).
+
 # Autobounds with Docker
 
 Containers contain everything the package needs to run including libraries, system tools, code, and runtime. This is especially helpful in this case since many optimization tools utilized by `autobounds` require compilation.

@@ -105,7 +105,7 @@ class SCM:
         for key, values in intervention.items():
             dag.truncate(key)
             data[key] = values
-        order = [ j for i in dag.get_top_order() for j in i]
+        order = dag.get_top_order()
         for v in order:
             data[v] = data[self.F[v][0][0]]
             for j in range(len(self.F[v][1])):

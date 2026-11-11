@@ -1,7 +1,7 @@
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.causalProblem import causalProblem
-from autobounds.autobounds.Parser import *
-from autobounds.autobounds.Q import ( Query, clean_list, Q, 
+from autobounds.DAG import DAG
+from autobounds.causalProblem import causalProblem
+from autobounds.Parser import *
+from autobounds.Q import ( Query, clean_list, Q,
                                      sub_list, add_list, 
                                      mul_list, compare_lists)
 import pytest

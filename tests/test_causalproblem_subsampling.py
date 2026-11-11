@@ -2,9 +2,9 @@ import pandas as pd
 import pytest
 from copy import deepcopy
 
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.Bounder import Bounder
-from autobounds.autobounds.causalProblem import causalProblem
+from autobounds.DAG import DAG
+from autobounds.Bounder import Bounder
+from autobounds.causalProblem import causalProblem
 
 
 def test_interleaved_replay_builds_identical_programs_for_each_sample(monkeypatch):

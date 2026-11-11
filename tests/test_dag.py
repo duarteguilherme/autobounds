@@ -1,4 +1,4 @@
-from autobounds.autobounds.DAG import DAG
+from autobounds.DAG import DAG
 
 
 

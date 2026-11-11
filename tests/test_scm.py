@@ -1,5 +1,5 @@
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.SCM import SCM
+from autobounds.DAG import DAG
+from autobounds.SCM import SCM
 import numpy as np
 import pytest
 import os
@@ -28,3 +28,16 @@ def test_scm_sample():
     scm.sample_u(10)
     data = scm.draw_sample(intervention = {'X': 1})
     assert data['X'][0] == 1
+
+
+def test_scm_preserves_multicharacter_variables_when_sampling():
+    dag = DAG('Treatment -> Outcome')
+    scm = SCM()
+    scm.from_dag(dag)
+    scm.F['Treatment'] = (('U_Treatment',), ())
+    scm.F['Outcome'] = (('U_Outcome', 'Treatment'), (1,))
+    scm.u_data = {'U_Treatment': np.array([0, 1, 0]),
+                  'U_Outcome': np.array([0, 0, 1])}
+    data = scm.draw_sample()
+    assert data['Treatment'].tolist() == [0, 1, 0]
+    assert data['Outcome'].tolist() == [0, 1, 1]

@@ -1,7 +1,7 @@
 import math
 import pytest
 
-from autobounds.autobounds import ProgramUtils as pu
+from autobounds import ProgramUtils as pu
 
 
 class _FakeProcess:

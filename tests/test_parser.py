@@ -1,6 +1,6 @@
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.Parser import *
-from autobounds.autobounds.Q import compare_lists
+from autobounds.DAG import DAG
+from autobounds.Parser import *
+from autobounds.Q import compare_lists
 from copy import deepcopy
 from itertools import product
 from concurrent.futures import ThreadPoolExecutor
@@ -116,7 +116,7 @@ def test_index_preserves_components_and_matches_whole_tokens():
 
 def test_indexed_program_preserves_constraints_and_scip_bounds(monkeypatch):
     import pandas as pd
-    from autobounds.autobounds import Bounder
+    from autobounds import Bounder
 
     def build_program():
         problem = Bounder(DAG('Z -> X, X -> Y, U -> X, U -> Y', unob='U'))

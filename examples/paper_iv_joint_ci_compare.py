@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -14,6 +15,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MultipleLocator
+
+# Allow both direct script execution and python -m examples.<module>.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from examples.balke_pearl_closed_form_ci_compare import (
     LOWER_COEFFS,

@@ -1,7 +1,8 @@
+import pytest
 import numpy as np
-from autobounds.autobounds.DAG import DAG
-from autobounds.autobounds.causalProblem import *
-from autobounds.autobounds.Q import Q, clean_list, compare_lists
+from autobounds.DAG import DAG
+from autobounds.causalProblem import *
+from autobounds.Q import Q, clean_list, compare_lists
 import pandas as pd
 import io
 from copy import deepcopy
@@ -125,22 +126,6 @@ def test_write_program_applies_deferred_zero_parameters():
 
 
 
-def test_load_data():
-    df_y_do_x = pd.DataFrame({
-        'X': [0,0,1,1],
-        'Y': [0,1,0,1],
-        'prob': [0.4, 0.6, 0.1, 0.9]
-        })
-    dag = DAG()
-    dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = 'U')
-    problem = causalProblem(dag)
-    problem.load_data(df_y_do_x, do = ['X'])
-    problem.set_ate('X','Y')
-    program = problem.write_program()
-    program.to_pip('test_do.pip')
-    res = program.run_scip()
-    assert res[0]['primal'] == 0.3
-
 
 def test_solve_kl():
     ns = 1000
@@ -161,7 +146,7 @@ def test_solve_kl_bug_log():
 
 
 
-def test_load_data():
+def test_load_interventional_data(tmp_path):
     df_y_do_x = pd.DataFrame({
         'X': [0,0,1,1],
         'Y': [0,1,0,1],
@@ -173,9 +158,11 @@ def test_load_data():
     problem.load_data(df_y_do_x, do = ['X'])
     problem.set_ate('X','Y')
     program = problem.write_program()
-    program.to_pip('test_do.pip')
+    program.to_pip(str(tmp_path / 'test_do.pip'))
     res = program.run_scip()
-    assert res[0]['primal'] == 0.3
+    for endpoint in res[:2]:
+        assert endpoint['primal'] == pytest.approx(0.3)
+        assert endpoint['dual'] == pytest.approx(0.3)
 
 
 def test_solve_gaussian():
