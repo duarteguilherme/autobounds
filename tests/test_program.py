@@ -19,9 +19,7 @@ def _worker_without_results(*args):
 
 
 def test_failed_workers_are_joined_and_temporary_files_removed(monkeypatch, tmp_path):
-    if 'fork' not in multiprocessing.get_all_start_methods():
-        pytest.skip('SCIP model worker integration requires fork')
-    context = multiprocessing.get_context('fork')
+    context = multiprocessing.get_context('spawn')
     processes = []
 
     class RecordingContext:
@@ -31,13 +29,13 @@ def test_failed_workers_are_joined_and_temporary_files_removed(monkeypatch, tmp_
             return process
 
     monkeypatch.setattr(ScipModule, 'get_context', lambda *args: RecordingContext())
-    monkeypatch.setattr(ScipModule, 'solve_scip', _worker_without_results)
+    monkeypatch.setattr(ScipModule, 'run_scip_worker', _worker_without_results)
     monkeypatch.setattr(ScipModule.tempfile, 'tempdir', str(tmp_path))
     program = ProgramModule.Program()
     program.parameters = ['objvar']
     program.constraints = [[['objvar'], ['==']]]
     with pytest.raises(RuntimeError, match='without a recognized final status'):
-        program.run_scip(verbose=False, maxtime=1, return_dgps=True)
+        program.run_scip(verbose=False, return_dgps=True)
     assert len(processes) == 2
     assert all(not process.is_alive() and process.exitcode is not None
                for process in processes)
@@ -405,14 +403,23 @@ def test_retired_backends_fail_explicitly(method):
         getattr(ProgramModule.Program(), method)()
 
 
-def test_spawn_only_platform_fails_before_creating_solver_files(monkeypatch, tmp_path):
-    def unsupported_context(method):
-        raise ValueError('fork unavailable')
-    monkeypatch.setattr(ScipModule, 'get_context', unsupported_context)
+def test_spawn_only_platform_solves_without_building_native_models_in_parent(monkeypatch, tmp_path):
+    def spawn_only_context(method):
+        assert method == 'spawn'
+        return multiprocessing.get_context(method)
+    monkeypatch.setattr(ScipModule, 'get_context', spawn_only_context)
     monkeypatch.setattr(ScipModule.tempfile, 'tempdir', str(tmp_path))
+    def forbidden_build(*args):
+        raise AssertionError('Parent must not construct SCIP models')
+    monkeypatch.setattr(ScipModule.ScipBackend, 'build_model', forbidden_build)
     program = ProgramModule.Program()
-    with pytest.raises(NotImplementedError, match='requires multiprocessing fork'):
-        program.run_scip(verbose=False)
+    program.parameters = ['objvar']
+    program.constraints = [[['objvar'], ['-0.3'], ['==']]]
+    result, dgps = program.run_scip(verbose=False, return_dgps=True)
+    for endpoint in result[:2]:
+        assert endpoint['primal'] == pytest.approx(.3)
+        assert endpoint['dual'] == pytest.approx(.3)
+    assert dgps['lower']['values']['objvar'] == pytest.approx(.3)
     assert list(tmp_path.iterdir()) == []
 
 

@@ -57,7 +57,24 @@ print(result[0]["dual"], result[1]["dual"])  # Approximately -0.3, 0.7.
 SCIP is the supported numerical backend and requires `pyscipopt`.
 The historical Pyomo and Couenne backends are retired; their entry points now
 raise `NotImplementedError` directing callers to `run_scip()`. Numerical solver
-workers require a platform with multiprocessing `fork` support.
+workers use multiprocessing `spawn` and construct SCIP models inside each worker;
+they no longer require `fork`. When running a Python script, put code that starts
+solves behind a main guard (including calls to `problem.solve()`):
+
+```python
+def main():
+    # Build the problem and run the solve here.
+    ...
+
+if __name__ == "__main__":
+    main()
+```
+
+Workers start fresh interpreters. Public interfaces and plotting/statistical
+dependencies load on demand to keep numerical worker startup small, but some
+startup cost remains. The `maxtime` wall-clock budget includes worker startup. Removal of the
+fork requirement does not itself constitute verification on Windows or macOS.
+
 Constant tautologies are recognized exactly from their decimal tokens. False
 relations are retained for SCIP to evaluate with its normal feasibility tolerance. For new single-problem
 code, `Bounder` can replace `causalProblem` in this example.

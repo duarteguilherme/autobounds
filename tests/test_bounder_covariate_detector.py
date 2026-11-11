@@ -1,11 +1,8 @@
+import statsmodels.api as sm
 import pandas as pd
-from importlib import import_module
 
 from autobounds.DAG import DAG
 from autobounds.causalProblem import causalProblem
-
-causal_problem_module = import_module("autobounds.causalProblem")
-
 
 def _make_dag():
     dag = DAG()
@@ -20,7 +17,7 @@ def test_read_data_discrete_small_support_uses_empirical_path(monkeypatch):
     def _fail_mnlogit(*args, **kwargs):
         raise AssertionError("MNLogit should not be called for discrete low-support covariates.")
 
-    monkeypatch.setattr(causal_problem_module.sm, "MNLogit", _fail_mnlogit)
+    monkeypatch.setattr(sm, "MNLogit", _fail_mnlogit)
 
     df = pd.DataFrame(
         {
@@ -50,7 +47,7 @@ def test_read_data_discrete_large_support_keeps_multinomial(monkeypatch):
         def fit(self):
             return sentinel
 
-    monkeypatch.setattr(causal_problem_module.sm, "MNLogit", _FakeMNLogit)
+    monkeypatch.setattr(sm, "MNLogit", _FakeMNLogit)
 
     n = 30
     df = pd.DataFrame(

@@ -117,6 +117,45 @@ def test_failed_worker_creation_cleans_backend_owned_directory(monkeypatch, tmp_
     assert list(tmp_path.iterdir()) == []
 
 
+def test_spawn_reports_model_construction_error_and_cleans_workers(monkeypatch, tmp_path):
+    import multiprocessing
+    module = importlib.import_module('autobounds.backends.scip')
+    monkeypatch.setattr(module.tempfile, 'tempdir', str(tmp_path))
+    before = {child.pid for child in multiprocessing.active_children()}
+    # This exact coefficient cannot be represented by SCIP's floating point API.
+    model = MathematicalModel((Variable('x'),), (),
+                              Polynomial((Term(10**1000, ('x',)),)))
+    with pytest.raises(RuntimeError, match='OverflowError'):
+        ScipBackend().solve(model, verbose=False)
+    assert {child.pid for child in multiprocessing.active_children()} == before
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_spawn_timeout_cleans_workers_before_removing_files(monkeypatch, tmp_path):
+    import multiprocessing
+    module = importlib.import_module('autobounds.backends.scip')
+    monkeypatch.setattr(module.tempfile, 'tempdir', str(tmp_path))
+    before = {child.pid for child in multiprocessing.active_children()}
+    model = MathematicalModel((Variable('x'),), (), Polynomial((Term(1, ('x',)),)))
+    result = ScipBackend().solve(model, verbose=False, maxtime=0, return_dgps=True)
+    assert result.lower.end == result.upper.end == -1
+    assert all(item['status'] != 'ok' for item in result.dgps.values())
+    assert {child.pid for child in multiprocessing.active_children()} == before
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_legacy_inspection_models_are_lazy_and_unsolved():
+    program = Program()
+    program.parameters = ['objvar']
+    program.constraints = [[['objvar'], ['-0.4'], ['==']]]
+    program.run_scip(verbose=False)
+    assert program._scip_backend._inspection_models == {}
+    assert program.M_lower.getObjectiveSense() == 'minimize'
+    assert program.M_upper.getObjectiveSense() == 'maximize'
+    assert program.M_lower.getNSols() == program.M_upper.getNSols() == 0
+    assert program.last_result.lower.primal == pytest.approx(.4)
+
+
 def test_general_model_export_and_solver_keep_one_sided_domains(tmp_path):
     from pyscipopt import Model
     from autobounds.exporters import write_pip

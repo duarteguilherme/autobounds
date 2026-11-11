@@ -2,7 +2,6 @@ from functools import reduce
 from math import pi
 
 import networkx as nx
-import matplotlib.pyplot as plt
 
 
 class DAG:
@@ -95,6 +94,7 @@ class DAG:
         node_labels = {node:f"{label_format_latex(node)}" for node in G.nodes()}
 
         # draw the graph
+        import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
         nx.draw_networkx_nodes(G, pos, ax=ax, node_color="white")
         nx.draw_networkx_labels(G, pos, ax=ax, labels = node_labels) 

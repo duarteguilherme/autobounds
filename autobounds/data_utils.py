@@ -2,9 +2,7 @@
 from copy import deepcopy
 import numpy as np
 import pandas as pd
-import scipy
 from numpy import log
-import statsmodels.stats.proportion
 from .Q import Query, Q, sub_list
 
 
@@ -69,6 +67,7 @@ def solve_gaussian(nr, o, alpha, index = 'qp'):
     """
     if index == 'qp':
         print("Make sure that this dataset is the first to be introduced. For other datasets, remember to introduce the argument data_name")
+    import scipy.stats
     query_vectorize = np.vectorize(lambda a: Query(a))
     mu = np.array([o[:-1]])
     params = [ Query(index + '_' + str(i)) for i,f in enumerate(o[:-1]) ]
@@ -90,6 +89,8 @@ def solve_kl_p(ns, K, o, alpha):
     K is the number of pieces of data
     o is the observed data
     """
+    import scipy.optimize
+    import statsmodels.stats.proportion
     KL = lambda p: o * log(o / p) + (1 - o) * log((1 - o) / (1 - p))
     thresh = log(2 * K / alpha) / ns
     optim_func = lambda p: KL(p) - thresh

@@ -3,7 +3,6 @@ from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
 from ..Bounder import Bounder
 
 
@@ -83,6 +82,7 @@ class InferenceWorkflow:
         if len(np.unique(y_codes)) < 2:
             obs_scores = np.ones(raw_df.shape[0], dtype=float)
         else:
+            import statsmodels.api as sm
             exog = sm.add_constant(raw_df[observed_cols].astype(float), has_constant="add")
             try:
                 model = sm.MNLogit(y_codes, exog)

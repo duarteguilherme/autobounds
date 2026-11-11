@@ -11,11 +11,38 @@ get_symb_func = {'==': eq, '<=': le, '>=': ge}
 from ..results import EndpointResult, SolverResult
 
 
+def run_scip_worker(model, sense, filename, dgp_filename):
+    """Construct native SCIP state in its owning process from picklable data."""
+    try:
+        compiled = ScipBackend.build_model(model, sense)
+        solve_scip(compiled, filename, False, dgp_filename)
+    except Exception:
+        import traceback
+        with open(filename, 'a') as stream:
+            traceback.print_exc(file=stream)
+        raise
+
+
 class ScipBackend:
     """Numerical polynomial backend; symbolic parameters must first be bound."""
     def __init__(self):
         self.scip_lower_filename = None
         self.scip_upper_filename = None
+        self._inspection_models = {}
+
+    def _inspection_model(self, sense):
+        """Lazily recreate an unsolved parent-side model for legacy inspection."""
+        if sense not in self._inspection_models:
+            self._inspection_models[sense] = self.build_model(self.compiled_model, sense)
+        return self._inspection_models[sense]
+
+    @property
+    def M_lower(self):
+        return self._inspection_model('minimize')
+
+    @property
+    def M_upper(self):
+        return self._inspection_model('maximize')
 
     @staticmethod
     def supports(model):
@@ -63,16 +90,10 @@ class ScipBackend:
         from ..support import eliminate_zero_variables
         model = eliminate_zero_variables(model)
         self.compiled_model = model
+        self._inspection_models.clear()
         if not self.supports(model):
             raise ValueError("SCIP requires a numeric model; bind symbolic parameters first")
-        try:
-            ctx = get_context('fork')
-        except ValueError as exc:
-            raise NotImplementedError(
-                "run_scip requires multiprocessing fork; spawn is unsupported"
-            ) from exc
-        self.M_lower = self.build_model(model, 'minimize')
-        self.M_upper = self.build_model(model, 'maximize')
+        ctx = get_context('spawn')
         previous_paths = self.scip_lower_filename, self.scip_upper_filename
         processes = []
         with ExitStack() as stack:
@@ -88,9 +109,10 @@ class ScipBackend:
                 for path in paths + [path for path in dgp_paths if path is not None]:
                     with open(path, 'w'):
                         pass
-                for compiled, path, dgp_path in zip(
-                        (self.M_lower, self.M_upper), paths, dgp_paths):
-                    process = ctx.Process(target=solve_scip, args=(compiled, path, False, dgp_path))
+                for sense, path, dgp_path in zip(
+                        ('minimize', 'maximize'), paths, dgp_paths):
+                    process = ctx.Process(target=run_scip_worker,
+                                          args=(model, sense, path, dgp_path))
                     processes.append(process)
                     process.start()
                 bounds = parse_bounds_scip(

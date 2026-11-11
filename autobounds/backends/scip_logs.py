@@ -31,11 +31,22 @@ def solve_scip(model, filename, verbose = False, dgps_filename = None):
 
 def tofloat(num):
     try:
-        num = float(num)
-    except:
-        pass
-    num = float(np.nan) if num == '--' else num # Fixing problem with scip parser
-    return num
+        return float(num)
+    except (TypeError, ValueError):
+        return float('nan')
+
+
+def _progress_rows(lines):
+    """Ignore headers and rows that a live worker has not finished writing."""
+    rows = []
+    for line in lines:
+        if not line.endswith('\n') or len(line.split('|')) <= 5:
+            continue
+        time_token = line.split('|', 1)[0].strip().split('s')[0]
+        time_token = time_token.split('L')[-1].split('*')[-1].split('R')[-1]
+        if not np.isnan(tofloat(time_token)):
+            rows.append(line)
+    return rows
 
 
 def get_parse_file_vals_scip(res):
@@ -55,7 +66,7 @@ def parse_whole_file_scip(filename):
     """
     with open(filename) as f:
         data = f.readlines()
-    datarows = [ x for x in data if len(x.split('|')) > 5 ]
+    datarows = _progress_rows(data)
     if len(datarows) > 0:
         getn = lambda l: l[0:1] + l[-4:-2]
         return [ get_parse_file_vals_scip(getn(k.split('|')))
@@ -75,8 +86,7 @@ def parse_particular_bound_scip(filename, n_bound):
     """
     with open(filename) as f:
         data = f.readlines()
-    datarows = [ x
-            for x in data if len(x.split('|')) > 5 ]
+    datarows = _progress_rows(data)
     if len(datarows) > n_bound:
         res = datarows[-1].split('|')
         res = res[0:1] + res[-4:-2]
@@ -110,7 +120,9 @@ def check_process_end_scip(p, filename, verbose = True):
     if p.is_alive():
         return -1
     if p.exitcode != 0:
-        raise RuntimeError(f"SCIP worker exited with code {p.exitcode}.")
+        with open(filename) as stream:
+            details = stream.read()[-4000:]
+        raise RuntimeError(f"SCIP worker exited with code {p.exitcode}.\n{details}")
     with open(filename,'r') as f:
         data = f.readlines()
     if any([x for x in data if "[optimal solution found]" in x ]):

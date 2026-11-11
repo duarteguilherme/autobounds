@@ -19,6 +19,35 @@ class _FakeProcess:
         self.terminated += 1
 
 
+def test_streaming_progress_does_not_consume_an_unfinished_row(tmp_path):
+    path = tmp_path / 'progress.log'
+    row = '0.1s | 1 | -0.5 | 0.5 | 100% | x'
+    path.write_text(row)
+    assert pu.parse_particular_bound_scip(path, 0) == (0, [])
+    with path.open('a') as stream:
+        stream.write('\n')
+    count, rows = pu.parse_particular_bound_scip(path, 0)
+    assert count == 1
+    assert rows == [{'time': .1, 'dual': -.5, 'primal': .5}]
+    assert pu.parse_particular_bound_scip(path, count) == (count, [])
+
+
+def test_monitor_ignores_progress_headers_while_worker_starts(tmp_path):
+    path = tmp_path / 'header.log'
+    path.write_text('time | node | dualbound | primalbound | gap | rest\n')
+    assert pu.parse_particular_bound_scip(path, 0) == (0, [])
+    lower, upper = _FakeProcess(), _FakeProcess()
+    result = pu.parse_bounds_scip(lower, upper, filelower=path, fileupper=path,
+                                 maxtime=0, verbose=False)
+    assert math.isnan(result[0]['dual'])
+    assert math.isnan(result[1]['dual'])
+
+
+def test_unavailable_progress_values_are_numeric_nan():
+    for token in ('--', 'cutoff', 'dualbound', '1.2e'):
+        assert math.isnan(pu.tofloat(token))
+
+
 def _write_final_log(path, bound):
     path.write_text(
         "SCIP Status : problem is solved [optimal solution found]\n"

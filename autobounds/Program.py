@@ -1,6 +1,5 @@
 from fractions import Fraction
 import random
-import pandas as pd
 from .ProgramUtils import (
     change_constraint_parameter_value, parse_whole_file_scip, plot_bounds,
 )
@@ -79,6 +78,7 @@ class Program:
             return None
         if not res_lower or not res_upper:
             return None
+        import pandas as pd
         df_lower = pd.DataFrame(res_lower)
         df_upper = pd.DataFrame(res_upper)
         df_lower = df_lower.rename({'time':'seconds', 'dual': 'lb.dual',
@@ -154,7 +154,7 @@ class Program:
                                verbose=verbose, epsilon=epsilon, theta=theta,
                                maxtime=maxtime, debug=debug, return_dgps=return_dgps)
         self.last_result = result
-        self.M_lower, self.M_upper = backend.M_lower, backend.M_upper
+        self._scip_backend = backend
         if debug:
             self.scip_lower_filename = backend.scip_lower_filename
             self.scip_upper_filename = backend.scip_upper_filename
@@ -165,6 +165,16 @@ class Program:
                                       for endpoint in bounds[:2])
         return result.to_legacy()
     
+    @property
+    def M_lower(self):
+        """Unsolved inspection model; native state is created only on access."""
+        return self._scip_backend.M_lower
+
+    @property
+    def M_upper(self):
+        """Unsolved inspection model; use last_result for worker solutions."""
+        return self._scip_backend.M_upper
+
     def get_bounds_scip(self):
         """Return worker-reported bounds from the most recent successful run."""
         if self._scip_bounds is None:

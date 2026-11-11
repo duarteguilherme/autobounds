@@ -50,5 +50,4 @@ Homepage = "https://github.com/duarteguilherme/autobounds"
 testpaths = ["tests"]
 filterwarnings = [
     "ignore:\\[Errno 13\\] Permission denied\\.\\s+joblib will operate in serial mode:UserWarning",
-    "ignore:This process \\(pid=.*\\) is multi-threaded, use of fork\\(\\) may lead to deadlocks in the child\\.:DeprecationWarning",
 ]

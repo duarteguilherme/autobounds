@@ -76,7 +76,10 @@ There is no automatic fallback to a backend with weaker semantics.
   loading, and cleanup. Log parsing/monitoring lives in `backends.scip_logs`.
   Nonlinear objectives use an auxiliary variable; arbitrary explicit domains
   are supported. Each backend instance owns run state; use separate instances
-  for concurrent solves. Worker execution still requires multiprocessing `fork`.
+  for concurrent solves. Workers use multiprocessing `spawn`; only the immutable
+  mathematical model, optimization sense, and output paths cross the process
+  boundary. Each worker constructs and owns its native SCIP model. No native
+  SCIP object is pickled or inherited from the parent.
 - `backends.cdd.CddBackend` accepts only normalized, unrestricted linear
   response mixtures: simplex weights, symbolic affine data equalities, and a
   linear target. It checks that structure before exact hull enumeration. It
@@ -94,6 +97,42 @@ Missing numerical dual bounds are treated as unbounded, never replaced by an
 assumed ATE range of `[-1, 1]`. Backend-owned temporary files are cleaned even
 if worker creation fails. Debug files remain available under the existing
 explicit debug option.
+
+Legacy `M_lower` and `M_upper` inspection attributes lazily build unsolved
+parent-side models on access; ordinary solves do not construct these copies.
+Use `last_result` or returned DGPs for worker results. Worker compilation failures
+include their traceback in the reported error, and cleanup joins both processes
+before deleting temporary files. Scripts must protect solve-launching code with
+`if __name__ == "__main__":`. Fresh interpreter imports add startup overhead,
+which is included in `maxtime`; the package does not change the application's
+global multiprocessing start method.
+
+The initial spawn implementation passed 334 tests in 300.70 seconds, compared
+with about 20 seconds for the preceding fork-based suite (331 tests). Import
+profiling identified eager plotting, symbolic, and statistical imports as the
+main startup cost. Package exports now resolve on demand, preserving class
+exports even when same-named submodules were imported first. Plotting and
+statistical model imports live in the functions that use them. Numerical worker
+imports do not load pandas, scipy, sympy, matplotlib, plotnine, or statsmodels.
+
+In a sequential local comparison on Linux/Python 3.13, ten identical small
+solves took **19.54 seconds before** and **2.06 seconds after** the import change.
+Both runs used spawn and fresh workers for each solve, minimizing/maximizing
+`x` subject to `0.25 <= x <= 0.75`; all primal and dual endpoints agreed.
+These are workload-specific measurements, not a guaranteed speedup for larger
+optimization problems. Some interpreter startup overhead remains; workers are
+not pooled or kept alive between solves. Windows and macOS execution remain
+untested.
+
+The live-log parser ignores headers and incomplete progress rows; nonnumeric
+bound markers become numeric NaNs rather than leaking strings into the bound
+monitor. Deterministic tests cover reads between writes and unavailable bounds.
+Fresh-interpreter tests protect lightweight imports, import-order-independent
+public class exports, pickling, and deferred plotting/statistical features.
+The final source suite passed **341 tests in 47.29 seconds**. Both distribution
+formats built successfully; all four fresh-interpreter import tests and the
+guarded standalone bounds/DGP smoke test passed against the installed wheel
+outside the checkout.
 
 ## One model, two applicable backends
 
@@ -142,9 +181,9 @@ matching exact/numerical endpoints, nonlinear numerical objectives, PIP
 round-trips, worker-failure cleanup, copied workflow ownership, inference/replay,
 and original public API behavior.
 
-This refactor adds no QE/Redlog backend, no general-purpose exact nonlinear
-solver, and no spawn-based worker implementation. It provides the mathematical
-and execution boundaries those additions need. Tests in one environment do not
+This refactor adds no QE/Redlog backend or general-purpose exact nonlinear
+solver. It provides the mathematical and execution boundaries those additions
+need. Tests in one environment do not
 establish a Python/OS compatibility matrix or numerical equivalence for every
 ill-conditioned input.
 

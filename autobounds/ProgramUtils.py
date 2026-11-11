@@ -3,21 +3,6 @@ from .backends.scip_logs import (
     solve_scip, tofloat, get_parse_file_vals_scip, parse_whole_file_scip, parse_particular_bound_scip, get_final_bound_scip, check_process_end_scip, parse_bounds_scip
 )
 from functools import reduce
-from plotnine import (ggplot,
-                      geom_errorbar,
-                      geom_ribbon,
-                      geom_line,
-                      geom_hline,
-                      theme_classic,
-                      aes,
-                      element_line,
-                      xlim,
-                      element_text,
-                      theme,
-                      xlab,
-                      ylab)
-import pandas as pd
-import numpy as np
 
 get_symb_func = {
         '==': lambda a,b: a== b,
@@ -73,6 +58,21 @@ def plot_bounds(traj,
                 size=20,
                 family=None
                 ):
+    from plotnine import (ggplot,
+                          geom_errorbar,
+                          geom_ribbon,
+                          geom_line,
+                          geom_hline,
+                          theme_classic,
+                          aes,
+                          element_line,
+                          xlim,
+                          element_text,
+                          theme,
+                          xlab,
+                          ylab)
+    import pandas as pd
+    import numpy as np
     # Color Palette
     red = '#A51C30'
     lightred = '#E16273'

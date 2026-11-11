@@ -8,10 +8,7 @@ import pandas as pd
 from copy import deepcopy
 from itertools import product
 from functools import reduce
-from scipy.optimize import newton
-import scipy
 from numpy import log
-import statsmodels.stats.proportion
 
 # Shared helpers are independent of the orchestration facade.
 from .data_utils import (
