@@ -25,6 +25,37 @@ def _write_final_log(path, bound):
     )
 
 
+def test_monitor_preserves_primal_and_dual_bounds_when_stopping_early(monkeypatch):
+    lower, upper = _FakeProcess(), _FakeProcess()
+    rows = {'lower': {'primal': .402, 'dual': .4, 'time': .1},
+            'upper': {'primal': .403, 'dual': .405, 'time': .1}}
+    monkeypatch.setattr(pu, 'parse_particular_bound_scip',
+                        lambda filename, count: (1, [rows[filename].copy()]))
+    monkeypatch.setattr(pu, 'check_process_end_scip', lambda *args: -1)
+    monkeypatch.setattr(pu, 'wait_for_processes',
+                        lambda *args, **kwargs: pytest.fail('Stopping threshold was ignored'))
+    result = pu.parse_bounds_scip(lower, upper, filelower='lower', fileupper='upper',
+                                 theta=.01, verbose=False)
+    for index, name in enumerate(('lower', 'upper')):
+        assert result[index]['primal'] == rows[name]['primal']
+        assert result[index]['dual'] == rows[name]['dual']
+        assert result[index]['end'] == -1
+    assert result[2] == pytest.approx(.005)
+    assert lower.terminated == upper.terminated == 1
+
+
+def test_zero_deadline_does_not_wait_for_workers(monkeypatch, tmp_path):
+    lower, upper = _FakeProcess(), _FakeProcess()
+    log = tmp_path / 'empty.log'
+    log.touch()
+    monkeypatch.setattr(pu, 'wait_for_processes',
+                        lambda *args, **kwargs: pytest.fail('Expired deadline was ignored'))
+    result = pu.parse_bounds_scip(lower, upper, filelower=log, fileupper=log,
+                                 maxtime=0, verbose=False)
+    assert lower.terminated == upper.terminated == 1
+    assert result[0]['end'] == result[1]['end'] == -1
+
+
 def test_monitor_wakes_on_worker_completion_and_preserves_bounds(monkeypatch, tmp_path):
     lower, upper = _FakeProcess(), _FakeProcess()
     lower_log, upper_log = tmp_path / "lower.log", tmp_path / "upper.log"

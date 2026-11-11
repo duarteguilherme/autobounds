@@ -2,7 +2,9 @@
 
 from dataclasses import dataclass
 from fractions import Fraction
+from functools import cached_property
 
+import numpy as np
 import sympy as sp
 
 
@@ -28,26 +30,69 @@ class SymbolicBounds:
     method: str = "exact_cdd_hull"
     compatibility_inequalities: tuple = ()
 
-    @property
+    @cached_property
     def lower(self):
         return sp.Max(*self.lower_expressions)
 
-    @property
+    @cached_property
     def upper(self):
         return sp.Min(*self.upper_expressions)
+
+    @cached_property
+    def _evaluation_symbols(self):
+        return tuple(sorted(self.lower.free_symbols | self.upper.free_symbols,
+                            key=sp.default_sort_key))
+
+    @cached_property
+    def _numeric_envelopes(self):
+        """Compile the simplified affine envelopes without altering exact data."""
+        lower = self.lower.args if isinstance(self.lower, sp.Max) else (self.lower,)
+        upper = self.upper.args if isinstance(self.upper, sp.Min) else (self.upper,)
+        try:
+            matrix, rhs = sp.linear_eq_to_matrix(
+                lower + upper, self._evaluation_symbols)
+            coefficients = np.asarray(matrix, dtype=float)
+            constants = -np.asarray(rhs, dtype=float).ravel()
+        except (ValueError, TypeError, OverflowError):
+            # Preserve symbolic substitution for non-affine or unrepresentable
+            # expressions in manually constructed SymbolicBounds objects.
+            return None
+        if not (np.isfinite(coefficients).all() and np.isfinite(constants).all()):
+            return None
+        coefficients.setflags(write=False)
+        constants.setflags(write=False)
+        return coefficients, constants, len(lower)
 
     def evaluate(self, probabilities):
         """Evaluate the formulas, assuming compatible population probabilities.
 
-        This is substitution, not a test of membership in the observable
-        compatibility polytope. Keys may be symbols or their string labels.
+        Floating-point inputs use cached affine coefficients. Exact inputs
+        retain symbolic substitution before conversion of the bounds to floats.
+        This does not test membership in the observable compatibility polytope.
+        Keys may be symbols or their string labels.
         """
         values = {str(key): value for key, value in probabilities.items()}
-        required = self.lower.free_symbols | self.upper.free_symbols
+        required = self._evaluation_symbols
         missing = [str(symbol) for symbol in required if str(symbol) not in values]
         if missing:
             raise ValueError(f"Missing probabilities: {sorted(missing)}")
         substitutions = {symbol: values[str(symbol)] for symbol in required}
+        arguments = tuple(substitutions.values())
+        if (any(isinstance(value, (float, np.floating)) for value in arguments)
+                and all(isinstance(value, (int, float, np.integer, np.floating))
+                        for value in arguments)):
+            compiled = self._numeric_envelopes
+            if compiled is not None:
+                coefficients, constants, split = compiled
+                try:
+                    with np.errstate(over='ignore', invalid='ignore'):
+                        evaluated = (coefficients @ np.asarray(arguments, dtype=float)
+                                     + constants)
+                    if np.isfinite(evaluated).all():
+                        return (float(evaluated[:split].max()),
+                                float(evaluated[split:].min()))
+                except OverflowError:
+                    pass  # Large exact integers can still cancel symbolically.
         return (float(self.lower.subs(substitutions)),
                 float(self.upper.subs(substitutions)))
 

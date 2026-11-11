@@ -115,7 +115,7 @@ class Program:
 
         debug = True won't remove files
         """
-        from pyscipopt import Model
+        from pyscipopt import Model, quicksum
         self.M_upper = Model()
         self.M_lower = Model() # Unfortunately we cannot use deepcopy with scip
         par_dict_upper = { }
@@ -130,10 +130,10 @@ class Program:
         # Next loop is not elegant, needs refactoring
         for i, c in enumerate(self.constraints):
             self.M_upper.addCons(
-                        get_symb_func[c[-1][0]](sum([ mult_params_scip(k, par_dict_upper) for k in c[:-1] ]), 0)
+                        get_symb_func[c[-1][0]](quicksum(mult_params_scip(k, par_dict_upper) for k in c[:-1]), 0)
                     )
             self.M_lower.addCons(
-                        get_symb_func[c[-1][0]](sum([ mult_params_scip(k, par_dict_lower) for k in c[:-1] ]), 0)
+                        get_symb_func[c[-1][0]](quicksum(mult_params_scip(k, par_dict_lower) for k in c[:-1]), 0)
                     )
         self.M_upper.setObjective(par_dict_upper['objvar'], sense = 'maximize')
         self.M_lower.setObjective(par_dict_lower['objvar'], sense = 'minimize')

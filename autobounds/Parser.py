@@ -186,6 +186,7 @@ class Parser():
             component_id = component_of[parameter.split('.')[0]]
             self.c_parameters[component_id].append(parameter)
         self._response_index = self._index_response_types()
+        self._query_cache = None
         # c-parameters are list of the parameters of the canonical model
         # they are separated according to c-components
         # e.g., [ ['X0', 'X1'], ['Z0','Z1']] if {Z} and {X} are different c-components
@@ -432,7 +433,22 @@ class Parser():
         return dict_expr
 
 
-    def parse(self, expr, complete = False):
+    def parse(self, expr, complete=False):
+        """Translate a query, optionally reusing immutable replay-cache entries.
+
+        Replay owns a fixed graph and cardinalities. Its optional cache stores
+        tuples of response terms, never probabilities or mutable Q expressions.
+        Complete factored queries retain their existing uncached behavior.
+        """
+        if self._query_cache is None or complete:
+            return self._parse(expr, complete)
+        cached = self._query_cache.get(expr)
+        if cached is None:
+            cached = tuple(self._parse(expr))
+            self._query_cache[expr] = cached
+        return list(cached)
+
+    def _parse(self, expr, complete=False):
         """
         Input: complete expression, for example P(Y(x=1, W=0)=1&X(Z = 1)=0)
         Output: a list of canonical expressions, representing this expr 

@@ -6,8 +6,41 @@ import io
 import time
 import pandas as pd
 import importlib
+import multiprocessing
+import pytest
 
 ProgramModule = importlib.import_module("autobounds.autobounds.Program")
+
+
+def _worker_without_results(*args):
+    """Simulate a worker that exits before producing any solver output."""
+    return None
+
+
+def test_failed_workers_are_joined_and_temporary_files_removed(monkeypatch, tmp_path):
+    if 'fork' not in multiprocessing.get_all_start_methods():
+        pytest.skip('SCIP model worker integration requires fork')
+    context = multiprocessing.get_context('fork')
+    processes = []
+
+    class RecordingContext:
+        def Process(self, **kwargs):
+            process = context.Process(**kwargs)
+            processes.append(process)
+            return process
+
+    monkeypatch.setattr(ProgramModule, 'get_context', lambda *args: RecordingContext())
+    monkeypatch.setattr(ProgramModule, 'solve_scip', _worker_without_results)
+    monkeypatch.setattr(ProgramModule.tempfile, 'tempdir', str(tmp_path))
+    program = ProgramModule.Program()
+    program.parameters = ['objvar']
+    program.constraints = [[['objvar'], ['==']]]
+    with pytest.raises(RuntimeError, match='without a recognized final status'):
+        program.run_scip(verbose=False, maxtime=1, return_dgps=True)
+    assert len(processes) == 2
+    assert all(not process.is_alive() and process.exitcode is not None
+               for process in processes)
+    assert list(tmp_path.iterdir()) == []
 
 
 #

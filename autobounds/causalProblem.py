@@ -1426,7 +1426,7 @@ class causalProblem:
         total_n = float(raw_df.shape[0])
         for _, gdf in raw_df.groupby(covariates, sort=False, dropna=False):
             w = float(gdf.shape[0]) / total_n
-            strata_bounder = deepcopy(base_bounder)
+            strata_bounder = base_bounder._copy_for_replay()
             strata_bounder.load_data(raw=gdf.drop(columns=covariates).reset_index(drop=True), cond=cond)
             out = strata_bounder.solve(
                 ci=False,
@@ -1472,33 +1472,29 @@ class causalProblem:
         return result
 
     def _prepare_replay_context(self):
+        """Cache the fixed prefix and replay later operations in their order.
+
+        Operations after data loading may depend on sample-specific zero cells
+        or root probabilities. Keep them after that data instead of moving them
+        into the prototype merely to enable caching.
+        """
         from .Bounder import Bounder
-
-        data_seen = False
-        fast_path_ok = True
-        for step in self._operation_log:
-            method = step["method"]
-            if method in {"load_data", "read_data"}:
-                data_seen = True
-                continue
-            if data_seen:
-                fast_path_ok = False
-                break
-
-        if not fast_path_ok:
-            return {"fast_path": False}
 
         prototype = Bounder(
             deepcopy(self._default_bounder.dag),
             deepcopy(self._default_bounder.number_values),
         )
-        data_steps = []
+        prototype.Parser._query_cache = {}
+        replay_steps = []
+        data_seen = False
         for step in self._operation_log:
             method = step["method"]
             call_args = deepcopy(step["args"])
             call_kwargs = deepcopy(step["kwargs"])
             if method in {"load_data", "read_data"}:
-                data_steps.append(
+                data_seen = True
+            if data_seen:
+                replay_steps.append(
                     {
                         "method": method,
                         "args": call_args,
@@ -1511,7 +1507,7 @@ class causalProblem:
         return {
             "fast_path": True,
             "prototype": prototype,
-            "data_steps": data_steps,
+            "replay_steps": replay_steps,
         }
 
     def _solve_from_operation_log_fast(
@@ -1528,15 +1524,16 @@ class causalProblem:
         return_subsample_df=False,
         return_dgps=False,
     ):
-        replay_bounder = deepcopy(replay_context["prototype"])
+        replay_bounder = replay_context["prototype"]._copy_for_replay()
         rep_n_total = 0
         rep_m_total = 0
         rep_subsample_df = None
         rng = np.random.default_rng(int(rep_seed))
         covariate_read_payload = None
 
-        for step in replay_context["data_steps"]:
+        for step in replay_context["replay_steps"]:
             method = step["method"]
+            call_args = deepcopy(step["args"])
             call_kwargs = deepcopy(step["kwargs"])
 
             if method == "load_data":
@@ -1602,7 +1599,7 @@ class causalProblem:
                     replay_bounder.load_data(raw=work_df, cond=cond)
                 continue
 
-            raise ValueError(f"Unexpected method in fast replay context: {method}")
+            getattr(replay_bounder, method)(*call_args, **call_kwargs)
 
         if covariate_read_payload is not None:
             res = self._solve_covariate_read_data_by_strata(

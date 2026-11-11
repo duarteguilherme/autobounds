@@ -58,6 +58,16 @@ class Bounder:
         self.safe_min = 0.0001 # This is a safe minimum to avoid division by zero
         self.maxtime, self.theta = None, 0.01  # There is no maximum time a program will be running
 
+    def _copy_for_replay(self):
+        """Copy sample-dependent state while sharing read-only model structure.
+
+        Replay operations change constraints, coefficients and excluded response
+        types, but not the graph or canonical parser. Query-cache entries in a
+        replay parser are immutable; each query still returns fresh Q objects.
+        """
+        shared = (self.dag, self.canModel, self.Parser)
+        return deepcopy(self, {id(value): value for value in shared})
+
     def calc_bounds_sample(self, prob, cond = [], verbose = False, limits   = [None, None]):
         """
         This method exists to solve the bounds problem
@@ -217,8 +227,9 @@ class Bounder:
         # unconf_nodes is definitely important, because it 
         # handles the simplification everytime the first ancestrals
         # are not confounded (they are divided)
-        unconf_nodes = [ x[0] for x in self.unconf_first_nodes ] 
-        not_0_parameters = [ x[1] for x in self.parameters if x[1] not in self.zero_parameters ]
+        unconf_nodes = {x[0] for x in self.unconf_first_nodes}
+        not_0_parameters = {x[1] for x in self.parameters
+                            if x[1] not in self.zero_parameters}
         for c in self.Parser.c_parameters:
             # Iterative over c_components
             prob_constraints = [ (1, [ x ]) 

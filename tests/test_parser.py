@@ -3,7 +3,76 @@ from autobounds.autobounds.Parser import *
 from autobounds.autobounds.Q import compare_lists
 from copy import deepcopy
 from itertools import product
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 import pytest
+
+
+def test_concurrent_first_queries_do_not_share_mutable_results(monkeypatch):
+    parser = Parser(DAG('X -> Y, U -> X, U -> Y', unob='U'))
+    expected = parser.parse('Y(X=1)=1&Y(X=0)=0')
+    parser._query_cache = {}
+    parse = parser._parse
+    barrier = Barrier(4)
+
+    def simultaneous_miss(expr, complete=False):
+        barrier.wait(timeout=10)
+        return parse(expr, complete)
+
+    monkeypatch.setattr(parser, '_parse', simultaneous_miss)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        outputs = list(executor.map(
+            lambda _: parser.parse('Y(X=1)=1&Y(X=0)=0'), range(4)))
+    assert outputs == [expected] * 4
+    outputs[0].clear()
+    assert outputs[1:] == [expected] * 3
+    assert parser.parse('Y(X=1)=1&Y(X=0)=0') == expected
+
+
+def test_query_cache_isolated_between_graph_cardinalities():
+    binary = Parser(DAG('X -> Y, U -> X, U -> Y', unob='U'), {'Y': 2})
+    ternary = Parser(DAG('X -> Y, U -> X, U -> Y', unob='U'), {'Y': 3})
+    for parser in (binary, ternary):
+        parser._query_cache = {}
+    expected_binary = binary._parse('Y(X=1)=1')
+    expected_ternary = ternary._parse('Y(X=1)=1')
+    assert len(expected_binary) == 4
+    assert len(expected_ternary) == 6
+    for _ in range(3):
+        assert binary.parse('Y(X=1)=1') == expected_binary
+        assert ternary.parse('Y(X=1)=1') == expected_ternary
+
+
+def test_contradictory_query_is_cached_as_empty_result(monkeypatch):
+    parser = Parser(DAG('X -> Y'))
+    parser._query_cache = {}
+    assert parser.parse('Y=0&Y=1') == []
+    monkeypatch.setattr(parser, '_parse',
+                        lambda *args, **kwargs: pytest.fail('Empty cache entry was ignored'))
+    assert parser.parse('Y=0&Y=1') == []
+
+
+def test_replay_query_cache_returns_independent_results(monkeypatch):
+    parser = Parser(DAG('X -> Y, U -> X, U -> Y', unob='U'))
+    parser._query_cache = {}
+    original = parser._parse
+    calls = []
+
+    def counted(expr, complete=False):
+        calls.append((expr, complete))
+        return original(expr, complete)
+
+    monkeypatch.setattr(parser, '_parse', counted)
+    expected = parser.parse('Y(X=1)=1')
+    changed = parser.parse('Y(X=1)=1')
+    changed.clear()
+    query = parser.p('Y(X=1)=1')
+    query._event[0][1].append('mutation')
+    assert parser.parse('Y(X=1)=1') == expected
+    assert calls == [('Y(X=1)=1', False)]
+    factored = parser.parse('Y(X=1)=1', complete=True)
+    assert factored == original('Y(X=1)=1', complete=True)
+    assert calls[-1] == ('Y(X=1)=1', True)
 
 
 @pytest.mark.parametrize('structure,latent,cards', [

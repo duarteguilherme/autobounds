@@ -1,14 +1,85 @@
 """Exact symbolic certificates checked against independently solved primal LPs."""
 
 import builtins
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from dataclasses import replace
+from decimal import Decimal
+from fractions import Fraction
 from itertools import product
+import pickle
 
 import numpy as np
 import pytest
 import sympy as sp
 from scipy.optimize import linprog
 
-from autobounds.autobounds import DAG, LinearResponseModel, SymbolicProblem
+from autobounds.autobounds import DAG, LinearResponseModel, SymbolicBounds, SymbolicProblem
+
+
+@pytest.mark.parametrize('value', [Fraction(1, 3), sp.Rational(1, 3),
+                                 Decimal('0.3333333333333333333333333333'),
+                                 np.float32(.25), np.int64(1)])
+def test_warm_evaluator_preserves_input_numeric_types(value):
+    p, q = sp.symbols('p q', real=True)
+    expression = 3 * p - q
+    bounds = SymbolicBounds((expression,), (expression,), (p, q),
+                            ((0, 3, -1),), ((0, 3, -1),))
+    bounds.evaluate({p: .2, q: .1})
+    expected = float(expression.subs({p: value, q: sp.Rational(1, 7)}))
+    assert bounds.evaluate({p: value, q: sp.Rational(1, 7)}) == (expected, expected)
+
+
+@pytest.mark.parametrize('value', [-1., -.5, 0., .5, 1.])
+def test_cached_piecewise_bounds_switch_active_expression(value):
+    p = sp.Symbol('p', real=True)
+    bounds = SymbolicBounds((p, -p), (2 + p, 2 - p), (p,),
+                            ((0, 1), (0, -1)), ((2, 1), (2, -1)))
+    bounds.evaluate({p: .75})
+    assert bounds.evaluate({p: value}) == (abs(value), 2 - abs(value))
+
+
+def test_unrepresentable_coefficients_fall_back_without_losing_cancellation():
+    p, q = sp.symbols('p q', real=True)
+    scale = sp.Integer(10)**400
+    expression = scale * p - scale * q
+    bounds = SymbolicBounds((expression,), (expression,), (p, q),
+                            ((0, scale, -scale),), ((0, scale, -scale),))
+    expected = float(expression.subs({p: .5, q: .5}))
+    assert bounds.evaluate({p: .5, q: .5}) == (expected, expected)
+    assert bounds._numeric_envelopes is None
+
+
+def test_replacing_warm_bounds_does_not_reuse_old_coefficients():
+    p = sp.Symbol('p', real=True)
+    bounds = SymbolicBounds((p,), (p,), (p,), ((0, 1),), ((0, 1),))
+    assert bounds.evaluate({p: .25}) == (.25, .25)
+    changed = replace(bounds, lower_expressions=(p + 1,), upper_expressions=(p + 1,),
+                      lower_certificates=((1, 1),), upper_certificates=((1, 1),))
+    assert changed.evaluate({p: .25}) == (1.25, 1.25)
+    assert bounds.evaluate({p: .25}) == (.25, .25)
+
+
+@pytest.mark.parametrize('copy_bounds', [deepcopy, lambda value: pickle.loads(pickle.dumps(value))])
+def test_warm_bounds_survive_copying_and_serialization(copy_bounds):
+    p = sp.Symbol('p', real=True)
+    bounds = SymbolicBounds((p, 1 - p), (1 + p,), (p,),
+                            ((0, 1), (1, -1)), ((1, 1),))
+    bounds.evaluate({p: .25})
+    restored = copy_bounds(bounds)
+    assert restored.evaluate({p: .75}) == (.75, 1.75)
+    assert bounds.evaluate({p: .25}) == (.75, 1.25)
+    assert restored.lower_certificates == bounds.lower_certificates
+
+
+def test_first_evaluations_can_share_bounds_across_threads():
+    p = sp.Symbol('p', real=True)
+    bounds = SymbolicBounds((p, 1 - p), (1 + p,), (p,),
+                            ((0, 1), (1, -1)), ((1, 1),))
+    values = [0., .25, .5, .75, 1.] * 4
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        actual = list(executor.map(lambda value: bounds.evaluate({p: value}), values))
+    assert actual == [(max(value, 1 - value), 1 + value) for value in values]
 
 
 def assert_certificates(model, result):
@@ -32,6 +103,65 @@ def assert_primal_dual_agree(model, result, q):
     assert lower.success and upper.success
     actual = result.evaluate(dict(zip(model.labels, probabilities)))
     assert actual == pytest.approx((lower.fun, -upper.fun), abs=1e-9)
+
+
+def test_cached_evaluation_matches_substitution_and_primal_bounds(iv_problem, cdd_backend):
+    iv_problem.load_data('X,Y', cond='Z')
+    iv_problem.set_ate('X', 'Y')
+    model = iv_problem.write_program()
+    result = model.solve()
+    lower, upper = result.lower, result.upper
+    assert result.lower is lower
+    assert result.upper is upper
+    rng = np.random.default_rng(2026)
+    distributions = list(rng.dirichlet(np.ones(len(model.target)), size=8))
+    distributions.extend(np.eye(len(model.target)))
+    for q in distributions:
+        probabilities = np.asarray(model.matrix, dtype=float) @ q
+        values = dict(zip(model.symbols, probabilities))
+        expected = (float(lower.subs(values)), float(upper.subs(values)))
+        assert result.evaluate(values) == pytest.approx(expected, abs=1e-12)
+        assert result.evaluate(dict(zip(model.labels, probabilities))) == pytest.approx(expected)
+        assert_primal_dual_agree(model, result, q)
+    compiled = result._numeric_envelopes
+    assert compiled is result._numeric_envelopes
+    assert not compiled[0].flags.writeable
+    assert not compiled[1].flags.writeable
+
+
+def test_evaluation_requires_only_symbols_in_simplified_bounds():
+    p = sp.Symbol('P(Y=1|X=0)', real=True)
+    unused = sp.Symbol('unused', real=True)
+    result = SymbolicBounds((p,), (p,), (p, unused),
+                            ((0, 1, 0),), ((0, 1, 0),))
+    assert result.evaluate({str(p): .25}) == (.25, .25)
+    assert result.evaluate({p: .75, unused: 'ignored'}) == (.75, .75)
+    with pytest.raises(ValueError, match='Missing probabilities'):
+        result.evaluate({str(unused): .5})
+    nonnegative = sp.Symbol('nonnegative', nonnegative=True)
+    constant = SymbolicBounds((sp.Integer(0), -nonnegative), (sp.Integer(1),),
+                              (nonnegative,), ((0, 0), (0, -1)), ((1, 0),))
+    assert constant.evaluate({}) == (0., 1.)
+
+
+def test_exact_evaluation_preserves_rational_cancellation():
+    p = sp.Symbol('p', real=True)
+    scale = sp.Integer(10)**50
+    expression = scale - scale * p
+    certificate = (scale, -scale)
+    result = SymbolicBounds((expression,), (expression,), (p,),
+                            (certificate,), (certificate,))
+    assert result.evaluate({p: 1 - 1 / scale}) == (1., 1.)
+    assert result.evaluate({p: 1}) == (0., 0.)
+    assert result.lower_certificates == (certificate,)
+    assert not result.lower.atoms(sp.Float)
+
+
+def test_manual_nonlinear_envelopes_keep_symbolic_evaluation():
+    p = sp.Symbol('p', real=True)
+    result = SymbolicBounds((p**2,), (1 - p**2,), (p,), (), ())
+    assert result.evaluate({p: .25}) == (.0625, .9375)
+    assert result._numeric_envelopes is None
 
 
 @pytest.fixture
