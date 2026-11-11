@@ -679,3 +679,7 @@ class causalProblem:
         out = self._default_bounder.add_prob_constraints(*args, **kwargs)
         self._record_operation("add_prob_constraints", args, kwargs)
         return out
+
+    def add_indep_constraints(self):
+        """Ensure graph-implied response independence is prepared automatically."""
+        return self._default_bounder.add_indep_constraints()

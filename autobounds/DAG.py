@@ -258,15 +258,31 @@ class DAG:
         self.E = self.E.difference(e_to_remove)
     
     def find_c_components(self):
-        order = self.order.copy()
-        c_comp = [ ] 
-        while len(order) > 0:
-            vars = self.find_u_linked(order[0])
-            for k in vars:
-                order.remove(k)
-            c_comp.append(vars)
-        return c_comp
-    
+        """Connected components of observed nodes linked by latent parents."""
+        neighbors = {v: set() for v in self.V}
+        for u in self.U:
+            children = sorted(self.find_children(u).intersection(self.V))
+            # A star connects the children without constructing a dense clique.
+            if children:
+                for child in children[1:]:
+                    neighbors[children[0]].add(child)
+                    neighbors[child].add(children[0])
+        remaining = set(self.V)
+        components = []
+        for node in self.order:
+            if node not in remaining:
+                continue
+            component, pending = set(), [node]
+            remaining.remove(node)
+            while pending:
+                current = pending.pop()
+                component.add(current)
+                unseen = neighbors[current].intersection(remaining)
+                remaining.difference_update(unseen)
+                pending.extend(sorted(unseen))
+            components.append(component)
+        return components
+
     def find_first_nodes(self):
         """ 
         Given a DAG, find all first nodes

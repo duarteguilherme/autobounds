@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Fix c-component detection for overlapping latent parents and automatically
+  enforce graph-implied response-block independences inside each component.
+- Use a reduced independence basis and shared auxiliary marginals. Substitute
+  marginals fixed by exact data equalities to avoid unnecessary nonlinear solving.
+- Add regressions comparing overlapping-latent IV, ordinary IV, Robins–Manski,
+  and common-confounder bounds for `P(Y(D=1)=1)`, including primal/dual checks.
+
 ## 0.1.0rc1 — release candidate (unpublished)
 
 This candidate collects the architecture, correctness, performance, and

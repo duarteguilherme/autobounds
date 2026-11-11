@@ -46,6 +46,62 @@ model; decision domains and mathematical constraints remain explicit.
 `Program.constraints` remain writable compatibility lists. They are converted
 at the compilation boundary; solver backends do not interpret those lists.
 
+## Overlapping latent parents and response independence
+
+Latent variables are independent roots. A c-component is the **transitive**
+closure of shared-latent links, not just the immediate neighbors of one node.
+Combining nodes into a component does not make all their response functions
+arbitrarily dependent. `response_independence.py` retains independence between
+response blocks with disjoint sets of latent parents, including joint blocks
+(pairwise independence alone would miss, for example, parity restrictions).
+
+For `Z -> D -> Y`, `U -> D,Y`, and `U2 -> Z,D`, the component is `{Z,D,Y}`,
+but `R_Z` and `R_Y = (Y(0),Y(1))` remain independent. In terms of joint
+response-stratum probabilities, the required marginal factorization is
+
+```text
+sum_d q[z,d,y] = (sum_d,y' q[z,d,y']) * (sum_z',d q[z',d,y]).
+```
+
+The compiler uses maximal independent blocks and drops the redundant last row
+and column of each marginal table: only `(r-1)*(c-1)` product equalities are
+needed for an `r` by `c` table, together with component normalization. This
+remains valid at zero probabilities without division. Shared auxiliary
+marginals avoid expanding products of sums. For binary Z, D, Y, there are three
+product equalities and four auxiliary marginals before data are loaded.
+
+Exact marginal values are derived only from declared linear equalities,
+including disjoint unions of observed cells. With a joint observational table,
+the known Z marginal turns this example into a **linear** program. Conditional
+tables, intervals, and sampling regions are not treated as fixing that marginal.
+Graph templates are prepared once and reused during inference replay, while
+known values are recomputed per compiled program. Repeated compilation does
+not accumulate constraints. `add_indep_constraints()` remains available but
+is no longer necessary to call manually.
+
+For the target `P(Y(D=1)=1)`, the weaker Robins–Manski intersection bounds are
+`[max_z P(D=1,Y=1|z), 1-max_z P(D=1,Y=0|z)]`. The graph above implies **joint**
+outcome-response independence, so these need not be sharp. Tests compare both
+primal and dual bounds against a separately constructed linear program over
+`(Z,D,Y(0),Y(1))`, as well as the ordinary IV graph and a common-confounder graph.
+
+| Conditional cells `(D,Y)=(0,0),(0,1),(1,0),(1,1)` | P(Z=0) | Robins–Manski | Overlapping latents | One common confounder |
+| --- | --- | --- | --- | --- |
+| z=0: (.1,.2,.2,.5); z=1: (.25,.25,.4,.1) | .25 | [.5,.6] | [.5,.6] | [.2,.65] |
+| z=0: (.1,.7,.1,.1); z=1: (.3,0,.1,.6) | .5 | [.6,.9] | [.7,.8] | [.35,.9] |
+
+See [Richardson and Robins, *Assumptions and Bounds in the Instrumental Variable
+Model*](https://arxiv.org/abs/2401.13758) for distinctions between IV assumptions.
+These graph-implied marginal independences are necessary but do not constitute
+a complete latent-compatibility characterization for arbitrary networks
+(for example, a triangle of independent latent causes). The two-latent IV
+example above does have an exact representation with the added independence.
+For conditional data with unspecified instrument prevalence, the formulation
+remains nonlinear. Extremely small conditioning probabilities can amplify SCIP
+feasibility tolerances; a small reported optimization gap alone does not certify
+accurate conditional probabilities. Supply measured instrument prevalence when
+available, rather than assuming it is uniform.
+
 ## Transformations and exports
 
 `support.eliminate_zero_variables()` proves zero decision variables from exact

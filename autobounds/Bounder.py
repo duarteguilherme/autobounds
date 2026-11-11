@@ -42,6 +42,7 @@ class Bounder:
         self.dag = dag
         self.canModel.from_dag(self.dag, number_values)
         self.Parser = Parser(dag, number_values)
+        self.add_indep_constraints()
         self.number_values = { }
         for i in dag.V:
             self.number_values[i] = number_values[i] if i in number_values.keys() else 2
@@ -210,6 +211,9 @@ class Bounder:
             Variable(name) for _, name in self.parameters
             if name in self.zero_parameters and root_values.get(name, 0) == 0
         )
+        from .response_independence import append_independences
+        append_independences(program, self._independence_templates,
+                             self.zero_parameters)
         program.optimize_remove_numeric_lines()
         return program
         
@@ -498,41 +502,12 @@ class Bounder:
                     res.append({c[i],c[j]})
         return res
     
-    def add_indep(self, var):
-        """ 
-        Input: Var
-        This method will be called by add_indeps in order 
-        to simplify code. 
-        Independences for particular values will be added as constraints
-        """
-        keys = list(var.keys())
-        cons1 = []
-        for i in [0,1]:
-            cons1.append(quicksum([ self.parameters[k]
-                    for k in 
-                    self.get_response_expr({keys[i]: var[keys[i]]}) ] ))
-        cons2 = quicksum([ self.parameters[k]
-                for k in 
-                self.get_response_expr(var) ])
-        self.program.addCons(cons1[0]*cons1[1] - cons2 == 0)
-    
-    def add_rest_indep(self, indep):
-        indep = list(indep)
-        elem_1 = 2**(1+self.cn_index[indep[0]])
-        elem_2 = 2**(1+self.cn_index[indep[1]])
-        for i in range(elem_1):
-            for j in range(elem_2):
-                self.add_indep({indep[0]: i, indep[1]: j})
-    
     def add_indep_constraints(self):
-        """ For each components, check independencies 
-        among variables and add them as constraints
-        to the model. 
-        """
-        indeps = []
-        for c in self.c_comp:
-            indeps = indeps + self.check_indep(c)
-        for i in indeps:
-            self.add_rest_indep(i)
+        """Prepare graph-implied response independences (also done automatically).
 
-    
+        Constraints are emitted into each fresh Program, so repeated calls and
+        inference replay do not accumulate duplicate declarations.
+        """
+        if not hasattr(self, '_independence_templates'):
+            from .response_independence import independence_templates
+            self._independence_templates = independence_templates(self.canModel)

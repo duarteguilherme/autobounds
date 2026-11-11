@@ -39,9 +39,8 @@ class SymbolicProblem:
             raise ValueError("The graph must contain observed variables.")
         if any(self.dag.find_parents(u) for u in self.dag.U):
             raise ValueError("Only graphs with root latent variables are supported.")
-        # Take the transitive closure of shared-latent links before invoking
-        # the canonical parser, whose component finder assumes those links
-        # already span each component in one step.
+        # Check every connected latent component: the symbolic linear backend
+        # cannot represent within-component independence restrictions.
         remaining = set(self.dag.V)
         while remaining:
             component = set()
