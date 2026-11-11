@@ -96,13 +96,13 @@ class SCM:
         for u in self.U:
             self.u_data[u] = np.random.binomial(1, self.P[u], N)
     
-    def draw_sample(self, intervention = {}):
+    def draw_sample(self, intervention=None):
         """ 
         Draw simulated sample according to the specified model.
         """
         dag = deepcopy(self.dag)
         data = pd.DataFrame(self.u_data)
-        for key, values in intervention.items():
+        for key, values in (intervention or {}).items():
             dag.truncate(key)
             data[key] = values
         order = dag.get_top_order()

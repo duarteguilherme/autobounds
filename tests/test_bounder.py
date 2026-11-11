@@ -278,36 +278,30 @@ def test_replace_first_nodes():
             (1, ['X00.Y10', 'Z0'])) == (0.5, ['X00.Y10', '1'])
 
 
-def test_load_data():
-    datafile = io.StringIO('''X,Y,Z,prob
-    0,0,0,0.125
-    0,0,1,0.125
-    0,1,0,0.125
-    0,1,1,0.125
-    1,0,0,0.125
-    1,0,1,0.125
-    1,1,0,0.125
-    1,1,1,0.125''')
-    datafile2 = deepcopy(datafile)
-    y = DAG()
-    y.from_structure("Z -> Y, X -> Y, U -> X, U -> Y", unob = 'U')
-    x = causalProblem(y, {'X': 2})
-    x.load_data(datafile)
-    x.constraints[3] == [(-1, ['0.25']), (1, ['X1.Y0001', 'Z1']), 
-            (1, ['X1.Y0010', 'Z0']), (1, ['X1.Y0011', 'Z0']), 
-            (1, ['X1.Y0011', 'Z1']), (1, ['X1.Y0101', 'Z1']), 
-            (1, ['X1.Y0110', 'Z0']), (1, ['X1.Y0111', 'Z0']), 
-            (1, ['X1.Y0111', 'Z1']), (1, ['X1.Y1001', 'Z1']), 
-            (1, ['X1.Y1010', 'Z0']), (1, ['X1.Y1011', 'Z0']), 
-            (1, ['X1.Y1011', 'Z1']), (1, ['X1.Y1101', 'Z1']), 
-            (1, ['X1.Y1110', 'Z0']), (1, ['X1.Y1111', 'Z0']), (1, ['X1.Y1111', 'Z1'])] 
-    y = DAG()
-    y.from_structure("Z -> Y, U -> Z, X -> Y, U -> Y, U -> X", unob = "U")
-    x = causalProblem(y, {'X': 2})
-    x.load_data(datafile2)
-    x.constraints[1] == [(-1, ['0.125']), (1, ['X0.Y0000.Z1']), 
-            (1, ['X0.Y0001.Z1']), (1, ['X0.Y0010.Z1']), (1, ['X0.Y0011.Z1']), 
-            (1, ['X0.Y1000.Z1']), (1, ['X0.Y1001.Z1']), (1, ['X0.Y1010.Z1']), (1, ['X0.Y1011.Z1'])] 
+@pytest.mark.parametrize('edges', [
+    'Z -> Y, X -> Y, U -> X, U -> Y',
+    'Z -> Y, U -> Z, X -> Y, U -> Y, U -> X',
+])
+@pytest.mark.parametrize('estimand,expected', [
+    ('X=0&Y=0&Z=1', (0.125, 0.125)),
+    (None, (-0.5, 0.5)),
+])
+def test_load_data_constrains_observed_cells_and_ate(edges, estimand, expected):
+    from itertools import product
+    data = pd.DataFrame(product(range(2), repeat=3), columns=['X', 'Y', 'Z'])
+    data['prob'] = 0.125
+    problem = causalProblem(DAG(edges, unob='U'))
+    problem.load_data(data)
+    problem.add_prob_constraints()
+    if estimand is None:
+        problem.set_ate('X', 'Y')
+    else:
+        problem.set_estimand(problem.p(estimand))
+    result = problem.write_program().run_scip(verbose=False)
+    for endpoint, value in zip(result[:2], expected):
+        assert endpoint['primal'] == pytest.approx(value)
+        assert endpoint['dual'] == pytest.approx(value)
+
 
 def test_transform_constraint():
     assert transform_constraint([(1, ['X00.Y01']), (1, ['X01.Y01']), (1, ['X10.Y01']),

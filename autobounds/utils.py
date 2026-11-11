@@ -58,21 +58,10 @@ def simulate_model(dag, n=10000):
 
 
 def parse_estimand(program, estimand):
-    return quicksum(
-            [ e['sign'] * quicksum(
-                program.get_expr(**{ key: '='.join([ str(part) for part in e[key] ])
-                            for key in ['var','do'] }) )
-                                for e in estimand ])
+    """Retired helper for the removed get_expr API."""
+    raise NotImplementedError("Use Bounder.p() and Bounder.set_estimand()")
 
 
 def introduce_prob_into_progr(program, prob_table):
-    prob_data = prob_table.T.to_dict().values()
-    for p in prob_data:
-        program.program.addCons(
-            quicksum(program.get_expr(var = 
-                    ','.join(
-                        [ tupl[0] + '=' + str(int(tupl[1])) for tupl in list(p.items())[:-1] ]))
-                ) ==
-            list(p.items())[-1][1]
-        )
-
+    """Retired helper for the removed low-level program API."""
+    raise NotImplementedError("Use Bounder.load_data() or causalProblem.read_data()")

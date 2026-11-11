@@ -171,7 +171,7 @@ class Parser():
     It will translate expressions written for DAGs 
     in terms of canonicalModels and vice-versa
     """
-    def __init__(self, dag, number_values = {}):
+    def __init__(self, dag, number_values = None):
         self.dag = dag
         self.canModel = canonicalModel()
         self.canModel.from_dag(self.dag, number_values = number_values)

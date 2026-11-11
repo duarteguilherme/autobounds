@@ -236,16 +236,11 @@ def get_cover_subtraction(eset, subsets, ub):
 
 
 def get_subtraction_bounds(ub, lb, sub_ub, sub_lb, eset, subsets):
-    print(ub)
-    print(lb)
-    print(sub_ub)
-    print(sub_lb)
-    input("")
-
+    raise NotImplementedError("Subtraction bounds are not implemented; use SymbolicProblem")
 
 
 class closedProblem:
-    def __init__(self, dag, number_values = {}):
+    def __init__(self, dag, number_values = None):
         """
         """
         self.canModel = canonicalModel()

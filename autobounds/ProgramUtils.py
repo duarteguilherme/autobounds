@@ -140,7 +140,7 @@ def mult_params(params, k, M):
     """
     return reduce(lambda a, b: a * b, 
     [ getattr(M, r) if r in params else float(r)  
-        for r in k ])
+        for r in k ], 1)
 
 def mult_params_scip(k, par_dict):
     """ Function to be used in run_pyomo
@@ -148,7 +148,7 @@ def mult_params_scip(k, par_dict):
     """
     return reduce(lambda a, b: a * b, 
     [ par_dict[r] if r in par_dict.keys() else float(r)  
-        for r in k ])
+        for r in k ], 1)
 
 
 
@@ -281,8 +281,6 @@ def get_final_bound_scip(filename):
     return result
 
 def get_final_bound(filename):
-    print(filename)
-    input('')
     with open(filename,'r') as f: 
         data = f.readlines()
     sign = 1 if filename == ".lower.log" else -1

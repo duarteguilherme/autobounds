@@ -47,9 +47,10 @@ def test_failed_workers_are_joined_and_temporary_files_removed(monkeypatch, tmp_
 
 def test_optimizers():
     const = [['Y01'], ['-1', 'Y10'], ['X10', 'X11', 'Y11'], ['-1', 'objvar'], ['==']]
-    print(change_constraint_parameter_value(const, 'Y10', 0.20))
-    print(const)
-    print(change_constraint_parameter_value(const, 'X11', 0.31))
+    assert change_constraint_parameter_value(const, 'Y10', 0.20)[1] == ['-0.2']
+    assert change_constraint_parameter_value(const, 'X11', 0.31)[2] == ['0.31', 'X10', 'Y11']
+    assert const[1] == ['-1', 'Y10']
+    assert const[2] == ['X10', 'X11', 'Y11']
 
 def test_program_scip_infeasibility():
     dag = DAG()
@@ -105,7 +106,7 @@ def test_program_scip_time():
 
 
 #
-def test_program_scip():
+def test_program_scip_rejects_unnormalized_probabilities():
     dag = DAG()
     dag.from_structure("Z -> X, X -> Y, U -> X, U -> Y", unob = "U")
     problem = causalProblem(dag)
@@ -123,8 +124,8 @@ def test_program_scip():
     problem.add_prob_constraints()
     z = problem.write_program()
     res = z.run_scip()
-    assert res[0]['dual'] < 0.12
-    assert res[1]['dual'] > 0.49
+    assert res[0]['end'] == 0
+    assert res[1]['end'] == 0
 
 
 def test_program_pip_conf():
@@ -357,3 +358,87 @@ def test_get_bounds_scip_returns_worker_results(return_dgps):
         assert actual == {key: expected[key] for key in ('dual', 'primal')}
     program.get_bounds_scip()[0]['dual'] = 999
     assert program.get_bounds_scip()[0]['dual'] == pytest.approx(0.3)
+
+
+@pytest.mark.parametrize('terms,relation,feasible', [
+    ([['0.1'], ['0.2'], ['-0.3']], '==', True),
+    ([['0.01']], '==', False),
+    ([['-0.01']], '>=', False),
+    ([['0.01']], '<=', False),
+    ([['-2', '3'], ['6']], '==', True),
+    ([[]], '==', False),
+    ([[], ['-1']], '==', True),
+    ([], '==', True),
+    ([['-2']], '<=', True),
+    ([['2']], '>=', True),
+])
+def test_constant_constraints_preserve_feasibility(terms, relation, feasible):
+    program = ProgramModule.Program()
+    program.parameters = ['objvar']
+    program.constraints = [terms + [[relation]],
+                           [['objvar'], ['-0.25'], ['==']]]
+    program.optimize_remove_numeric_lines()
+    result = program.run_scip(verbose=False)
+    for endpoint in result[:2]:
+        if feasible:
+            assert endpoint['primal'] == pytest.approx(0.25)
+            assert endpoint['dual'] == pytest.approx(0.25)
+        else:
+            assert endpoint['end'] == 0
+
+
+def test_zero_parameter_substitution_preserves_infeasibility():
+    from autobounds import Bounder
+    problem = Bounder(DAG('X -> Y'))
+    event = problem.p('Y(X=0)=1')
+    problem.set_p_to_zero(event)
+    problem.add_constraint(event - Q(0.25))
+    problem.set_estimand(problem.p('Y(X=1)=1'))
+    result = problem.write_program().run_scip(verbose=False)
+    assert all(endpoint['end'] == 0 for endpoint in result[:2])
+
+
+@pytest.mark.parametrize('method', ['run_couenne', 'run_pyomo', 'to_obj_pyomo', 'to_cip'])
+def test_retired_backends_fail_explicitly(method):
+    with pytest.raises(NotImplementedError, match='use'):
+        getattr(ProgramModule.Program(), method)()
+
+
+def test_spawn_only_platform_fails_before_creating_solver_files(monkeypatch, tmp_path):
+    def unsupported_context(method):
+        raise ValueError('fork unavailable')
+    monkeypatch.setattr(ProgramModule, 'get_context', unsupported_context)
+    monkeypatch.setattr(ProgramModule.tempfile, 'tempdir', str(tmp_path))
+    program = ProgramModule.Program()
+    with pytest.raises(NotImplementedError, match='requires multiprocessing fork'):
+        program.run_scip(verbose=False)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_empty_product_is_one_in_constraint_with_parameters():
+    program = ProgramModule.Program()
+    program.parameters = ['objvar']
+    program.constraints = [[[], ['-1', 'objvar'], ['==']]]
+    result = program.run_scip(verbose=False)
+    for endpoint in result[:2]:
+        assert endpoint['primal'] == pytest.approx(1)
+        assert endpoint['dual'] == pytest.approx(1)
+
+
+def test_simplification_retains_tiny_constant_relations_without_rescaling():
+    program = ProgramModule.Program()
+    constraint = [['1e-30'], ['==']]
+    program.constraints = [constraint]
+    program.optimize_remove_numeric_lines()
+    assert program.constraints == [constraint]
+
+
+def test_empirical_roundoff_is_evaluated_at_solver_tolerance():
+    program = ProgramModule.Program()
+    program.parameters = ['objvar']
+    program.constraints = [[['0.48500000000000004'], ['0.515'], ['-1.0'], ['==']],
+                           [['objvar'], ['-0.25'], ['==']]]
+    result = program.run_scip(verbose=False)
+    for endpoint in result[:2]:
+        assert endpoint['primal'] == pytest.approx(0.25)
+        assert endpoint['dual'] == pytest.approx(0.25)

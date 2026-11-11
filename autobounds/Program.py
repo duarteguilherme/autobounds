@@ -1,9 +1,10 @@
+from fractions import Fraction
 from functools import reduce
 import io 
 import random
 import tempfile
 from copy import deepcopy, copy
-from multiprocessing import Process,Pool,Manager, get_context
+from multiprocessing import get_context
 import time
 import sys
 from .ProgramUtils import *
@@ -86,17 +87,33 @@ class Program:
         self.res_scip = df_lower.merge(df_upper, how = 'outer')
     
     def optimize_remove_numeric_lines(self):
-        """ 
-        All lines of the type [[0.25], [-0.25], [==], []] 
-        i.e. no numeric parameter is included ,
-        should be removed
+        """Remove true constant constraints, preserving exact contradictions.
+
+        Decimal tokens are interpreted exactly when recognizing tautologies.
+        False relations remain unchanged for the solver to evaluate with its
+        numerical feasibility tolerance, including empirical roundoff residuals.
+        Empty products represent one; an empty sum represents zero.
         """
-        constraints2 = [ ]
-        for i in self.constraints:
-            if not all([ test_string_numeric_list(j) for j in i ]):
-                constraints2.append(i)
-        self.constraints = constraints2
-    
+        constraints = []
+        for constraint in self.constraints:
+            if not constraint:
+                continue
+            relation = constraint[-1][0]
+            if relation not in ("==", ">=", "<="):
+                raise ValueError(f"Unsupported constraint relation: {relation}")
+            try:
+                value = sum((reduce(lambda a, b: a * b,
+                                    (Fraction(str(token)) for token in term),
+                                    Fraction(1))
+                             for term in constraint[:-1]), Fraction(0))
+            except (ValueError, ZeroDivisionError):
+                # At least one factor is a model parameter, not a constant.
+                constraints.append(constraint)
+                continue
+            if not get_symb_func[relation](value, 0):
+                constraints.append(constraint)
+        self.constraints = constraints
+
     def optimize_add_param_value(self, parameter, value):
         """ 
         Replace directly one of the parameter by a certain value...
@@ -117,8 +134,15 @@ class Program:
         debug = True won't remove files
         """
         from pyscipopt import Model, quicksum
-        self.M_upper = Model()
         self._scip_bounds = None
+        try:
+            ctx = get_context('fork')
+        except ValueError as exc:
+            raise NotImplementedError(
+                "run_scip requires multiprocessing fork; spawn is unsupported"
+            ) from exc
+        self.optimize_remove_numeric_lines()
+        self.M_upper = Model()
         self.M_lower = Model() # Unfortunately we cannot use deepcopy with scip
         par_dict_upper = { }
         par_dict_lower = { }
@@ -166,11 +190,6 @@ class Program:
                 dgps_upper_tmp.close()
                 dgps_lower_file = dgps_lower_tmp.name
                 dgps_upper_file = dgps_upper_tmp.name
-        # Use 'fork' start method when available to avoid pickling the SCIP model on macOS (spawn requires pickling)
-        try:
-            ctx = get_context('fork')
-        except ValueError:
-            ctx = get_context()
         p_lower = ctx.Process(target=solve_scip, args=(self.M_lower, self.scip_lower_filename, False, dgps_lower_file))
         p_upper = ctx.Process(target=solve_scip, args=(self.M_upper, self.scip_upper_filename, False, dgps_upper_file))
         try:
@@ -204,8 +223,7 @@ class Program:
             return optim_data
         except Exception as exc:
             raise RuntimeError(
-                f"SCIP worker execution failed: {exc}. Non-fork multiprocessing "
-                "contexts are unsupported because pyscipopt models are not picklable."
+                f"SCIP worker execution failed: {exc}"
             ) from exc
         finally:
             for proc in (p_lower, p_upper):
@@ -236,76 +254,17 @@ class Program:
             raise RuntimeError("Run run_scip successfully before requesting bounds")
         return tuple(dict(endpoint) for endpoint in self._scip_bounds)
 
-    def run_couenne(self, verbose = True, filename = None, epsilon = 0.01, theta = 0.01):
-        """ This method runs programs directly in python using pyomo and couenne
-        """
-        import pyomo.environ as pyo
-        from pyomo.opt import SolverFactory
-        M = pyo.ConcreteModel()
-        solver = pyo.SolverFactory('couenne')
-        for p in self.parameters:
-            if p != 'objvar':
-                setattr(M, p, pyo.Var(bounds = (0,1)))
-            else:
-                setattr(M, p, pyo.Var())
-        # Next loop is not elegant, needs refactoring
-        for i, c in enumerate(self.constraints):
-            setattr(M, 'c' + str(i), 
-                    pyo.Constraint(expr = 
-                        get_symb_func[c[-1][0]](sum([ mult_params(self.parameters, k, M ) for k in c[:-1] ]), 0)
-                    )
-            )
-        self.M_upper = deepcopy(M)
-        self.M_lower = deepcopy(M)
-        self.M_upper.obj = pyo.Objective(expr = self.M_upper.objvar, sense = pyo.maximize)
-        self.M_lower.obj = pyo.Objective(expr = self.M_lower.objvar, sense = pyo.minimize)
-        open('.lower.log','w').close()
-        open('.upper.log','w').close()
-        p_lower = Process(target=solve1, args=(solver, self.M_lower,'lower', verbose)) 
-        p_upper = Process(target=solve1, args=(solver, self.M_upper,'upper', verbose)) 
-        p_lower.start()
-        p_upper.start()
-        optim_data = parse_bounds(p_lower, p_upper, filename, epsilon = epsilon, theta = theta)
-        return optim_data
-   
-    def run_pyomo(self, solver_name = 'ipopt', verbose = True, parallel = False):
-        """ This method runs program directly in python using pyomo
-        """
-        import pyomo.environ as pyo
-        from pyomo.opt import SolverFactory
-        M = pyo.ConcreteModel()
-        solver = pyo.SolverFactory(solver_name)
-        solve = lambda a: solver.solve(a, tee = verbose)
-        for p in self.parameters:
-            if p != 'objvar':
-                setattr(M, p, pyo.Var(bounds = (0,1)))
-            else:
-                setattr(M, p, pyo.Var(bounds = (-1, 1)))
-        # Next loop is not elegant, needs refactoring
-        for i, c in enumerate(self.constraints):
-            setattr(M, 'c' + str(i), 
-                    pyo.Constraint(expr = 
-                        get_symb_func[c[-1][0]](sum([ mult_params(self.parameters, k, M ) for k in c[:-1] ]), 0)
-                    )
-            )
-        self.M1 = deepcopy(M)
-        self.M2 = deepcopy(M)
-        self.M1.obj = pyo.Objective(expr = self.M1.objvar, sense = pyo.maximize)
-        self.M2.obj = pyo.Objective(expr = self.M2.objvar, sense = pyo.minimize)
-        if parallel:
-            with Pool(None, initializer=worker_init, initargs=(solve,)) as p:
-                p.map(worker, [self.M1,self.M2])
-        else:
-            results = list(map(solve, [self.M1,self.M2]))
-        solver.solve(self.M1, tee = verbose)
-        solver.solve(self.M2, tee = verbose)
-        lower_bound = pyo.value(self.M2.objvar)
-        upper_bound = pyo.value(self.M1.objvar)
-        return (lower_bound, upper_bound)
-   
+    def run_couenne(self, verbose=True, filename=None, epsilon=0.01, theta=0.01):
+        """Historical backend, retired because its results were not validated."""
+        raise NotImplementedError("Couenne backend is retired; use run_scip()")
+
+    def run_pyomo(self, solver_name='ipopt', verbose=True, parallel=False):
+        """Historical backend, retired because its results were not validated."""
+        raise NotImplementedError("Pyomo backend is retired; use run_scip()")
+
     def to_obj_pyomo(self):
-        pass
-    
+        raise NotImplementedError("Pyomo export is unsupported; use to_pip()")
+
     def to_pip(self, filename, sense = 'max'):
         if isinstance(filename, str):
             filep = open(filename, 'w')
@@ -331,4 +290,4 @@ class Program:
         filep.close()
     
     def to_cip(self):
-        pass
+        raise NotImplementedError("CIP export is unsupported; use to_pip()")

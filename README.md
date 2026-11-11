@@ -16,7 +16,7 @@ See [examples](examples/README.md) for current entry points. Historical notebook
 and the old Docker recipe are preserved in [archive](archive/README.md); they
 are not supported setup instructions.
 See the [code audit](docs/code_audit_2026_11_10.md) for validation scope and
-known issues, including constant-constraint simplification.
+the status of fixes and remaining maintenance work.
 
 Development is currently being conducted by Guilherme Duarte, Dean Knox, and Kai Cooper. Code contributions were also made by Lisa Schulze-Bergkamen and Jeremy Zucker.
 
@@ -51,7 +51,12 @@ result = program.run_scip(verbose=False)
 print(result[0]["dual"], result[1]["dual"])  # Approximately -0.3, 0.7.
 ```
 
-This numerical workflow requires SCIP and `pyscipopt`. For new single-problem
+SCIP is the supported numerical backend and requires `pyscipopt`.
+The historical Pyomo and Couenne backends are retired; their entry points now
+raise `NotImplementedError` directing callers to `run_scip()`. Numerical solver
+workers require a platform with multiprocessing `fork` support.
+Constant tautologies are recognized exactly from their decimal tokens. False
+relations are retained for SCIP to evaluate with its normal feasibility tolerance. For new single-problem
 code, `Bounder` can replace `causalProblem` in this example.
 
 ## Symbolic linear bounds

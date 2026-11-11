@@ -62,8 +62,8 @@ class canonicalModel():
         self.parameters = list()
         self.iso_params = {}
     
-    def find_index(self, orde, value, ):
-        pass
+    def find_index(self, orde, value):
+        raise NotImplementedError("find_index is not implemented; use get_functions()")
 
     def get_functions(self, v, data):
         """
@@ -106,7 +106,7 @@ class canonicalModel():
             params = filter_params(get_index(k,number_values,total), params, v)
         return params
 
-    def from_dag(self, dag, number_values = {}):
+    def from_dag(self, dag, number_values = None):
         """
         This method acoplates a DAG to a causalProblem.
         By doing this, it already defines all the parameters of this problem,
@@ -125,12 +125,12 @@ class canonicalModel():
         self.dag = dag
         self.c_comp = self.dag.find_c_components() 
         self.set_number_parents()
-        self.number_values = number_values # number_values refers to 
+        self.number_values = dict(number_values or {}) # number_values refers to
         # the number of values of the variable in the original model,
         # rather than the number of canonical values, which depends on the 
         # number of parents
         for v in self.dag.V:
-            if v not in number_values.keys():
+            if v not in self.number_values:
                 self.number_values[v] = 2
         self.set_parameters()
     

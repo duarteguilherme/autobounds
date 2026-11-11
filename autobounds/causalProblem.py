@@ -319,7 +319,7 @@ class causalProblem:
     def __init__(
         self,
         dag,
-        number_values = {},
+        number_values = None,
         continuous_outcome = False,
         continuous_bins = 5,
         continuous_method = "midpoint",

@@ -29,7 +29,7 @@ from .causalProblem import (
 )
 
 class Bounder:
-    def __init__(self, dag, number_values = {}):
+    def __init__(self, dag, number_values = None):
         """
         Causal problem has to have three elements: 
             a) canonicalModel: a canonical model;
@@ -40,6 +40,7 @@ class Bounder:
         A parser needs to be included to translate expressions to canonicalModel language
         unconf_roots corresponds to roots for which we have data 
         """
+        number_values = dict(number_values or {})
         self.canModel = canonicalModel()
         self.dag = dag
         self.canModel.from_dag(self.dag, number_values)

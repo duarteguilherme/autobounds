@@ -1,10 +1,45 @@
 # Code and repository audit — 10 November 2026
 
-The current SCIP and symbolic workflows have substantial regression coverage,
-but the repository should not be described as fully validated. The most urgent
-remaining issue is numeric constraint simplification: it can silently discard
-an infeasible constant constraint. Historical notebooks and alternative solver
-backends also need an explicit support boundary.
+## Follow-up fixes
+
+The concrete defects below have now been addressed:
+
+- Constant constraints use exact rational arithmetic on their decimal tokens.
+  True relations are removed; false relations are retained unchanged for SCIP
+  to evaluate with its normal feasibility tolerance. This preserves genuine
+  contradictions without amplifying empirical floating-point roundoff. Empty products equal one. Both direct
+  programs and zero-parameter substitutions have solver regression tests.
+- Pyomo/Couenne execution implementations are removed. Compatibility methods
+  raise `NotImplementedError` with a SCIP migration path. Unimplemented exports,
+  subtraction bounds, canonical index lookup, and helpers for the removed
+  `get_expr` API now fail explicitly. The historical log reader no longer asks
+  for terminal input.
+- Cardinality constructors use `None` defaults and the canonical model owns a
+  copy of its configuration. Caller mutation and cross-model isolation are
+  covered for Bounder, causalProblem, Parser, closedProblem and canonicalModel.
+- Ineffective constraint comparisons now test identified observed probabilities
+  and ATE endpoints on two graphs, checking primal and dual outputs. A previous
+  test expected bounds from probabilities summing to 1.95; it now correctly
+  checks infeasibility. Parameter substitution tests also verify their input
+  remains unchanged.
+- Spawn-only platforms fail explicitly before solver models or temporary files
+  are created. This does not implement Windows/spawn support.
+
+Sections below retain the original audit findings as historical context;
+items 1–3 and the ineffective assertions in item 4 are resolved by this
+follow-up. CI/version-matrix work, dependency pinning, large-asset migration,
+and broader refactoring remain maintenance work, not claims of completed
+validation. Historical scientific workflows remain archived and unvalidated.
+
+### Follow-up validation
+
+The source suite passes **270 tests** (18.06 seconds), including regressions
+for numerical roundoff as well as infeasibility. The numerical CI example
+again returns matching primal/dual point bounds of approximately
+`[-0.142328, 0.442498]` and finite intervals. The symbolic factorial example
+completes. Source and wheel distributions build successfully. The same **270
+tests pass against the installed wheel** outside the checkout (18.34 seconds),
+using the existing environment dependencies.
 
 ## Scope and method
 
