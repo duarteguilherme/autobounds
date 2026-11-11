@@ -66,6 +66,9 @@ def main():
             f'assert location.is_relative_to(Path({str(runtime)!r})), location; '
             f'assert not location.is_relative_to(Path({str(root)!r})), location'
         )
+        check += ('; from importlib.metadata import version; '
+                  'assert version("autobounds") == autobounds.__version__; '
+                  'print("Release:", autobounds.__version__)')
         check += '; import importlib.util'
         if 'symbolic' in extras:
             check += '; import cdd.gmp; print("Exact cdd backend available")'

@@ -266,6 +266,9 @@ See [clean-install CI](docs/ci.md) for coverage and local reproduction commands.
 
 ## Build and publish (PyPI)
 
+See the [release checklist](docs/releasing.md), [changelog](CHANGELOG.md), and
+[0.1 migration guide](docs/migration-0.1.md) before preparing a release.
+
 Build source and wheel distributions:
 
 ```bash

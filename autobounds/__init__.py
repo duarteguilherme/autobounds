@@ -36,14 +36,7 @@ class _PublicInterfaces(ModuleType):
 
 sys.modules[__name__].__class__ = _PublicInterfaces
 
-from collections import namedtuple
-import platform
-
-
-VersionInfo = namedtuple("VersionInfo", "major minor micro releaselevel serial") # machine readable version info
-version_info = VersionInfo(0, 0, 2, "alpha", 0)
-version = f"{version_info.major}.{version_info.minor}.{version_info.micro} ({platform.python_implementation()} {platform.python_version()})"
-__version__ = f"{version_info.major}.{version_info.minor}.{version_info.micro}"
+from ._version import VersionInfo, __version__, version, version_info
 
 
 __all__ = [ 

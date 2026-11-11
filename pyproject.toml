@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-        "setuptools>=61",
+        "setuptools>=77.0.3",
         "wheel"
 ]
 build-backend = "setuptools.build_meta"
@@ -9,11 +9,12 @@ build-backend = "setuptools.build_meta"
 # PEP 621 metadata so tools like `uv add` can manage dependencies
 [project]
 name = "autobounds"
-version = "0.0.2"
+dynamic = ["version"]
 description = "AUTOBOUNDS — software for calculating causal inference bounds"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -48,3 +49,6 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore:\\[Errno 13\\] Permission denied\\.\\s+joblib will operate in serial mode:UserWarning",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "autobounds._version.__version__"}
