@@ -29,7 +29,8 @@ def main():
     env['PYTHONNOUSERSITE'] = '1'
     env['MPLBACKEND'] = 'Agg'
     with tempfile.TemporaryDirectory(prefix='autobounds-wheel-test-') as directory:
-        temporary = Path(directory)
+        # Resolve macOS /var aliases and Windows short names before comparison.
+        temporary = Path(directory).resolve()
         env['MPLCONFIGDIR'] = str(temporary / 'matplotlib')
         distributions = temporary / 'dist'
         # build creates an sdist, then builds the wheel from that sdist.
