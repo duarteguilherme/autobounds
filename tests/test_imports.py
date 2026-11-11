@@ -2,6 +2,7 @@
 import subprocess
 import sys
 import textwrap
+import pytest
 
 
 def run_fresh(source):
@@ -52,6 +53,7 @@ def test_public_class_exports_survive_submodule_imports_and_pickle():
 
 
 def test_plotting_imports_are_available_when_requested():
+    pytest.importorskip("plotnine")
     run_fresh('''
         import sys
         from unittest.mock import patch

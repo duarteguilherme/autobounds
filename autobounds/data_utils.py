@@ -67,7 +67,8 @@ def solve_gaussian(nr, o, alpha, index = 'qp'):
     """
     if index == 'qp':
         print("Make sure that this dataset is the first to be introduced. For other datasets, remember to introduce the argument data_name")
-    import scipy.stats
+    from .optional import require_optional
+    scipy_stats = require_optional('scipy.stats', 'inference')
     query_vectorize = np.vectorize(lambda a: Query(a))
     mu = np.array([o[:-1]])
     params = [ Query(index + '_' + str(i)) for i,f in enumerate(o[:-1]) ]
@@ -77,7 +78,7 @@ def solve_gaussian(nr, o, alpha, index = 'qp'):
     mu_query = [ Query(i) for i in o[:-1] ]
     lh_side = multiply_matrix_gaussian(params, mu_query, sigma_inv_query)
     k = len(o)
-    rh_side = Query(scipy.stats.chi2.ppf( 1- alpha, k - 1))
+    rh_side = Query(scipy_stats.chi2.ppf( 1- alpha, k - 1))
     res = lh_side - rh_side
     return (index,k, res)
 
@@ -89,22 +90,19 @@ def solve_kl_p(ns, K, o, alpha):
     K is the number of pieces of data
     o is the observed data
     """
-    import scipy.optimize
-    import statsmodels.stats.proportion
+    from .optional import require_optional
+    scipy_optimize = require_optional('scipy.optimize', 'inference')
+    proportion = require_optional('statsmodels.stats.proportion', 'inference')
     KL = lambda p: o * log(o / p) + (1 - o) * log((1 - o) / (1 - p))
     thresh = log(2 * K / alpha) / ns
     optim_func = lambda p: KL(p) - thresh
     eps = 1e-12
     if o == 0:
         return np.array(
-                statsmodels
-                .stats
-                .proportion.proportion_confint(0, ns, alpha = alpha/K, method = 'agresti_coull'))
+                proportion.proportion_confint(0, ns, alpha = alpha/K, method = 'agresti_coull'))
     elif o == 1:
         return np.array(
-                statsmodels
-                .stats
-                .proportion.proportion_confint(ns, ns, alpha = alpha/K, method = 'agresti_coull'))
+                proportion.proportion_confint(ns, ns, alpha = alpha/K, method = 'agresti_coull'))
     else:
         # Use bounded roots to avoid evaluating log terms outside (0, 1).
         lower_left = eps
@@ -113,11 +111,11 @@ def solve_kl_p(ns, K, o, alpha):
         upper_right = 1 - eps
 
         try:
-            lb = scipy.optimize.brentq(optim_func, lower_left, lower_right)
+            lb = scipy_optimize.brentq(optim_func, lower_left, lower_right)
         except ValueError:
             lb = 0.0
         try:
-            ub = scipy.optimize.brentq(optim_func, upper_left, upper_right)
+            ub = scipy_optimize.brentq(optim_func, upper_left, upper_right)
         except ValueError:
             ub = 1.0
         return np.array([lb, ub])

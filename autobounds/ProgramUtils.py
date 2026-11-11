@@ -58,6 +58,8 @@ def plot_bounds(traj,
                 size=20,
                 family=None
                 ):
+    from .optional import require_optional
+    require_optional('plotnine', 'plot')
     from plotnine import (ggplot,
                           geom_errorbar,
                           geom_ribbon,

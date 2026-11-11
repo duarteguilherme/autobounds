@@ -127,6 +127,7 @@ def test_write_program_applies_deferred_zero_parameters():
 
 
 
+@pytest.mark.usefixtures("inference_extra")
 def test_solve_kl():
     ns = 1000
     K = 8
@@ -136,6 +137,7 @@ def test_solve_kl():
     assert result[0] > 0.09
     assert result[1] < 0.17
 
+@pytest.mark.usefixtures("inference_extra")
 def test_solve_kl_bug_log():
     ns = 20
     K = 8
@@ -165,9 +167,11 @@ def test_load_interventional_data(tmp_path):
         assert endpoint['dual'] == pytest.approx(0.3)
 
 
+@pytest.mark.usefixtures("inference_extra")
 def test_solve_gaussian():
     res = solve_gaussian(nr = 100, o = [0.25, 0.25, 0.25, 0.25] , alpha = 0.05)
 
+@pytest.mark.usefixtures("inference_extra")
 def test_load_data_gaussian():
     datafile = io.StringIO('''X,Y,prob
     0,0,0.25
@@ -202,6 +206,7 @@ def test_load_pandas():
     x = causalProblem(y, {'X': 2})
     x.load_data(data) # No need to assert
 
+@pytest.mark.usefixtures("inference_extra")
 def test_load_data_kl():
     datafile = io.StringIO('''X,Y,Z,prob
     0,0,0,0.125

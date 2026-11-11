@@ -82,7 +82,8 @@ class InferenceWorkflow:
         if len(np.unique(y_codes)) < 2:
             obs_scores = np.ones(raw_df.shape[0], dtype=float)
         else:
-            import statsmodels.api as sm
+            from ..optional import require_optional
+            sm = require_optional('statsmodels.api', 'inference')
             exog = sm.add_constant(raw_df[observed_cols].astype(float), has_constant="add")
             try:
                 model = sm.MNLogit(y_codes, exog)

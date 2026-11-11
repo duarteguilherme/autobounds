@@ -46,6 +46,8 @@ def test_test_names_are_unique_within_each_scope():
 ])
 @pytest.mark.parametrize('as_module', [False, True])
 def test_paper_example_entrypoints(name, as_module):
+    pytest.importorskip("matplotlib")
+    pytest.importorskip("scipy")
     arguments = (['-m', f'examples.{name}'] if as_module
                  else [str(ROOT / 'examples' / f'{name}.py')])
     result = subprocess.run(

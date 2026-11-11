@@ -17,7 +17,6 @@ from itertools import product
 from functools import reduce
 from numpy import log
 import inspect
-from tqdm import tqdm
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -591,7 +590,8 @@ class causalProblem:
                     object.__setattr__(self, "_used_discrete_covariate_path", True)
             if not categorical:
                 x = datam[covariates].to_numpy().reshape((-1, len(covariates)))
-                import statsmodels.api as sm
+                from .optional import require_optional
+                sm = require_optional('statsmodels.api', 'inference')
                 x = sm.add_constant(x)
                 y = datam.drop(columns=covariates).astype(str).agg("_".join, axis=1)
                 y, _ = pd.factorize(y)

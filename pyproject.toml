@@ -26,20 +26,17 @@ authors = [
     { name = "Noam Finkelstein" }
 ]
 dependencies = [
-    "tqdm",
     "pandas",
     "networkx",
-    "matplotlib",
     "numpy",
-    "plotnine",
     "pyscipopt",
-    "sympy",
-    "scipy",
-    "statsmodels"
+    "sympy"
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "build"]
+plot = ["matplotlib", "plotnine"]
+inference = ["scipy", "statsmodels"]
 symbolic = ["pycddlib>=3.0.2,<4"]
 
 [project.urls]

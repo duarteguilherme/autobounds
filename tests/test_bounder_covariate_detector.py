@@ -1,6 +1,7 @@
-import statsmodels.api as sm
+import pytest
 import pandas as pd
 
+from autobounds import optional
 from autobounds.DAG import DAG
 from autobounds.causalProblem import causalProblem
 
@@ -14,10 +15,14 @@ def test_read_data_discrete_small_support_uses_empirical_path(monkeypatch):
     dag = _make_dag()
     problem = causalProblem(dag)
 
-    def _fail_mnlogit(*args, **kwargs):
-        raise AssertionError("MNLogit should not be called for discrete low-support covariates.")
+    original_import = optional.import_module
 
-    monkeypatch.setattr(sm, "MNLogit", _fail_mnlogit)
+    def _reject_regression_import(name):
+        if name.startswith('statsmodels'):
+            pytest.fail('Empirical covariate adjustment must not need statsmodels')
+        return original_import(name)
+
+    monkeypatch.setattr(optional, 'import_module', _reject_regression_import)
 
     df = pd.DataFrame(
         {
@@ -35,6 +40,7 @@ def test_read_data_discrete_small_support_uses_empirical_path(monkeypatch):
 
 
 def test_read_data_discrete_large_support_keeps_multinomial(monkeypatch):
+    sm = pytest.importorskip('statsmodels.api')
     dag = _make_dag()
     problem = causalProblem(dag)
     sentinel = object()

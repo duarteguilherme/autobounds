@@ -12,7 +12,6 @@ import pickle
 import numpy as np
 import pytest
 import sympy as sp
-from scipy.optimize import linprog
 
 from autobounds import DAG, LinearResponseModel, SymbolicBounds, SymbolicProblem
 
@@ -93,6 +92,7 @@ def assert_certificates(model, result):
 
 
 def assert_primal_dual_agree(model, result, q):
+    linprog = pytest.importorskip("scipy.optimize").linprog
     incidence = np.asarray(model.matrix, dtype=float).reshape(-1, len(q))
     probabilities = incidence @ q
     matrix = np.vstack([np.ones(len(q)), incidence])

@@ -228,11 +228,40 @@ This installs Autobounds in editable mode for development. For a regular install
 python -m pip install .
 ```
 
+## Optional features
+
+The default install includes numerical solving, causal declarations, empirical
+subsampling, and the existing SymPy-based closed-form APIs. It does not install
+plotting libraries or regression/inference libraries.
+
+| Extra | Features | Additional dependencies |
+| --- | --- | --- |
+| `plot` | DAG and bound plots | matplotlib, plotnine |
+| `inference` | Regression-based covariate models, Gaussian/KL data constraints | scipy, statsmodels |
+| `symbolic` | Exact cdd hull bounds | pycddlib, with native cddlib/GMP prerequisites |
+
+For a checkout, install the extras you need:
+
+```bash
+python -m pip install '.[plot]'
+python -m pip install '.[inference]'
+python -m pip install '.[plot,inference,symbolic]'
+```
+
+Use `autobounds[plot]` (and analogous combinations) when installing a published
+release. Existing installations keep their already-installed dependencies;
+fresh installs must request extras for these features. Missing-feature errors
+include the relevant install command. Plotnine has its own statistical
+dependencies, so `plot` also brings some inference libraries transitively.
+The `dev` extra provides pytest and build tools; combine it with all feature
+extras to run the complete suite without optional-dependency skips.
+
 ## Continuous integration
 
 [Installed wheel tests](https://github.com/duarteguilherme/autobounds/actions/workflows/tests.yml)
 build and install the package in fresh environments on Linux, macOS, and Windows
-with Python 3.10 and 3.13. A separate Linux job tests the symbolic extra.
+with Python 3.10 and 3.13. Separate Linux jobs test each extra alone and all
+three feature extras together.
 See [clean-install CI](docs/ci.md) for coverage and local reproduction commands.
 
 ## Build and publish (PyPI)

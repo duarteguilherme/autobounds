@@ -21,7 +21,13 @@ def run(command, *, cwd, env):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--symbolic', action='store_true')
+    parser.add_argument('--extras', default='', help='Comma-separated plot,inference,symbolic extras')
     args = parser.parse_args()
+    extras = set(filter(None, (item.strip() for item in args.extras.split(','))))
+    if args.symbolic:
+        extras.add('symbolic')
+    if extras - {'plot', 'inference', 'symbolic'}:
+        parser.error('Supported extras: plot, inference, symbolic')
     root = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
     env.pop('PYTHONPATH', None)
@@ -41,7 +47,7 @@ def main():
         runtime = temporary / 'runtime'
         venv.EnvBuilder(with_pip=True).create(runtime)
         python = runtime / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
-        package = str(wheels[0]) + ('[symbolic]' if args.symbolic else '')
+        package = str(wheels[0]) + ('[' + ','.join(sorted(extras)) + ']' if extras else '')
         run([python, '-m', 'pip', 'install', package, 'pytest'], cwd=temporary, env=env)
         run([python, '-m', 'pip', 'check'], cwd=temporary, env=env)
         run([python, '-m', 'pip', 'freeze'], cwd=temporary, env=env)
@@ -60,10 +66,20 @@ def main():
             f'assert location.is_relative_to(Path({str(runtime)!r})), location; '
             f'assert not location.is_relative_to(Path({str(root)!r})), location'
         )
-        if args.symbolic:
+        check += '; import importlib.util'
+        if 'symbolic' in extras:
             check += '; import cdd.gmp; print("Exact cdd backend available")'
         else:
-            check += '; import importlib.util; assert importlib.util.find_spec("cdd") is None'
+            check += '; assert importlib.util.find_spec("cdd") is None'
+        if 'plot' in extras:
+            check += '; import matplotlib, plotnine'
+        else:
+            check += '; assert importlib.util.find_spec("plotnine") is None'
+        if 'inference' in extras:
+            check += '; import scipy, statsmodels.api'
+        if not (extras & {'plot', 'inference'}):
+            check += '; assert all(importlib.util.find_spec(m) is None for m in ' + repr(
+                ['matplotlib', 'scipy', 'statsmodels', 'tqdm']) + ')'
         run([python, '-c', check], cwd=suite, env=env)
         run([python, '-m', 'pytest', '-ra', '--tb=short'], cwd=suite, env=env)
 

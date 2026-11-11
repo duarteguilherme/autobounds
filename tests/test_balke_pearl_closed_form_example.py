@@ -5,6 +5,10 @@ from pathlib import Path
 import sys
 
 import numpy as np
+import pytest
+
+pytest.importorskip("matplotlib")
+pytest.importorskip("scipy")
 
 
 MODULE_PATH = (

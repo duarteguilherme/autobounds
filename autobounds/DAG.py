@@ -94,7 +94,8 @@ class DAG:
         node_labels = {node:f"{label_format_latex(node)}" for node in G.nodes()}
 
         # draw the graph
-        import matplotlib.pyplot as plt
+        from .optional import require_optional
+        plt = require_optional("matplotlib.pyplot", "plot")
         fig, ax = plt.subplots()
         nx.draw_networkx_nodes(G, pos, ax=ax, node_color="white")
         nx.draw_networkx_labels(G, pos, ax=ax, labels = node_labels) 
