@@ -175,12 +175,52 @@ class Parser():
         self.dag = dag
         self.canModel = canonicalModel()
         self.canModel.from_dag(self.dag, number_values = number_values)
-        self.c_parameters = deepcopy([ [ k 
-            for k in self.canModel.parameters if list(c)[0] in k ] 
-            for c in self.canModel.c_comp ] )
+        component_of = {
+            token: component_id
+            for component_id, component in enumerate(self.canModel.c_comp)
+            for variable in component
+            for token in self.canModel.iso_params[variable]
+        }
+        self.c_parameters = [[] for _ in self.canModel.c_comp]
+        for parameter in self.canModel.parameters:
+            component_id = component_of[parameter.split('.')[0]]
+            self.c_parameters[component_id].append(parameter)
+        self._response_index = self._index_response_types()
         # c-parameters are list of the parameters of the canonical model
         # they are separated according to c-components
         # e.g., [ ['X0', 'X1'], ['Z0','Z1']] if {Z} and {X} are different c-components
+
+    def _index_response_types(self):
+        """Index exact response-function tokens within each latent component.
+
+        Keep components separate: their distributions are independent, while
+        response functions within a component describe joint response types.
+        The index follows the canonical model fixed at parser construction.
+        """
+        index = {}
+        for component_id, parameters in enumerate(self.c_parameters):
+            for parameter_id, parameter in enumerate(parameters):
+                for token in parameter.split('.'):
+                    index.setdefault(token, {}).setdefault(
+                        component_id, set()).add(parameter_id)
+        return index
+
+    def _get_c_component(self, functions):
+        """Intersect indexed response types and preserve canonical ordering."""
+        matches = {}
+        for function in functions:
+            indexed_components = self._response_index.get(function, {})
+            for component_id, candidates in indexed_components.items():
+                if component_id in matches:
+                    matches[component_id].intersection_update(candidates)
+                else:
+                    # Queries must never mutate the shared index.
+                    matches[component_id] = candidates.copy()
+        return list(product(*[
+            [self.c_parameters[component_id][i]
+             for i in sorted(matches[component_id])]
+            for component_id in sorted(matches)
+        ]))
 
     def translate(self, main_expr, do_expr, ancestors):
         """ Output (all_paths): a list of tuples, where each tuple represents a path that satisfies the quantity in main_var.
@@ -364,7 +404,7 @@ class Parser():
         all_paths = [ list(product(*x[1])) for x in all_paths ] 
         all_paths = [ j for i in all_paths for j in i ]  
         # STEP 4 --- Get parameters in terms of  c-components parameters
-        funcs = [ a for k in all_paths for a in get_c_component(list(k), self.c_parameters) ]
+        funcs = [ a for k in all_paths for a in self._get_c_component(k) ]
         return funcs
     
     def collect_worlds(self, expr):

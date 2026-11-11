@@ -1,6 +1,76 @@
 from autobounds.autobounds.DAG import DAG
 from autobounds.autobounds.Parser import *
 from autobounds.autobounds.Q import compare_lists
+from copy import deepcopy
+from itertools import product
+import pytest
+
+
+@pytest.mark.parametrize('structure,latent,cards', [
+    ('Z -> X, X -> Y, U -> X, U -> Y', 'U', {'Z': 2, 'X': 2, 'Y': 2}),
+    ('Z -> X, X -> Y, U -> X, U -> Y', 'U', {'Z': 3, 'X': 3, 'Y': 3}),
+    ('Z -> X, X -> Y', '', {'Z': 2, 'X': 2, 'Y': 2}),
+    ('Z -> Y, X -> Y, U -> X, U -> Z', 'U', {'Z': 2, 'X': 2, 'Y': 2}),
+])
+def test_indexed_queries_match_response_scans(monkeypatch, structure, latent, cards):
+    parser = Parser(DAG(structure, unob=latent), dict(cards))
+    events = [
+        '&'.join(f'{v}={value}' for v, value in zip(('Z', 'X', 'Y'), row))
+        for row in product(*(range(cards[v]) for v in ('Z', 'X', 'Y')))
+    ]
+    events += ['Y=1', 'X=0', 'Y(X=0)=1', 'Y(X=1)=1',
+               'Y(X=0)=1&Y(X=1)=1', 'Y=1&X(Z=0)=0',
+               'Y(X=1,Z=1)=1', 'Y=0&Y=1']
+    original_index = deepcopy(parser._response_index)
+    indexed = [parser.parse(event) for event in events]
+    with monkeypatch.context() as patch:
+        patch.setattr(parser, '_get_c_component',
+                      lambda functions: get_c_component(functions, parser.c_parameters))
+        scanned = [parser.parse(event) for event in events]
+    assert indexed == scanned
+    assert parser._response_index == original_index
+    copied = deepcopy(parser)
+    assert [copied.parse(event) for event in events] == indexed
+
+
+def test_index_preserves_components_and_matches_whole_tokens():
+    parser = Parser(DAG('X -> Y, U -> X, U -> Y, XX -> W', unob='U'))
+    assert parser._get_c_component(['X0']) == [
+        ('X0.Y00',), ('X0.Y01',), ('X0.Y10',), ('X0.Y11',)
+    ]
+    assert parser._get_c_component(['X0', 'X1']) == []
+    matches = parser._get_c_component(['X0', 'XX1'])
+    assert len(matches) == 4
+    assert all(set(row) == {'X0.' + y, 'XX1'}
+               for row, y in zip(matches, ['Y00', 'Y01', 'Y10', 'Y11']))
+
+
+def test_indexed_program_preserves_constraints_and_scip_bounds(monkeypatch):
+    import pandas as pd
+    from autobounds.autobounds import Bounder
+
+    def build_program():
+        problem = Bounder(DAG('Z -> X, X -> Y, U -> X, U -> Y', unob='U'))
+        problem.set_ate('X', 'Y')
+        data = pd.DataFrame(list(product(range(2), repeat=3)), columns=['Z', 'X', 'Y'])
+        data['prob'] = 0.125
+        problem.load_data(data)
+        problem.add_prob_constraints()
+        return problem.write_program()
+
+    indexed = build_program()
+    with monkeypatch.context() as patch:
+        patch.setattr(Parser, '_get_c_component',
+                      lambda self, functions: get_c_component(functions, self.c_parameters))
+        scanned = build_program()
+    assert indexed.parameters == scanned.parameters
+    assert indexed.constraints == scanned.constraints
+    for program in (indexed, scanned):
+        lower, upper, _, _ = program.run_scip(verbose=False, maxtime=5)
+        assert lower['primal'] == pytest.approx(-0.5)
+        assert lower['dual'] == pytest.approx(-0.5)
+        assert upper['primal'] == pytest.approx(0.5)
+        assert upper['dual'] == pytest.approx(0.5)
 
 def test_parse_irreducible():
     # Testing parse_expr
