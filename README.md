@@ -228,6 +228,13 @@ This installs Autobounds in editable mode for development. For a regular install
 python -m pip install .
 ```
 
+## Continuous integration
+
+[Installed wheel tests](https://github.com/duarteguilherme/autobounds/actions/workflows/tests.yml)
+build and install the package in fresh environments on Linux, macOS, and Windows
+with Python 3.10 and 3.13. A separate Linux job tests the symbolic extra.
+See [clean-install CI](docs/ci.md) for coverage and local reproduction commands.
+
 ## Build and publish (PyPI)
 
 Build source and wheel distributions:

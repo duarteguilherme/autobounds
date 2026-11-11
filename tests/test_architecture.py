@@ -36,6 +36,7 @@ def test_compilation_snapshots_mutable_legacy_rows():
 
 
 def test_exact_and_numeric_backends_use_the_same_response_model():
+    pytest.importorskip('cdd.gmp')
     declaration = LinearResponseModel([[0, 1, 1]], [0, 0, 1], labels=['observed'])
     model = declaration.compile()
     assert CddBackend.supports(model)
