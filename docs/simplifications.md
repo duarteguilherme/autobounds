@@ -187,3 +187,33 @@ limits retain their respective error messages. A projection-budget error
 reports the configured limit and the size of the next elimination step.
 Unexpected exceptions are not relabeled as unsupported models or silently
 retried with another solver; their original traceback is preserved.
+
+
+### Equality and inequality assumptions
+
+Use `SymbolicProblem.add_assumption`, as with `Bounder`. An event or query
+by itself means its probability equals zero. For example,
+`problem.add_assumption(problem.p("Y(X=0)=1&Y(X=1)=0"), "==", 0)` excludes that event.
+A probability equality or inequality can specify a right-hand side:
+`problem.add_assumption(problem.p("Y(X=1)=1"), ">=", 0.25)`.
+
+Sign-definite affine restrictions that force response probabilities to zero
+are routed through `set_p_to_zero` internally. Probability-one restrictions
+can likewise exclude their complements. Signed contrasts and products do not
+cause individual types to be deleted unless that conclusion is proved.
+Population constraints remain in the symbolic program; unsupported nonlinear
+ones raise an explicit error.
+
+Equal average effects across a declared partition use `add_homogeneity`:
+
+```python
+problem.add_homogeneity(
+    "Y(X=1)=1", "Y(X=0)=1",
+    strata=["X=0", "X=1"],
+)
+```
+
+This declares equality of averages, not equality of individual outcomes.
+`set_p_to_zero` remains the low-level operation used internally for proved
+individual exclusions. Callers declare their equality or inequality using
+`add_assumption`, without choosing the internal representation.

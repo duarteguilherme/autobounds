@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add symbolic equality and inequality declarations through `add_assumption`;
+  automatically eliminate proved zero types while retaining population
+  constraints. Keep `add_homogeneity` as a separate declaration.
+
 - Distinguish unsupported symbolic models with `UnsupportedModelError`; add
   regressions for different model structures, capability limits, invalid
   declarations, missing dependencies, and projection budgets.

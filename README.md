@@ -123,11 +123,11 @@ print(bounds.upper)  # SymPy Min of affine expressions in the data probabilities
 `load_data("Y", do="X=0")` declares an experimental distribution. Declarations
 accumulate, so observational and experimental data can be combined. Use
 `add_data(problem.p("Y(X=1)=1"), label="trial")` for a single named probability.
-`set_p_to_zero(problem.p("X(Z=0)=1&X(Z=1)=0"))` excludes IV defiers, imposing
+`problem.add_assumption(problem.p("X(Z=0)=1&X(Z=1)=0"), "==", 0)` excludes IV defiers, imposing
 monotonicity. Cardinalities are supplied as in `Bounder`, for example
 `SymbolicProblem(dag, number_values={"Z": 3})`.
 
-The graph adapter currently requires data and estimands to involve one
+The fast linear adapter requires data and estimands to involve one
 unrestricted response component. Each nonsingleton component must have a latent
 parent shared by all its variables. Conditioning is supported on independent
 observed roots, where conditional cells can be represented by intervention
@@ -329,7 +329,8 @@ refer to the concatenated data and constraint rows.
 
 For models with observed independent roots and homogeneous effects across
 response strata, use `SymbolicProblem(...)`; solver selection is automatic. Declare the
-graph, symbolic data, zero events, and `add_homogeneity` assumptions;
+graph, symbolic data, `add_assumption(...)` constraints, and optionally
+`add_homogeneity(...)`;
 AutoBounds discovers the response features, derives a parametric LP when
 possible, and eliminates nuisance coordinates symbolically. The generated
 feature map, LP, and reduction report are inspectable. Unsupported

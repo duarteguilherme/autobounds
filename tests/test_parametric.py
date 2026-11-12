@@ -17,7 +17,7 @@ def declaration(*, names=('Z', 'D', 'Y'), exclusion=False, homogeneous=True, mod
     if not exclusion:
         edges += f', {z} -> {y}'
     problem = SymbolicProblem(DAG(edges, unob='U'), parametric=mode)
-    problem.set_p_to_zero(f'{d}({z}=0)=1&{d}({z}=1)=0')
+    problem.add_assumption(problem.p(f'{d}({z}=0)=1&{d}({z}=1)=0'), '==', 0)
     problem.load_data(f'{d},{y}', cond=z)
     problem.load_data(z)
     problem.set_ate(d, y)

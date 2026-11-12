@@ -43,6 +43,7 @@ class SymbolicProblem:
         self.parametric = parametric
         self.solver_selection = None
         self._homogeneity = []
+        self._assumptions = []
         self._positive_roots = []
         self.dag = deepcopy(dag)
         supplied = {} if number_values is None else dict(number_values)
@@ -155,7 +156,7 @@ class SymbolicProblem:
             return Q(1)
         return self.Parser.p('&'.join(dict.fromkeys(atoms)))
 
-    def _linear_expression(self, query):
+    def _linear_expression(self, query, *, normalize=True):
         if not isinstance(query, Q):
             query = Q(query)
         if query._cond is not None:
@@ -170,7 +171,7 @@ class SymbolicProblem:
                     raise ValueError(f"Unknown response parameter: {factor}")
                 term *= self._symbols[factor]
             expression += term
-        if self.parametric is not False:
+        if self.parametric is not False or not normalize:
             return sp.expand(expression)
         expression = sp.expand(expression.xreplace(self._normalization))
         if expression.free_symbols and sp.Poly(expression).total_degree() > 1:
@@ -279,8 +280,69 @@ class SymbolicProblem:
         self._data.update(pending)
         return self
 
+    def add_assumption(self, constraint, symbol='==', constraint2=None):
+        """Declare assumptions; automatically remove provably excluded types.
+
+        An event string or Q query defaults to equality with zero. ``symbol``
+        and ``constraint2`` specify a general probability equality/inequality,
+        matching Bounder's convention. Only sign-definite affine restrictions
+        that force response probabilities to zero use ``set_p_to_zero``.
+        Signed contrasts and nonlinear products remain population constraints.
+
+        Use ``add_homogeneity`` separately for equality of average effects.
+        """
+        if constraint is None:
+            raise ValueError('Supply an assumption')
+        if symbol not in ('==', '<=', '>='):
+            raise ValueError('Assumption relation must be ==, <=, or >=')
+
+        def expression(value):
+            if not isinstance(value, (Q, str)):
+                return sp.Rational(str(value))
+            query = self.p(value) if isinstance(value, str) else value
+            return self._linear_expression(query, normalize=False)
+
+        e = sp.expand(expression(constraint)-expression(0 if constraint2 is None else constraint2))
+        if not e.free_symbols:
+            valid = {'==': e == 0, '<=': e <= 0, '>=': e >= 0}[symbol]
+            if not valid:
+                raise ValueError('Assumption is contradictory')
+            return self
+        if sp.Poly(e).total_degree() <= 1:
+            active = {self._component_of[v] for v in e.free_symbols}
+            constant = e.subs({v: 0 for v in e.free_symbols})
+            if len(active) == 1:
+                component = self._components[next(iter(active))]
+                # sum(q)=1 turns probability-one assumptions into exclusions
+                # of their complements, without dividing by a stratum mass.
+                coefficients = {self._symbols[name]: e.coeff(self._symbols[name])+constant
+                                for name in component}
+            elif constant == 0:
+                coefficients = {v: e.coeff(v) for v in e.free_symbols}
+            else:
+                coefficients = {}
+            if coefficients:
+                nonnegative = all(v >= 0 for v in coefficients.values())
+                nonpositive = all(v <= 0 for v in coefficients.values())
+                if ((nonnegative and symbol == '>=') or
+                        (nonpositive and symbol == '<=')):
+                    return self
+                force_zero = ((nonnegative and symbol in ('==', '<=')) or
+                              (nonpositive and symbol in ('==', '>=')))
+                if force_zero:
+                    excluded = [v for v, coefficient in coefficients.items() if coefficient != 0]
+                    if excluded:
+                        self.set_p_to_zero(Q([(1, [str(v)]) for v in excluded]))
+                    return self
+        if self.parametric is False:
+            raise UnsupportedModelError(
+                'Population assumptions are unsupported with forced parametric=False; '
+                'omit the flag for automatic selection')
+        self._assumptions.append((e, symbol))
+        return self
+
     def set_p_to_zero(self, event):
-        """Exclude response types in an impossible event, e.g. IV defiers."""
+        """Low-level zero restriction; public declarations use add_assumption."""
         query = self.p(event) if isinstance(event, str) else event
         self._zero_events.append(self._linear_expression(query))
         return self
@@ -297,6 +359,8 @@ class SymbolicProblem:
             raise UnsupportedModelError('Homogeneity is unsupported with forced parametric=False; omit the flag for automatic selection')
         if not isinstance(treated, str) or not isinstance(control, str):
             raise TypeError('Homogeneity outcomes must be event strings')
+        if strata is None or isinstance(strata, str):
+            raise ValueError('Supply a nonempty sequence of stratum events')
         strata = tuple(strata)
         if not strata or any(not isinstance(s, str) for s in strata):
             raise ValueError('Supply a nonempty sequence of stratum events')
@@ -312,6 +376,10 @@ class SymbolicProblem:
         if self.estimand is None:
             raise ValueError("Set an estimand before generating the problem.")
         self.solver_selection = None
+        if self.parametric is False and self._assumptions:
+            raise UnsupportedModelError(
+                'Population assumptions are unsupported with forced parametric=False; '
+                'omit the flag for automatic selection')
         if self.parametric is False and self._homogeneity:
             raise UnsupportedModelError('Homogeneity is unsupported with forced parametric=False; omit the flag for automatic selection')
         raw = ([self.estimand] + list(self._data.values())
@@ -321,6 +389,7 @@ class SymbolicProblem:
                         for e in normalized)
         active = {self._component_of[s] for e in normalized for s in e.free_symbols}
         reason = ('homogeneity assumptions' if self._homogeneity else
+                  'population assumptions' if self._assumptions else
                   'nonlinear response expressions' if nonlinear else
                   'multiple independent response components' if len(active) > 1 else None)
         use_reduction = self.parametric is True or (self.parametric is None and reason is not None)
@@ -331,7 +400,8 @@ class SymbolicProblem:
             return ParametricResponseProgram(
                 tuple(tuple(self._symbols[p] for p in c) for c in self._components),
                 dict(self._data), dict(self._constraints), tuple(self._zero_events),
-                self.estimand, tuple(self._homogeneity), tuple(dict.fromkeys(self._positive_roots)))
+                self.estimand, tuple(self._homogeneity), tuple(dict.fromkeys(self._positive_roots)),
+                assumptions=tuple(self._assumptions))
         if nonlinear:
             raise UnsupportedModelError('This query is nonlinear in the response probabilities.')
         if len(active) > 1:

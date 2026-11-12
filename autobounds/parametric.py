@@ -362,7 +362,7 @@ class ParametricReduction:
 
 class ParametricResponseProgram:
     """Graph-independent polynomial declarations over independent simplices."""
-    def __init__(self, components, data, constraints, zeros, estimand, homogeneity, positive_roots):
+    def __init__(self, components, data, constraints, zeros, estimand, homogeneity, positive_roots, *, assumptions=()):
         self.components = components
         self.data = data
         self.constraints = constraints
@@ -370,6 +370,7 @@ class ParametricResponseProgram:
         self.estimand = estimand
         self.homogeneity = homogeneity
         self.positive_roots = positive_roots
+        self.assumptions = assumptions
 
     def linearize(self):
         import cdd.gmp as cdd
@@ -398,6 +399,9 @@ class ParametricResponseProgram:
             rows = [sum(component)-1]
             rows += [e.subs(substitutions)-p for p, e in labeled
                      if e.free_symbols and e.free_symbols <= set(component)]
+            rows += [e.subs(substitutions) for e, relation in self.assumptions
+                     if relation == '==' and e.free_symbols <= set(component)
+                     and sp.Poly(e, *component).total_degree() <= 1]
             matrix, rhs = sp.linear_eq_to_matrix(rows, component)
             if matrix.free_symbols or matrix.rank() < len(component):
                 unbound.append(component)
@@ -419,6 +423,8 @@ class ParametricResponseProgram:
         positive = tuple(sp.expand(e.subs(substitutions)) for e in self.positive_roots)
         if any(e.free_symbols.intersection(q) for e in positive):
             raise UnsupportedModelError('Load the root distribution used by conditional data')
+        if any(not e.free_symbols and e <= 0 for e in positive):
+            raise ValueError('Conditional data require strictly positive root probabilities')
         equalities = [sp.expand((e-p).subs(substitutions)) for p, e in labeled]
         equalities += [sp.expand((sum(c)-1).subs(substitutions)) for c in components]
         equalities.append(sp.expand((self.estimand-target).subs(substitutions)))
@@ -434,9 +440,17 @@ class ParametricResponseProgram:
             if sp.expand(average-self.estimand.subs(substitutions)) != 0:
                 raise UnsupportedModelError('Homogeneity effect must match the declared estimand')
             equalities += [sp.expand(d.subs(substitutions)-m*target) for m, d in zip(ms, deltas)]
+        assumed_inequalities = []
+        for expression, relation in self.assumptions:
+            expression = sp.expand(expression.subs(substitutions))
+            if relation == '==':
+                equalities.append(expression)
+            else:
+                assumed_inequalities.append(-expression if relation == '<=' else expression)
+        expressions = equalities + assumed_inequalities
         # Split parameter/target coefficients from rational linear q features.
         features = [tuple([sp.Integer(1)]*len(q))]
-        for e in equalities:
+        for e in expressions:
             poly = sp.Poly(e, *q)
             if poly.total_degree() > 1:
                 raise UnsupportedModelError('Unresolved nonlinear response products; cannot certify an LP reduction')
@@ -455,7 +469,7 @@ class ParametricResponseProgram:
         inverse = matrix[:, pivots].inv()
         coordinates = tuple(_fresh(f'_ab_feature{i}', occupied) for i in range(matrix.rows))
         transformed = []
-        for e in equalities:
+        for e in expressions:
             coeffs = sp.Matrix([[e.coeff(v) for v in q]])
             weights = coeffs[:, pivots]*inverse
             if any(sp.expand(v) != 0 for v in coeffs-weights*matrix):
@@ -464,7 +478,8 @@ class ParametricResponseProgram:
             transformed.append(sp.expand(constant+sum(w*x for w, x in zip(weights, coordinates))))
         points = [[1]+[Fraction(v) for v in matrix[:, j]] for j in range(len(q))]
         hull = cdd.copy_inequalities(cdd.polyhedron_from_matrix(cdd.matrix_from_array(points, rep_type=cdd.RepType.GENERATOR)))
-        inequalities = []
+        inequalities = transformed[len(equalities):]
+        transformed = transformed[:len(equalities)]
         hull_rows = []
         for i, row in enumerate(hull.array):
             e = sp.Rational(row[0])+sum(sp.Rational(a)*v for a, v in zip(row[1:], coordinates))
