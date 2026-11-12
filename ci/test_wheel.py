@@ -58,6 +58,8 @@ def main():
         shutil.copytree(root / 'examples', suite / 'examples',
                         ignore=lambda folder, names: [
                             name for name in names if not name.endswith('.py')])
+        shutil.copytree(root / 'examples' / 'paper_discrete_data',
+                        suite / 'examples' / 'paper_discrete_data')
         shutil.copy2(root / 'pyproject.toml', suite / 'pyproject.toml')
         check = (
             'import sys; from pathlib import Path; import autobounds; '

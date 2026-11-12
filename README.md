@@ -15,6 +15,8 @@ python -m pip install -e .
 See [examples](examples/README.md) for current entry points. Historical notebooks
 and the old Docker recipe are preserved in [archive](archive/README.md); they
 are not supported setup instructions.
+The [JASA paper examples](docs/paper_examples.md) reproduce the main IV,
+selection, measurement-error, and missing-data applications using the current API.
 See the [code audit](docs/code_audit_2026_11_10.md) for validation scope and
 the status of fixes and remaining maintenance work.
 

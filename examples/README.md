@@ -1,5 +1,20 @@
 # Examples
 
+## AutoBounds JASA paper
+
+For the main applications from *An Automated Approach to Causal Inference in
+Discrete Settings*, use the maintained runner:
+
+```bash
+python examples/paper_discrete.py --example all --time-limit 120
+```
+
+Run this command from the repository root after installing the package. See the
+[paper example guide](../docs/paper_examples.md) for graphs, assumptions,
+expected bounds, input provenance, and interpretation of unfinished solves.
+
+## Other inference and symbolic examples
+
 This folder keeps the current coverage and CI comparison scripts. Install the
 package first (`python -m pip install -e .` from the repository root).
 Commands below assume the working directory is `examples/`; from the root,
