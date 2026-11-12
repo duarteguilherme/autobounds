@@ -9,6 +9,7 @@ import sympy as sp
 
 from .Parser import Parser
 from .Q import Q
+from .exceptions import UnsupportedModelError
 from .linear_response import LinearResponseModel
 
 
@@ -24,9 +25,25 @@ class SymbolicProblem:
     latent parent shared by all its variables. Separate independent components
     are never pooled. Conditioning on independent observed roots is supported
     via its equivalent intervention; conditioning elsewhere is rejected.
+
+    Solver selection is automatic. Simple linear declarations use the fast
+    response solver. When reduction is needed, independent components are bound from
+    symbolic data, and a response-feature projection automatically reduces
+    polynomial declarations to a parametric LP when possible. Homogeneity
+    can be declared using event pairs and a partition of response strata.
+    Unsupported nonlinearities and unknown elimination signs raise errors.
+    Explicit ``parametric=True`` or ``False`` overrides automatic selection.
+    ``solver_selection`` records the selected method and reason. Unexpected
+    backend errors propagate without retries or fallback to another solver.
     """
 
-    def __init__(self, dag, number_values=None):
+    def __init__(self, dag, number_values=None, *, parametric=None):
+        if parametric is not None and type(parametric) is not bool:
+            raise TypeError("parametric must be None (automatic), True, or False")
+        self.parametric = parametric
+        self.solver_selection = None
+        self._homogeneity = []
+        self._positive_roots = []
         self.dag = deepcopy(dag)
         supplied = {} if number_values is None else dict(number_values)
         if set(supplied) - self.dag.V:
@@ -38,7 +55,7 @@ class SymbolicProblem:
         if not self.dag.V:
             raise ValueError("The graph must contain observed variables.")
         if any(self.dag.find_parents(u) for u in self.dag.U):
-            raise ValueError("Only graphs with root latent variables are supported.")
+            raise UnsupportedModelError("Only graphs with root latent variables are supported.")
         # Check every connected latent component: the symbolic linear backend
         # cannot represent within-component independence restrictions.
         remaining = set(self.dag.V)
@@ -54,7 +71,7 @@ class SymbolicProblem:
             if len(component) > 1:
                 common = set.intersection(*(self.dag.find_parents_u(v) for v in component))
                 if not common:
-                    raise ValueError("A response component without a common latent parent "
+                    raise UnsupportedModelError("A response component without a common latent parent "
                                      "can impose nonlinear restrictions; it is not supported.")
         self.Parser = Parser(self.dag, dict(self.number_values))
         self.canModel = self.Parser.canModel
@@ -97,7 +114,7 @@ class SymbolicProblem:
     def _root_condition(self, condition):
         assignments = self._assignments(condition)
         if any(self.dag.find_parents(v) for v in assignments):
-            raise ValueError("Conditioning is supported only on independent observed roots; "
+            raise UnsupportedModelError("Conditioning is supported only on independent observed roots; "
                              "use do= for genuinely interventional data.")
         return assignments
 
@@ -142,7 +159,7 @@ class SymbolicProblem:
         if not isinstance(query, Q):
             query = Q(query)
         if query._cond is not None:
-            raise ValueError("Conditional ratios are not linear response estimands.")
+            raise UnsupportedModelError("Conditional ratios are not linear response estimands.")
         expression = sp.Integer(0)
         for coefficient, factors in query._event:
             term = sp.Rational(coefficient)
@@ -153,9 +170,11 @@ class SymbolicProblem:
                     raise ValueError(f"Unknown response parameter: {factor}")
                 term *= self._symbols[factor]
             expression += term
+        if self.parametric is not False:
+            return sp.expand(expression)
         expression = sp.expand(expression.xreplace(self._normalization))
         if expression.free_symbols and sp.Poly(expression).total_degree() > 1:
-            raise ValueError("This query is nonlinear in the response probabilities.")
+            raise UnsupportedModelError("This query is nonlinear in the response probabilities.")
         return expression
 
     def set_estimand(self, estimand):
@@ -233,6 +252,9 @@ class SymbolicProblem:
             raise ValueError("Data variables must exclude conditioning/intervention variables.")
         for variable in conditions:
             self._root_condition(f'{variable}=0')
+            if self.parametric is not False:
+                for value in range(self.number_values[variable]):
+                    self._positive_roots.append(self._linear_expression(self.p(f'{variable}={value}')))
         pending = []
         for condition_values in product(*(range(self.number_values[v]) for v in conditions)):
             condition = self._assignment_text(dict(zip(conditions, condition_values)))
@@ -263,27 +285,77 @@ class SymbolicProblem:
         self._zero_events.append(self._linear_expression(query))
         return self
 
+    def add_homogeneity(self, treated, control, *, strata):
+        """Equalize E[1(treated)-1(control)|stratum] across a partition.
+
+        Supply two event strings and principal-stratum event strings. This
+        declares numerator_s = mass_s * population_effect, including the
+        vacuous zero-mass case. The compiler verifies the partition after
+        applying zero-event restrictions. Automatic selection enables reduction.
+        """
+        if self.parametric is False:
+            raise UnsupportedModelError('Homogeneity is unsupported with forced parametric=False; omit the flag for automatic selection')
+        if not isinstance(treated, str) or not isinstance(control, str):
+            raise TypeError('Homogeneity outcomes must be event strings')
+        strata = tuple(strata)
+        if not strata or any(not isinstance(s, str) for s in strata):
+            raise ValueError('Supply a nonempty sequence of stratum events')
+        effect = self._linear_expression(self.p(treated)-self.p(control))
+        masses = tuple(self._linear_expression(self.p(s)) for s in strata)
+        deltas = tuple(self._linear_expression(self.p(treated+'&'+s)-self.p(control+'&'+s))
+                       for s in strata)
+        self._homogeneity.append((effect, masses, deltas))
+        return self
+
     def write_program(self):
-        """Compile declarations into an explicit LinearResponseModel."""
+        """Compile declarations into a linear or parametric response program."""
         if self.estimand is None:
             raise ValueError("Set an estimand before generating the problem.")
-        expressions = ([self.estimand] + list(self._data.values())
-                       + list(self._constraints.values()) + self._zero_events)
-        active = {self._component_of[s] for expr in expressions for s in expr.free_symbols}
+        self.solver_selection = None
+        if self.parametric is False and self._homogeneity:
+            raise UnsupportedModelError('Homogeneity is unsupported with forced parametric=False; omit the flag for automatic selection')
+        raw = ([self.estimand] + list(self._data.values())
+               + list(self._constraints.values()) + self._zero_events)
+        normalized = [sp.expand(e.xreplace(self._normalization)) for e in raw]
+        nonlinear = any(e.free_symbols and sp.Poly(e).total_degree() > 1
+                        for e in normalized)
+        active = {self._component_of[s] for e in normalized for s in e.free_symbols}
+        reason = ('homogeneity assumptions' if self._homogeneity else
+                  'nonlinear response expressions' if nonlinear else
+                  'multiple independent response components' if len(active) > 1 else None)
+        use_reduction = self.parametric is True or (self.parametric is None and reason is not None)
+        if use_reduction:
+            from .parametric import ParametricResponseProgram
+            self.solver_selection = dict(method='parametric_reduction',
+                                         reason=reason or 'explicit override')
+            return ParametricResponseProgram(
+                tuple(tuple(self._symbols[p] for p in c) for c in self._components),
+                dict(self._data), dict(self._constraints), tuple(self._zero_events),
+                self.estimand, tuple(self._homogeneity), tuple(dict.fromkeys(self._positive_roots)))
+        if nonlinear:
+            raise UnsupportedModelError('This query is nonlinear in the response probabilities.')
         if len(active) > 1:
-            raise ValueError("Declarations involve multiple independent response components. "
-                             "This adapter currently supports one unrestricted component; "
-                             "it will not pool independent latent distributions.")
+            raise UnsupportedModelError("Declarations involve multiple independent response components. "
+                             "The forced linear adapter supports one unrestricted component; "
+                             "omit parametric=False for automatic selection.")
+        self.solver_selection = dict(method='linear_response',
+                                     reason='fixed-coefficient linear response model')
+        estimand = normalized[0]
+        data_end = 1 + len(self._data)
+        constraint_end = data_end + len(self._constraints)
+        data = normalized[1:data_end]
+        constraints = normalized[data_end:constraint_end]
+        zeros = normalized[constraint_end:]
         component = self._components[next(iter(active))] if active else self._components[0]
         symbols = [self._symbols[p] for p in component]
 
         def vector(expression):
             constant = expression.xreplace({symbol: 0 for symbol in expression.free_symbols})
             return tuple(constant + expression.coeff(symbol) for symbol in symbols)
-        target = vector(self.estimand)
-        matrix = [vector(expr) for expr in self._data.values()]
-        constraints = [vector(expr) for expr in self._constraints.values()]
-        zero_events = [vector(expr) for expr in self._zero_events]
+        target = vector(estimand)
+        matrix = [vector(expr) for expr in data]
+        constraints = [vector(expr) for expr in constraints]
+        zero_events = [vector(expr) for expr in zeros]
         if any(value not in (0, 1) for row in matrix + zero_events for value in row):
             raise ValueError("Data declarations and zero restrictions must be event indicators.")
         retained = [i for i in range(len(component)) if all(row[i] == 0 for row in zero_events)]
@@ -295,9 +367,12 @@ class SymbolicProblem:
             constraint_labels=self._constraints)
 
     def compile(self):
-        """Return the shared mathematical model, with symbolic data parameters."""
+        """Return the shared model (automatically reduced in parametric mode)."""
         return self.write_program().compile()
 
-    def solve(self):
-        """Return complete sharp bounds using the exact GMP/cdd hull solver."""
-        return self.write_program().solve()
+    def solve(self, *, linearize=False):
+        """Return exact symbolic bounds; parametric mode derives its reduction."""
+        program = self.write_program()
+        if isinstance(program, LinearResponseModel):
+            return program.solve(linearize=linearize)
+        return program.solve()

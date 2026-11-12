@@ -66,6 +66,15 @@ class Program:
         self.res_scip = self.res_scip.fillna(method = 'ffill')
         self.res_scip = self.res_scip.fillna(method = 'bfill')
         return plot_bounds(self.res_scip)
+
+    def linearize(self, limits=(None, None), **options):
+        """Return an exact reduction with a report and solution reconstruction.
+
+        Leaves these mutable declarations untouched. Use result.solve('cdd')
+        for exact symbolic bounds when the reduced model is jointly affine,
+        or result.solve('scip') for numerical bounds and restored witnesses.
+        """
+        return self.compile(limits).linearize(**options)
       
     def track_result_scip(self):
         """ 
@@ -144,15 +153,21 @@ class Program:
         return eliminate_zero_variables(model) if eliminate_zeros else model
 
     def run_scip(self, verbose=True, epsilon=-10, theta=0.01, maxtime=None,
-                 debug=False, limits=(None, None), return_dgps=False):
+                 debug=False, limits=(None, None), return_dgps=False, linearize=False):
         """Compile and solve through the SCIP backend; retain legacy return values."""
         from .backends.scip import ScipBackend
         self._scip_bounds = None
         self.last_result = None
         backend = ScipBackend()
-        result = backend.solve(self.compile(limits).without_tautologies(),
+        model = self.compile(limits).without_tautologies()
+        self.last_reduction = model.linearize() if linearize else None
+        if self.last_reduction is not None:
+            model = self.last_reduction.model
+        result = backend.solve(model,
                                verbose=verbose, epsilon=epsilon, theta=theta,
                                maxtime=maxtime, debug=debug, return_dgps=return_dgps)
+        if self.last_reduction is not None:
+            result = self.last_reduction.restore_result(result)
         self.last_result = result
         self._scip_backend = backend
         if debug:

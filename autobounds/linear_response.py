@@ -70,7 +70,9 @@ class LinearResponseModel:
                                      for value, variable in zip(self.target, weights)))
         return MathematicalModel(weights + data, tuple(rows), objective)
 
-    def solve(self):
+    def solve(self, *, linearize=False):
         """Solve the compiled model with the exact response-mixture backend."""
         from .backends.cdd import CddBackend
+        if linearize:
+            return self.compile().linearize().solve('cdd')
         return CddBackend().solve(self.compile())

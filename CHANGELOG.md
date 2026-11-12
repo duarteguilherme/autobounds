@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Distinguish unsupported symbolic models with `UnsupportedModelError`; add
+  regressions for different model structures, capability limits, invalid
+  declarations, missing dependencies, and projection budgets.
+
+- Select the symbolic solver automatically from model structure. Preserve the
+  fast linear path, expose the selection reason, and propagate backend failures
+  without silent fallback or partial results.
+
+- Add opt-in exact reductions shared by numerical and symbolic solvers, with
+  affine substitutions, sign-safe cancellation, Charnes–Cooper, and witness
+  reconstruction. Add a general jointly affine cdd projection fallback.
+- Add automatic symbolic response-feature reduction from graph, data, and
+  event-based homogeneity declarations. Derive parametric LPs and eliminate
+  nuisance coordinates with certified signs, including zero-mass strata.
+  Validate against independently declared numerical response models.
+
 - Fix c-component detection for overlapping latent parents and automatically
   enforce graph-implied response-block independences inside each component.
 - Use a reduced independence basis and shared auxiliary marginals. Substitute

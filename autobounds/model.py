@@ -181,6 +181,11 @@ class MathematicalModel:
     def without_tautologies(self):
         return replace(self, constraints=tuple(row for row in self.constraints if not row.is_tautology))
 
+    def linearize(self, **options):
+        """Try exact reductions shared by SCIP and symbolic polyhedral solving."""
+        from .reductions import reduce_model
+        return reduce_model(self, **options)
+
     @classmethod
     def from_legacy(cls, parameters, constraints, limits=(None, None)):
         variables = tuple(Variable(name, *limits) if name == 'objvar' else Variable(name)

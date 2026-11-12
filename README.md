@@ -318,8 +318,31 @@ side. Substitute numeric values after solving.
 This is lexicographic optimization. It certifies simultaneous minimizers only
 if the second-stage minimum equals the unrestricted minimum of `n1`; it does
 not generally minimize a weighted sum. Repeat with maxima for upper bounds.
-The interface currently supports equalities with rational coefficients, not
+The fixed-coefficient interface supports equalities with rational coefficients, not
 inequalities, nonlinear constraints, or symbolic objective coefficients.
 At the matrix level, `LinearResponseModel(..., constraints=[row],
 constraint_labels=["t"])` provides the same functionality. Exact certificates
 refer to the concatenated data and constraint rows.
+
+
+### Automatic parametric LP reduction
+
+For models with observed independent roots and homogeneous effects across
+response strata, use `SymbolicProblem(...)`; solver selection is automatic. Declare the
+graph, symbolic data, zero events, and `add_homogeneity` assumptions;
+AutoBounds discovers the response features, derives a parametric LP when
+possible, and eliminates nuisance coordinates symbolically. The generated
+feature map, LP, and reduction report are inspectable. Unsupported
+nonlinearities or unproved coefficient signs raise errors.
+
+See [symbolic reduction details](docs/simplifications.md).
+
+Simple supported models retain the fast linear-response solver. Models needing
+reduction select the automatic reduction path before solving. Inspect
+`problem.solver_selection` for the chosen method and reason. Unexpected solver
+errors propagate with their traceback; they do not trigger a silent fallback.
+Unsupported models raise `UnsupportedModelError` with the unsupported feature
+and any applicable next step. This indicates a solver capability limit, not
+infeasibility of the causal model. Invalid data and projection-budget limits
+raise separate `ValueError` messages. `parametric=True` or `False` can
+still force a method for debugging, but ordinary declarations need no flag.

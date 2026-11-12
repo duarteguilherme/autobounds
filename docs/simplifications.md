@@ -122,3 +122,68 @@ Before this follow-up fix, both distribution formats built successfully and the
 then-current 17 support cases passed against the installed wheel outside the checkout.
 These checks used the existing Linux/Python 3.13 environment and its dependencies;
 they do not establish a cross-platform compatibility matrix.
+
+## Shared exact reductions and symbolic solving
+
+`program.linearize()` (or `model.linearize()`) returns an immutable reduction
+result without changing the source declarations:
+
+```python
+reduced = program.linearize(limits=(-1, 1))
+print(reduced.report)
+result = reduced.solve('scip', verbose=False, return_dgps=True)
+# If jointly affine in decisions and symbolic parameters:
+exact_bounds = reduced.solve('cdd')
+```
+
+The opt-in numerical shortcut is `program.run_scip(linearize=True)`.
+`LinearResponseModel.solve(linearize=True)` and
+`SymbolicProblem.solve(linearize=True)` use the same reductions before cdd.
+
+The pipeline repeats exact zero elimination, affine equality substitution,
+fixed-variable/fixed-sum reduction, and cancellation of factors proved
+nonzero. Inequality cancellation additionally requires a proved sign. Bounds
+on eliminated variables become constraints; reported numerical witnesses are
+reconstructed in the original coordinates. A bounded-cost acceptance rule
+limits expression growth and can conservatively skip useful substitutions.
+Exact inconsistent equality systems are reported and left to the numerical
+solver, avoiding amplification of tiny rounding residuals in input data.
+
+For affine ratios, Charnes–Cooper is available when the remaining constraints
+are linear and the denominator has certified strict sign and finite bounds.
+The positive scale is explicitly bounded away from zero. Models with a
+possibly zero denominator or symbolic parameter-dependent scaled coefficients
+are left unchanged. These are sufficient reductions, not a guarantee that
+all equivalent LPs will be recognized.
+
+The usual response-mixture cdd backend remains the fast path. General jointly
+affine models use exact polyhedral projection supporting arbitrary domains,
+inequalities, and objective constants. That fallback enumerates the full
+polyhedron's generators and can be expensive. Products of symbolic data and
+decision variables are not silently treated as affine.
+
+
+### Automatic parametric response reduction
+
+`SymbolicProblem(...)` automatically selects reduction for observed independent
+roots and event-based homogeneity declarations. It automatically constructs
+a rational response-feature hull, substitutes equalities, and proves linearity
+in decisions with data fixed. `write_program().linearize()` exposes the
+feature map, hull constraints, reduced mathematical model, and report;
+`solve()` eliminates nuisance coordinates with certified symbolic signs.
+This path rejects unresolved nonlinearity or unknown elimination signs and
+retains parameter compatibility conditions and zero-mass cases.
+
+
+### Failures remain visible
+
+Known symbolic capability limits raise `autobounds.UnsupportedModelError`
+(a `ValueError` subclass for compatibility). The message identifies the
+unsupported graph structure, unresolved product, coefficient-sign issue, or
+other limitation. This does not mean the causal model is infeasible.
+
+Malformed declarations, incompatible data, missing dependencies, and resource
+limits retain their respective error messages. A projection-budget error
+reports the configured limit and the size of the next elimination step.
+Unexpected exceptions are not relabeled as unsupported models or silently
+retried with another solver; their original traceback is preserved.

@@ -15,6 +15,7 @@ _EXPORTS = {
     'SymbolicProblem': ('SymbolicProblem', 'SymbolicProblem'),
     'LinearResponseModel': ('linear_response', 'LinearResponseModel'),
     'SymbolicBounds': ('symbolic_results', 'SymbolicBounds'),
+    'UnsupportedModelError': ('exceptions', 'UnsupportedModelError'),
     **{name: ('model', name) for name in
        ('MathematicalModel', 'Variable', 'Term', 'Polynomial', 'Constraint')},
     **{name: ('results', name) for name in ('EndpointResult', 'SolverResult')},
@@ -45,5 +46,6 @@ __all__ = [
     "__version__",
            "DAG", "Bounder", "causalProblem", "Parser", "Program", "Query", "Q", "respect_to",
            "SymbolicProblem", "LinearResponseModel", "SymbolicBounds",
+           "UnsupportedModelError",
            "MathematicalModel", "Variable", "Term", "Polynomial", "Constraint",
            "EndpointResult", "SolverResult" ]

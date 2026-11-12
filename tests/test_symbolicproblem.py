@@ -166,7 +166,9 @@ def test_manual_nonlinear_envelopes_keep_symbolic_evaluation():
 
 @pytest.fixture
 def iv_problem():
-    return SymbolicProblem(DAG('Z -> X, X -> Y, U -> X, U -> Y', unob='U'))
+    # Exercise the explicitly selected legacy interface and its rejection rules.
+    return SymbolicProblem(DAG('Z -> X, X -> Y, U -> X, U -> Y', unob='U'),
+                           parametric=False)
 
 
 @pytest.fixture
